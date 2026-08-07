@@ -1,0 +1,71 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cc-cafe-reservation-api",
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
+    "not_found_handling": "none"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cc-cafe-reservation-db",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "CC_SLIPS",
+      "bucket_name": "cc-cafe-reservation-slips"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "CC_CACHE",
+      "id": "00000000000000000000000000000000"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "REALTIME_HUB", "class_name": "RealtimeHub" }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["RealtimeHub"]
+    }
+  ],
+
+  "triggers": {
+    "crons": [
+      "0 0 * * *",
+      "15 0 1 */3 *",
+      "0 1 * * *"
+    ]
+  },
+
+  "vars": {
+    "GAS_BACKEND_URL": "https://script.google.com/macros/s/AKfycbyQ_XGiFbgjdvUK1DhzNjdWPGZ2hNI0BWyj6g1Bv0dZqGAohQLZkV0wjUXCT6cvtvMoig/exec",
+    "TURNSTILE_HOSTNAMES": "cida.dpdns.org",
+    "ENVIRONMENT": "development",
+    "PASSWORD_SALT": "cc-cafe-reservation-v1",
+    "ARCHIVE_MONTHS": "3",
+    "BACKUP_RETENTION_DAYS": "30"
+  },
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

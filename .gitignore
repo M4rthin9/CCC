@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.dev.vars
+.wrangler/
+data/seed.sql
+data/*.tmp
+*.log
+.DS_Store
+data/

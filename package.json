@@ -1,0 +1,28 @@
+{
+  "name": "ccc-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Prison Visitor Reservation System backend — Cloudflare Workers + D1 + KV",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply ccc-reservations --remote",
+    "migrate:local": "wrangler d1 migrations apply ccc-reservations --local",
+    "db:seed": "tsx scripts/migrate-sheets.ts",
+    "db:execute": "wrangler d1 execute ccc-reservations --remote --file=./data/seed.sql",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && wrangler deploy --dry-run"
+  },
+  "dependencies": {
+    "hono": "^4.6.0",
+    "jose": "^5.9.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260801.1",
+    "@types/node": "^22.20.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
+  }
+}

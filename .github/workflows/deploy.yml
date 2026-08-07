@@ -32,12 +32,18 @@ jobs:
           API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          echo "API_TOKEN set: $([ -n \"$API_TOKEN\" ] && echo YES || echo NO)"
-          echo "ACCOUNT_ID set: $([ -n \"$ACCOUNT_ID\" ] && echo YES || echo NO)"
-          if [ -z \"$API_TOKEN\" ] || [ -z \"$ACCOUNT_ID\" ]; then
-            echo \"::error::Missing Cloudflare secrets. In GitHub repo Settings -> Secrets and variables -> Actions, create CF_API_TOKEN and CF_ACCOUNT_ID (value: 0e00d9b1beeaf05140dd3777e0d2de90).\"
+          if [ -z "$API_TOKEN" ]; then
+            echo "API_TOKEN set: NO"
+            echo "::error::Missing secret CF_API_TOKEN. Add it in repo Settings -> Secrets and variables -> Actions."
             exit 1
           fi
+          echo "API_TOKEN set: YES"
+          if [ -z "$ACCOUNT_ID" ]; then
+            echo "ACCOUNT_ID set: NO"
+            echo "::error::Missing secret CF_ACCOUNT_ID (value 0e00d9b1beeaf05140dd3777e0d2de90)."
+            exit 1
+          fi
+          echo "ACCOUNT_ID set: YES"
 
       - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy

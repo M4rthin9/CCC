@@ -12,7 +12,7 @@ export async function handleGetEventLogs(env: Env, params: Record<string, unknow
     fromDate: params.fromDate ? sanitizeStr(params.fromDate, 20) : undefined,
     toDate: params.toDate ? sanitizeStr(params.toDate, 20) : undefined,
     username: params.username ? sanitizeStr(params.username, 100) : undefined,
-    action: params.action ? sanitizeStr(params.action, 200) : undefined,
+    action: params.actionFilter ? sanitizeStr(params.actionFilter, 200) : undefined,
     search: params.search ? sanitizeStr(params.search, 500) : undefined,
   });
   return { status: 'ok', logs };

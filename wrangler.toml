@@ -2,6 +2,7 @@ name = "ccc-backend"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "0e00d9b1beeaf05140dd3777e0d2de90"
 
 # ── Worker vars ────────────────────────────────────────────────────
 [vars]

@@ -6,6 +6,7 @@ import { dispatchAction, RouteCtx } from './routes/dispatcher';
 import { sanitizeStr } from './config';
 import { cleanupExpiredDiscipline } from './services/disciplineService';
 import { archiveOldReservations } from './services/archiveService';
+import { handleHealthHtml, handleHealthJson } from './routes/health';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -58,6 +59,17 @@ app.post('/api/notes', async (c) => runDispatch(c.req.raw, c.env, false, { actio
 // ── Generic action-dispatch endpoints (POST / or /api with {action}) ──
 app.post('/', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw)));
 app.post('/api', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw)));
+
+// ── Health check ───────────────────────────────────────────────────
+app.get('/health', async (c) => {
+  const html = await handleHealthHtml(c.env, c.req.raw);
+  const headers = makeCorsHeaders(c.req.raw, c.env);
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', ...headers } });
+});
+app.get('/api/health', async (c) => {
+  const data = await handleHealthJson(c.env, c.req.raw);
+  return jsonResponse(data, 200, makeCorsHeaders(c.req.raw, c.env));
+});
 
 // ── Fallback: any GET carries ?action=… ──
 app.get('*', async (c) => runDispatch(c.req.raw, c.env, true, queryToBody(c.req.raw)));

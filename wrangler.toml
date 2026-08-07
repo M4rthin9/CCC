@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 CACHE_VERSION = "v3"
 PASSWORD_SALT = "cc-cafe-reservation-v1"
 # Comma-separated list of frontend origins allowed to call the API.
-# Use "*" during development. Example: https://admin.yoursite.com,https://visitor.yoursite.com
+# Use "*" during development. Example: https://ccc-backend.pongsinbas.workers.dev
 ALLOWED_ORIGINS = "*"
 
 # ── D1 database ────────────────────────────────────────────────────
@@ -17,14 +17,15 @@ ALLOWED_ORIGINS = "*"
 [[d1_databases]]
 binding = "DB"
 database_name = "ccc-reservations"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "c24082d0-67dd-4c21-b460-d3c07e4f3651"
+migrations_dir = "src/db/migrations"
 
 # ── KV namespace (chunked cache, mirrors Apps Script CacheService) ──
 # Create with:  wrangler kv namespace create ccc-cache
 # then paste the returned id here.
 [[kv_namespaces]]
 binding = "CACHE_KV"
-id = "REPLACE_WITH_KV_ID"
+id = "e53d8e0df3d04533b140bb49b99d7df3"
 
 # ── Scheduled tasks (cron, UTC) ────────────────────────────────────
 # 0 17 * * *   = 00:00 Bangkok  — daily expired-discipline cleanup

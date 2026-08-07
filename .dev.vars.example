@@ -1,5 +1,5 @@
 # Copy to .dev.vars and fill in for local development (wrangler dev).
 # NEVER commit .dev.vars — it is git-ignored.
-JWT_SECRET=dev-only-jwt-secret-change-me
-JWT_REFRESH_SECRET=dev-only-refresh-secret-change-me
-TURNSTILE_SECRET=0x4AAAAAAEI6Yk8ahyGIBCnH656jZwy-aOg
+JWT_SECRET=
+JWT_REFRESH_SECRET=
+TURNSTILE_SECRET=

@@ -14,6 +14,7 @@ import {
 } from '../cache/invalidation';
 import { computeApprovalTotals } from '../services/pricing';
 import { logEvent } from '../services/logger';
+import { getPrisonerDiscipline } from '../services/disciplineService';
 import { generateUniqueRefServer, parseUpdateBookingFields, findDuplicateActive, validateSaveReservation } from '../services/reservationService';
 import { Env, Reservation } from '../types';
 import { AuthenticatedUser } from '../auth/middleware';
@@ -341,6 +342,10 @@ export async function handleUpdateBooking(env: Env, body: Record<string, unknown
     const current = rows[0]!;
     const effPrisonerId = changes.prisonerId !== undefined ? String(changes.prisonerId || '').trim() : String(current.prisonerId || '').trim();
     const effDate = changes.visitDateISO !== undefined ? normalizeVisitDateISO(changes.visitDateISO) : normalizeVisitDateISO(current.visitDateISO);
+    const discipline = await getPrisonerDiscipline(env, effPrisonerId);
+    if (discipline.restricted) {
+      return { status: 'error', message: discipline.message };
+    }
     const dupRef = await findDuplicateActive(env, effPrisonerId, effDate, ref);
     if (dupRef !== null) {
       return { status: 'error', message: '⚠️ ไม่สามารถจองได้ — มีการจองผู้ต้องขังหมายเลข "' + effPrisonerId + '" ในวันนี้อยู่แล้ว' + (dupRef ? ' (Ref: ' + dupRef + ')' : '') };
@@ -373,6 +378,11 @@ export async function handleCreateBooking(env: Env, body: Record<string, unknown
 
   const data = validation.data;
   const newPrisonerId = String(data.prisonerId || '').trim();
+
+  const discipline = await getPrisonerDiscipline(env, newPrisonerId);
+  if (discipline.restricted) {
+    return { status: 'error', message: discipline.message };
+  }
 
   const dupRef = await findDuplicateActive(env, newPrisonerId, String(data.visitDateISO || ''), null);
   if (dupRef !== null) {

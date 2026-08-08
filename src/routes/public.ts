@@ -12,6 +12,7 @@ import {
 } from '../cache/invalidation';
 import { logEvent } from '../services/logger';
 import { validateSaveReservation, generateUniqueRefServer, findDuplicateActive } from '../services/reservationService';
+import { getPrisonerDiscipline } from '../services/disciplineService';
 import { Env, Reservation } from '../types';
 
 export async function handlePing(): Promise<Record<string, unknown>> {
@@ -82,6 +83,11 @@ export async function handleSaveReservation(
 
   const data = validation.data;
   const newPrisonerId = String(data.prisonerId || '').trim();
+
+  const discipline = await getPrisonerDiscipline(env, newPrisonerId);
+  if (discipline.restricted) {
+    return { status: 'error', message: discipline.message };
+  }
 
   const dupRef = await findDuplicateActive(env, newPrisonerId, String(data.visitDateISO || ''), null);
   if (dupRef !== null) {

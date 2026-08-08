@@ -1,5 +1,6 @@
-import { clearExpiredDiscipline, getPrisoners } from '../db/queries/prisoners';
-import { Env } from '../types';
+import { clearExpiredDiscipline, getPrisonerById, getPrisoners } from '../db/queries/prisoners';
+import { DISCIPLINE_STATUS } from '../constants';
+import { Env, Prisoner } from '../types';
 import { invalidatePrisonersCache } from '../cache/invalidation';
 
 // Daily cleanup: clears the 'ติดวินัย งดเยี่ยม' status for prisoners whose
@@ -46,11 +47,28 @@ function normalizeVinaiDate(v: unknown): string {
 
 // True when a prisoner is currently restricted from visits.
 export function isDisciplineActive(status: string, vinaiDate: unknown): boolean {
-  if (String(status || '').trim() !== 'ติดวินัย งดเยี่ยม') return false;
+  if (String(status || '').trim() !== DISCIPLINE_STATUS) return false;
   if (vinaiDate === undefined || vinaiDate === null || String(vinaiDate).trim() === '') return true;
   const vd = normalizeVinaiDate(vinaiDate);
   if (!vd) return true;
   const oneYearAgo = new Date();
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
   return new Date(vd + 'T00:00:00').getTime() > oneYearAgo.getTime();
+}
+
+// Look up a prisoner and report whether their discipline status blocks new bookings.
+export async function getPrisonerDiscipline(
+  env: Env,
+  prisonerId: string
+): Promise<{ restricted: boolean; message: string }> {
+  const pid = String(prisonerId || '').trim();
+  if (!pid) return { restricted: false, message: '' };
+  const p: Prisoner | null = await getPrisonerById(env.DB, pid);
+  if (!p || !isDisciplineActive(p.status, p.vinaiDate)) return { restricted: false, message: '' };
+  const name = p.prisonerName ? String(p.prisonerName) : '';
+  const label = name ? name + ' (' + pid + ')' : 'หมายเลข ' + pid;
+  return {
+    restricted: true,
+    message: '⚠️ ไม่สามารถจองได้ — ผู้ต้องขัง "' + label + '" มีสถานะติดวินัย งดเยี่ยม ไม่สามารถจองเยี่ยมได้',
+  };
 }

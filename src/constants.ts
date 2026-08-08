@@ -14,15 +14,15 @@ export const ARCHIVE_MONTHS = 3;
 
 export const AVAILABLE_PERMISSIONS = [
   'approve', 'reject', 'approve_discipline', 'reject_discipline', 'approve_participant', 'cancel', 'confirm_payment',
-  'export', 'manage_users', 'manage_settings', 'print', 'reject_payment', 'view_detail',
+  'create_booking', 'export', 'manage_users', 'manage_settings', 'print', 'reject_payment', 'view_detail',
   'view_eventlog', 'view_slip', 'visitor_approval'
 ] as const;
 
 export type Permission = (typeof AVAILABLE_PERMISSIONS)[number];
 
 export const PERMISSIONS: Record<string, readonly Permission[]> = {
-  Superadmin: ['approve', 'reject', 'approve_discipline', 'reject_discipline', 'approve_participant', 'confirm_payment', 'reject_payment', 'cancel', 'visitor_approval', 'view_slip', 'view_detail', 'export', 'print', 'manage_users', 'manage_settings', 'view_eventlog'],
-  Admin: ['approve', 'reject', 'approve_discipline', 'reject_discipline', 'approve_participant', 'confirm_payment', 'reject_payment', 'cancel', 'visitor_approval', 'view_slip', 'view_detail', 'export', 'print', 'view_eventlog'],
+  Superadmin: ['approve', 'reject', 'approve_discipline', 'reject_discipline', 'approve_participant', 'confirm_payment', 'reject_payment', 'cancel', 'create_booking', 'visitor_approval', 'view_slip', 'view_detail', 'export', 'print', 'manage_users', 'manage_settings', 'view_eventlog'],
+  Admin: ['approve', 'reject', 'approve_discipline', 'reject_discipline', 'approve_participant', 'confirm_payment', 'reject_payment', 'cancel', 'create_booking', 'visitor_approval', 'view_slip', 'view_detail', 'export', 'print', 'view_eventlog'],
   Finance: ['confirm_payment', 'reject_payment', 'cancel', 'view_slip', 'view_detail'],
   Vinai: ['approve_discipline', 'reject_discipline', 'view_slip', 'view_detail'],
   Tadtel: ['approve_participant', 'visitor_approval', 'view_slip', 'view_detail'],
@@ -58,10 +58,10 @@ export const SAVE_STRING_CAPS: Record<string, number> = {
 
 export const UPDATE_BOOKING_FIELDS = ['visitorName', 'visitorPhone', 'visitorId', 'relation', 'religion', 'allergy',
   'prisonerName', 'prisonerId', 'wing', 'visitDate', 'visitDateISO',
-  'visitorCount', 'total', 'status',
+  'visitorCount', 'totalPersons', 'total', 'adultCount', 'child5to8Count', 'childUnder5Count', 'status',
   'extraVisitorNames', 'extraVisitorReligions', 'extraVisitorAllergies', 'extraVisitorApproved'];
 
-export const UPDATE_BOOKING_NUMERIC = ['visitorCount', 'total'];
+export const UPDATE_BOOKING_NUMERIC = ['visitorCount', 'totalPersons', 'total', 'adultCount', 'child5to8Count', 'childUnder5Count'];
 
 export const UPDATE_BOOKING_CAPS: Record<string, number> = {
   visitorName: 200, visitorPhone: 32, visitorId: 64, relation: 100, religion: 100, allergy: 1000,

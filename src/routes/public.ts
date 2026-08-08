@@ -31,9 +31,9 @@ export function handleResolveUrl(request: Request): Record<string, unknown> {
 export async function handleTestConnection(env: Env): Promise<Record<string, unknown>> {
   const result: Record<string, unknown> = { status: 'ok', message: 'Connected', timestamp: new Date().toISOString() };
   try {
-    const info = await env.DB.prepare('SELECT sqlite_version() as v').first<{ v: string }>();
+    const info = await env.DB.prepare('SELECT COUNT(*) as c FROM reservations').first<{ c: number }>();
     result.database = 'D1 (SQLite)';
-    result.sqliteVersion = info?.v ?? '';
+    result.reservationCount = info?.c ?? 0;
   } catch (e) {
     result.databaseError = String(e);
     result.message = 'Connected to worker, but database unavailable';

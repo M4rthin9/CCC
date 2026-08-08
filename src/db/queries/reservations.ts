@@ -7,7 +7,7 @@ const RESERVATION_COLUMNS = [
   'extraVisitorNames', 'visitorApproved', 'extraVisitorApproved',
   'prisonerName', 'prisonerId', 'wing', 'visitDate', 'visitDateISO',
   'visitorCount', 'totalPersons', 'total', 'adultCount', 'child5to8Count', 'childUnder5Count',
-  'status', 'slipImage', 'cancelReason', 'createdAt', 'updatedAt', 'version', 'createdBy',
+  'status', 'slipImage', 'cancelReason', 'createdAt', 'updatedAt', 'version', 'createdBy', 'source',
 ];
 
 export function reservationRowToObject(row: unknown): Reservation {

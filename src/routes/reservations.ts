@@ -1,5 +1,5 @@
 import { PUBLIC_CACHE_TTL, VALID_STATUSES, ACTIVE_STATUSES } from '../constants';
-import { sanitizeStr, sanitizeInt, normalizeVisitDateISO, isValidISODate, formatBangkok } from '../config';
+import { sanitizeStr, sanitizeInt, normalizeVisitDateISO, isValidISODate, formatBangkok, formatDateISO } from '../config';
 import { cacheKeyArchived, cacheKeyCounts, cacheKeyReservations, lookupCacheKey } from '../cache/keys';
 import { cacheGetLarge, cachePutLarge, cacheRemove, cacheGet } from '../cache/kv';
 import {
@@ -16,6 +16,7 @@ import { computeApprovalTotals } from '../services/pricing';
 import { logEvent } from '../services/logger';
 import { generateUniqueRefServer, parseUpdateBookingFields, findDuplicateActive, validateSaveReservation } from '../services/reservationService';
 import { Env, Reservation } from '../types';
+import { AuthenticatedUser } from '../auth/middleware';
 
 const ACTIVE = ACTIVE_STATUSES;
 
@@ -151,6 +152,15 @@ export async function handleCancelBooking(env: Env, body: Record<string, unknown
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
 
+  const today = formatDateISO(new Date());
+  const allExpired = rows.every(row => {
+    const d = String(row.visitDateISO || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) && d < today;
+  });
+  if (allExpired) {
+    return { status: 'error', message: 'เกินวันเข้างานแล้ว ไม่สามารถปฏิเสธ/ยกเลิกได้' };
+  }
+
   const prevStatus = String(rows[0]!.status || '');
   await updateReservationColumns(env.DB, ref, [['status', 'ยกเลิก']]);
   if (body.reason) {
@@ -190,7 +200,7 @@ const allowedTransitions: Record<string, string[]> = {
 const roleAllowedStatuses: Record<string, string[] | null> = {
   'Superadmin': null,
   'Admin': null,
-  'Tadtel': ['รอตรวจสอบวินัย', 'ไม่อนุมัติ'],
+  'Tadtel': ['รอตรวจสอบวินัย'],
   'Vinai': ['รอชำระเงิน', 'ไม่อนุมัติ', 'ยกเลิก'],
   'Finance': ['ชำระแล้ว', 'เสร็จสิ้น', 'ไม่อนุมัติ'],
 };
@@ -224,6 +234,17 @@ export async function handleUpdateStatus(env: Env, body: Record<string, unknown>
 
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+
+  if (status === 'ไม่อนุมัติ' || status === 'ยกเลิก') {
+    const today = formatDateISO(new Date());
+    const allExpired = rows.every(row => {
+      const d = String(row.visitDateISO || '').trim();
+      return /^\d{4}-\d{2}-\d{2}$/.test(d) && d < today;
+    });
+    if (allExpired) {
+      return { status: 'error', message: 'เกินวันเข้างานแล้ว ไม่สามารถปฏิเสธ/ยกเลิกได้' };
+    }
+  }
 
   let rejected: { oldStatus: string; newStatus: string } | null = null;
   let allAlreadyAtTarget = true;
@@ -278,6 +299,13 @@ export async function handleUpdateVisitorApproval(env: Env, body: Record<string,
   if (body.extraVisitorApproved !== undefined) cols.push(['extraVisitorApproved', sanitizeStr(body.extraVisitorApproved, 5000)]);
   cols.push(['visitorCount', visitorCount]);
   cols.push(['total', total]);
+
+  const mainRejected = body.visitorApproved !== undefined && !mainApproved;
+  if (mainRejected) {
+    cols.push(['status', 'ไม่อนุมัติ']);
+    cols.push(['cancelReason', 'ผู้เยี่ยมหลักถูกปฏิเสธการเข้าร่วม']);
+  }
+
   await updateReservationColumns(env.DB, ref, cols);
 
   await logEvent(env, user.username, 'visitor_approval_updated', ref, {
@@ -287,6 +315,9 @@ export async function handleUpdateVisitorApproval(env: Env, body: Record<string,
     total,
     affectedRows: rows.length,
   }, 'success');
+  if (mainRejected) {
+    await logEvent(env, user.username, 'visitor_rejected_booking', ref, { reason: 'ผู้เยี่ยมหลักถูกปฏิเสธการเข้าร่วม', affectedRows: rows.length }, 'success');
+  }
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
   return { status: 'ok', visitorCount, total };
@@ -317,6 +348,8 @@ export async function handleUpdateBooking(env: Env, body: Record<string, unknown
   }
 
   if (cols.length > 0) {
+    cols.push(['updatedAt', new Date().toISOString()]);
+    cols.push(['version', Number(rows[0]!.version || 1) + 1]);
     await updateReservationColumns(env.DB, ref, cols);
   }
 
@@ -324,4 +357,52 @@ export async function handleUpdateBooking(env: Env, body: Record<string, unknown
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
   return { status: 'ok', message: 'แก้ไขการจองสำเร็จ' };
+}
+
+export async function handleCreateBooking(env: Env, body: Record<string, unknown>, user: AuthenticatedUser): Promise<Record<string, unknown>> {
+  if (!(await hasPermission(env.DB, user.username, 'create_booking'))) {
+    await logEvent(env, user.username, 'create_booking_rejected', '', { reason: 'role_not_allowed', role: user.role }, 'denied');
+    return { status: 'error', message: 'Role "' + user.role + '" is not allowed to create bookings' };
+  }
+
+  // Mirror handleSaveReservation minus Turnstile: allow the server to assign the ref.
+  const payload = { ...body };
+  if (!String(payload.ref || '').trim()) payload.ref = '__AUTO__';
+  const validation = validateSaveReservation(payload);
+  if (!validation.ok) return { status: 'error', message: validation.message };
+
+  const data = validation.data;
+  const newPrisonerId = String(data.prisonerId || '').trim();
+
+  const dupRef = await findDuplicateActive(env, newPrisonerId, String(data.visitDateISO || ''), null);
+  if (dupRef !== null) {
+    return { status: 'error', message: '⚠️ ไม่สามารถจองได้ — มีการจองผู้ต้องขังหมายเลข "' + newPrisonerId + '" ในวันนี้อยู่แล้ว' + (dupRef ? ' (Ref: ' + dupRef + ')' : '') };
+  }
+
+  const existingRefs = await getAllRefs(env.DB);
+  let ref = String(data.ref || '').trim();
+  if (!ref || ref === '__AUTO__' || existingRefs.includes(ref)) {
+    ref = generateUniqueRefServer(existingRefs);
+  }
+  data.ref = ref;
+
+  const now = new Date().toISOString();
+  const row: Record<string, unknown> = {
+    ...data,
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
+    createdBy: user.username,
+    source: 'admin',
+  };
+
+  await insertReservation(env.DB, row);
+  await invalidateReservationsCache(env);
+  await invalidatePrisonerLookupCache(env, newPrisonerId);
+  await logEvent(env, user.username, 'booking_created_admin', ref, {
+    visitorName: data.visitorName,
+    prisonerName: data.prisonerName,
+    visitDate: data.visitDate,
+  }, 'success');
+  return { status: 'ok', ref };
 }

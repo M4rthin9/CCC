@@ -10,7 +10,7 @@ import {
   getAllReservations, getAllReservationsWithArchive, getArchivedReservationsHandler,
   getCountsByDate, handleDedupeReservations, handleFindDuplicateBookings,
   handleCancelBooking, handlePublicCancelBooking, handleUpdateStatus,
-  handleUpdateVisitorApproval, handleUpdateBooking
+  handleUpdateVisitorApproval, handleUpdateBooking, handleCreateBooking
 } from './reservations';
 import {
   handleGetPrisoners, handleImportPrisoners, handleSyncPrisonerWings, handleRecheckPrisoner
@@ -84,6 +84,7 @@ const POST_ROUTES: Record<string, Route> = {
   cancelBooking: { auth: true, handler: async (ctx) => handleCancelBooking(ctx.env, ctx.body, ctx.user!) },
   updateStatus: { auth: true, handler: async (ctx) => handleUpdateStatus(ctx.env, ctx.body, ctx.user!) },
   updateVisitorApproval: { auth: true, handler: async (ctx) => handleUpdateVisitorApproval(ctx.env, ctx.body, ctx.user!) },
+  createBooking: { auth: true, handler: async (ctx) => handleCreateBooking(ctx.env, ctx.body, ctx.user!) },
   createUser: { auth: true, handler: async (ctx) => handleCreateUser(ctx.env, ctx.body, meta(ctx)) },
   createRole: { auth: true, handler: async (ctx) => handleCreateRole(ctx.env, ctx.body, ctx.user!) },
   updateUser: { auth: true, handler: async (ctx) => handleUpdateUser(ctx.env, ctx.body, ctx.user!) },

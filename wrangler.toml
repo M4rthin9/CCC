@@ -11,6 +11,11 @@ PASSWORD_SALT = "cc-cafe-reservation-v1"
 # Comma-separated list of frontend origins allowed to call the API.
 # Use "*" during development. Example: https://ccc-backend.pongsinbas.workers.dev
 ALLOWED_ORIGINS = "*"
+# Comma-separated list of hostnames allowed to generate Turnstile tokens.
+# IMPORTANT: these are the FRONTEND hosts that render the widget (siteverify
+# returns the page hostname), NOT the backend worker hostname.
+# Example: booking.example.com,www.example.com
+TURNSTILE_ALLOWED_HOSTNAMES = "ccc-frontend.pages.dev,cafe.dpdns.org"
 
 # ── D1 database ────────────────────────────────────────────────────
 # Create with:  wrangler d1 create ccc-reservations

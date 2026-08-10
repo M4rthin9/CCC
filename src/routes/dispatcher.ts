@@ -31,7 +31,7 @@ import { getRolesHandler, handleCreateRole } from './roles';
 import { handleGetEventLogs, handleLogClientEvent } from './eventlog';
 import { handleAddNote, handleGetNotes } from './notes';
 import { handleSaveSettings, handleGetSettings, handleGetDataVersion } from './settings';
-import { handleUploadSlip, handleUpdateSlipAndStatus } from './slip';
+import { handleUploadSlip, handleUpdateSlipAndStatus, handleGetSlipByRef } from './slip';
 import { handleLogin, handleChangePassword, handleRefresh } from './auth';
 
 export interface RouteCtx {
@@ -61,6 +61,7 @@ const GET_ROUTES: Record<string, Route> = {
   getAllWithArchive: { auth: true, handler: async (ctx) => getAllReservationsWithArchive(ctx.env, ctx.body) },
   getCountsByDate: { auth: false, handler: async (ctx) => getCountsByDate(ctx.env) },
   lookupByRef: { auth: false, handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body) },
+  getSlipByRef: { auth: true, handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body) },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
   getDataVersion: { auth: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
   getEventLogs: {
@@ -93,6 +94,7 @@ const POST_ROUTES: Record<string, Route> = {
   getAllWithArchive: { auth: true, handler: async (ctx) => getAllReservationsWithArchive(ctx.env, ctx.body) },
   getCountsByDate: { auth: false, handler: async (ctx) => getCountsByDate(ctx.env) },
   lookupByRef: { auth: false, handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body) },
+  getSlipByRef: { auth: true, handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body) },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
   getDataVersion: { auth: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
   publicCancelBooking: { auth: false, handler: async (ctx) => handlePublicCancelBooking(ctx.env, ctx.body) },

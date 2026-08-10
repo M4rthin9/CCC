@@ -88,6 +88,30 @@ export function getReservationByRef(db: D1Database, ref: string): Promise<Reserv
     .then((r) => (r ? reservationRowToObject(r) : null));
 }
 
+export function getStoredSlipByRef(db: D1Database, ref: string): Promise<string> {
+  return db
+    .prepare(`SELECT slipImage, slip_base64 FROM ${TABLES.reservations} WHERE ref = ? LIMIT 1`)
+    .bind(ref)
+    .first<{ slipImage: string | null; slip_base64: string | null }>()
+    .then((r) => {
+      if (r) {
+        const b64 = r.slip_base64 ? String(r.slip_base64) : '';
+        if (b64) return b64;
+        if (r.slipImage) return String(r.slipImage);
+      }
+      return db
+        .prepare(`SELECT slipImage, slip_base64 FROM ${TABLES.archive} WHERE ref = ? LIMIT 1`)
+        .bind(ref)
+        .first<{ slipImage: string | null; slip_base64: string | null }>()
+        .then((a) => {
+          if (!a) return '';
+          const b64 = a.slip_base64 ? String(a.slip_base64) : '';
+          if (b64) return b64;
+          return a.slipImage ? String(a.slipImage) : '';
+        });
+    });
+}
+
 export function getReservationsByRefs(db: D1Database, ref: string): Promise<Reservation[]> {
   return db
     .prepare(`SELECT ${RESERVATION_COLUMNS.join(', ')} FROM ${TABLES.reservations} WHERE ref = ? ORDER BY rowid`)

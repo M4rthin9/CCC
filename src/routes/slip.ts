@@ -1,5 +1,5 @@
 import { sanitizeStr } from '../config';
-import { getReservationsByRefs, updateReservationColumns } from '../db/queries/reservations';
+import { getReservationsByRefs, getStoredSlipByRef, updateReservationColumns } from '../db/queries/reservations';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
 import { logEvent } from '../services/logger';
 import { Env } from '../types';
@@ -54,4 +54,12 @@ export async function handleUpdateSlipAndStatus(
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
   return { status: 'ok' };
+}
+
+export async function handleGetSlipByRef(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const ref = sanitizeStr(body.ref, 64);
+  if (!ref) return { status: 'error', message: 'Missing ref' };
+
+  const slipImage = await getStoredSlipByRef(env.DB, ref);
+  return { status: 'ok', ref, slipImage };
 }

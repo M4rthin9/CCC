@@ -1,6 +1,12 @@
 import {
-  cacheKeyArchived, cacheKeyCounts, cacheKeyPrisoners, cacheKeyReservations,
-  cacheKeyRoles, cacheKeyUser, cacheKeyUsers, lookupCacheKey
+  cacheKeyArchived,
+  cacheKeyCounts,
+  cacheKeyPrisoners,
+  cacheKeyReservations,
+  cacheKeyRoles,
+  cacheKeyUser,
+  cacheKeyUsers,
+  lookupCacheKey,
 } from './keys';
 import { cacheRemove, cacheRemoveLarge } from './kv';
 import { Env } from '../types';
@@ -25,7 +31,7 @@ export async function invalidatePrisonerLookupCache(env: Env, prisonerId: string
 }
 
 export async function invalidateUserCache(env: Env, username: string): Promise<void> {
-  await cacheRemove(env.CACHE_KV, cacheKeyUser(env, username));
+  await cacheRemove(env.CACHE_KV, cacheKeyUser(username));
 }
 
 export async function invalidateAllUsersCache(env: Env): Promise<void> {

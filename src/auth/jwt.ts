@@ -19,7 +19,10 @@ export interface RefreshPayload {
   type: 'refresh';
 }
 
-export async function signAccessToken(secret: string, user: { username: string; role: string; displayName: string }): Promise<string> {
+export async function signAccessToken(
+  secret: string,
+  user: { username: string; role: string; displayName: string }
+): Promise<string> {
   return new SignJWT({ username: user.username, role: user.role, displayName: user.displayName, type: 'access' })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(user.username)
@@ -64,6 +67,9 @@ export async function verifyRefreshToken(secret: string, token: string): Promise
 }
 
 export function hashToken(token: string): Promise<string> {
-  return crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
-    .then(d => Array.from(new Uint8Array(d)).map(b => ('0' + b.toString(16)).slice(-2)).join(''));
+  return crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)).then((d) =>
+    Array.from(new Uint8Array(d))
+      .map((b) => ('0' + b.toString(16)).slice(-2))
+      .join('')
+  );
 }

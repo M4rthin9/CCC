@@ -1,15 +1,19 @@
-import { sanitizeStr } from '../config';
 import { getSettings, saveSettings, getDataVersion } from '../db/queries/settings';
 import { hasPermission } from '../db/queries/roles';
 import { logEvent } from '../services/logger';
 import { Env } from '../types';
 
-export async function handleSaveSettings(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleSaveSettings(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
     return { status: 'error', message: 'ไม่มีสิทธิ์บันทึกตั้งค่า' };
   }
 
-  const settings = (body.settings && typeof body.settings === 'object') ? { ...(body.settings as Record<string, unknown>) } : {};
+  const settings =
+    body.settings && typeof body.settings === 'object' ? { ...(body.settings as Record<string, unknown>) } : {};
   settings._savedBy = user.username;
   settings._savedAt = new Date().toISOString();
   await saveSettings(env.DB, settings, user.username, new Date().toISOString());

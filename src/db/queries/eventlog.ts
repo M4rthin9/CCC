@@ -14,13 +14,23 @@ export function insertEventLog(
     userAgent: string;
   }
 ): Promise<void> {
-  return db.prepare(
-    `INSERT INTO ${TABLES.eventLog} (timestamp, username, action, targetRef, details, result, ip, userAgent)
+  return db
+    .prepare(
+      `INSERT INTO ${TABLES.eventLog} (timestamp, username, action, targetRef, details, result, ip, userAgent)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    entry.timestamp, entry.username, entry.action, entry.targetRef,
-    entry.details, entry.result, entry.ip, entry.userAgent
-  ).run().then(() => undefined);
+    )
+    .bind(
+      entry.timestamp,
+      entry.username,
+      entry.action,
+      entry.targetRef,
+      entry.details,
+      entry.result,
+      entry.ip,
+      entry.userAgent
+    )
+    .run()
+    .then(() => undefined);
 }
 
 export async function getEventLogs(
@@ -68,5 +78,9 @@ export async function getEventLogs(
   }
   sql += ' ORDER BY rowid DESC LIMIT 500';
 
-  return db.prepare(sql).bind(...binds).all<EventLog>().then(res => (res.results ?? []));
+  return db
+    .prepare(sql)
+    .bind(...binds)
+    .all<EventLog>()
+    .then((res) => res.results ?? []);
 }

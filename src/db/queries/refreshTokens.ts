@@ -13,7 +13,9 @@ export async function insertRefreshToken(
   await env.DB.prepare(
     `INSERT INTO ${TABLES.refreshTokens} (id, username, tokenHash, expiresAt, createdAt, revoked)
      VALUES (?, ?, ?, ?, ?, 0)`
-  ).bind(id, username, tokenHash, expiresAt, createdAt).run();
+  )
+    .bind(id, username, tokenHash, expiresAt, createdAt)
+    .run();
   return id;
 }
 
@@ -21,21 +23,41 @@ export function findRefreshToken(
   env: Env,
   username: string,
   tokenHash: string
-): Promise<{ id: string; username: string; tokenHash: string; expiresAt: string; createdAt: string; revoked: number } | null> {
+): Promise<{
+  id: string;
+  username: string;
+  tokenHash: string;
+  expiresAt: string;
+  createdAt: string;
+  revoked: number;
+} | null> {
   return env.DB.prepare(
     `SELECT id, username, tokenHash, expiresAt, createdAt, revoked
      FROM ${TABLES.refreshTokens} WHERE username = ? AND tokenHash = ? LIMIT 1`
-  ).bind(username, tokenHash).first<{ id: string; username: string; tokenHash: string; expiresAt: string; createdAt: string; revoked: number }>();
+  )
+    .bind(username, tokenHash)
+    .first<{
+      id: string;
+      username: string;
+      tokenHash: string;
+      expiresAt: string;
+      createdAt: string;
+      revoked: number;
+    }>();
 }
 
 export async function revokeRefreshToken(env: Env, username: string): Promise<void> {
   await env.DB.prepare(
     `UPDATE ${TABLES.refreshTokens} SET revoked = 1 WHERE lower(username) = lower(?) AND revoked = 0`
-  ).bind(username).run().then(() => undefined);
+  )
+    .bind(username)
+    .run()
+    .then(() => undefined);
 }
 
 export async function deleteExpiredRefreshTokens(env: Env): Promise<void> {
-  await env.DB.prepare(
-    `DELETE FROM ${TABLES.refreshTokens} WHERE expiresAt < ? OR revoked = 1`
-  ).bind(new Date().toISOString()).run().then(() => undefined);
+  await env.DB.prepare(`DELETE FROM ${TABLES.refreshTokens} WHERE expiresAt < ? OR revoked = 1`)
+    .bind(new Date().toISOString())
+    .run()
+    .then(() => undefined);
 }

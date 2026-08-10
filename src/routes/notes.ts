@@ -3,12 +3,16 @@ import { addNote, getNotesByRef } from '../db/queries/notes';
 import { logEvent } from '../services/logger';
 import { Env } from '../types';
 
-export async function handleAddNote(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleAddNote(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   if (!body.ref || !body.note) {
     return { status: 'error', message: 'กรุณาระบุเลขอ้างอิงและหมายเหตุ' };
   }
   const ref = sanitizeStr(body.ref, 64);
-  const noteObj = (body.note && typeof body.note === 'object') ? body.note as Record<string, unknown> : {};
+  const noteObj = body.note && typeof body.note === 'object' ? (body.note as Record<string, unknown>) : {};
   const text = sanitizeStr(noteObj.text, 2000);
   const noteUser = sanitizeStr(noteObj.user || user.username, 100);
   const timestamp = sanitizeStr(noteObj.timestamp, 100) || new Date().toLocaleString('th-TH');

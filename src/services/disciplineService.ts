@@ -29,8 +29,10 @@ export async function autoCleanupPrisoners(env: Env): Promise<void> {
     if (p.status !== 'ติดวินัย งดเยี่ยม' || !p.vinaiDate) continue;
     const vd = normalizeVinaiDate(p.vinaiDate);
     if (vd && vd <= oneYearAgoISO) {
-      await db.prepare('UPDATE prisoners SET status = ?, vinaiDate = ? WHERE prisonerId = ?')
-        .bind('', '', p.prisonerId).run();
+      await db
+        .prepare('UPDATE prisoners SET status = ?, vinaiDate = ? WHERE prisonerId = ?')
+        .bind('', '', p.prisonerId)
+        .run();
       cleared++;
     }
   }

@@ -14,7 +14,10 @@ export function getUserAgent(request: Request): string {
 
 export function makeCorsHeaders(request: Request, env: Env): Record<string, string> {
   const origin = request.headers.get('Origin') || '';
-  const allowed = (env.ALLOWED_ORIGINS || '*').split(',').map(s => s.trim()).filter(Boolean);
+  const allowed = (env.ALLOWED_ORIGINS || '*')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   let allowOrigin = '*';
   if (allowed.length > 0 && !allowed.includes('*')) {
@@ -39,6 +42,7 @@ export function jsonResponse(body: unknown, status = 200, extraHeaders?: Record<
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
       ...extraHeaders,
     },
   });

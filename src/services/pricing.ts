@@ -33,14 +33,22 @@ export function computeApprovalTotals(
 
   if (extraVisitorApproved) {
     const allApprovals = String(extraVisitorApproved).split(';;');
-    extraYesCount = allApprovals.filter(v => (v || '').trim().toLowerCase() === 'yes').length;
+    extraYesCount = allApprovals.filter((v) => (v || '').trim().toLowerCase() === 'yes').length;
 
     const raw = String(extraVisitorNames || '');
     if (raw.includes(';;')) {
-      const extras = raw.split(';;').map(e => {
-        const p = e.split('|');
-        return { name: (p[0] || '').trim(), id: (p[1] || '').trim(), relation: (p[2] || '').trim(), age: (p[3] || '').trim() };
-      }).filter(e => e.name);
+      const extras = raw
+        .split(';;')
+        .map((e) => {
+          const p = e.split('|');
+          return {
+            name: (p[0] || '').trim(),
+            id: (p[1] || '').trim(),
+            relation: (p[2] || '').trim(),
+            age: (p[3] || '').trim(),
+          };
+        })
+        .filter((e) => e.name);
       let extraFeeSum = 0;
       extras.forEach((v, idx) => {
         if ((allApprovals[idx] || '').trim().toLowerCase() === 'yes') {

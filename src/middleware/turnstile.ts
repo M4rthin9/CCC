@@ -10,11 +10,7 @@ export interface TurnstileVerifyResult {
   errorCodes?: string[];
 }
 
-export async function verifyTurnstileToken(
-  env: Env,
-  token: unknown,
-  remoteIp?: string
-): Promise<boolean> {
+export async function verifyTurnstileToken(env: Env, token: unknown, remoteIp?: string): Promise<boolean> {
   try {
     if (!env.TURNSTILE_SECRET) return false;
     if (!token) return false;

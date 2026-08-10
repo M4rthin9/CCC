@@ -1,7 +1,12 @@
 import { sanitizeInt, sanitizeStr, isValidISODate, normalizeVisitDateISO } from '../config';
 import {
-  SAVE_NUMERIC_FIELDS, SAVE_RESERVATION_FIELDS, SAVE_STRING_CAPS,
-  UPDATE_BOOKING_CAPS, UPDATE_BOOKING_FIELDS, UPDATE_BOOKING_NUMERIC, VALID_STATUSES
+  SAVE_NUMERIC_FIELDS,
+  SAVE_RESERVATION_FIELDS,
+  SAVE_STRING_CAPS,
+  UPDATE_BOOKING_CAPS,
+  UPDATE_BOOKING_FIELDS,
+  UPDATE_BOOKING_NUMERIC,
+  VALID_STATUSES,
 } from '../constants';
 import { getActiveReservations } from '../db/queries/reservations';
 import { Env } from '../types';
@@ -16,13 +21,13 @@ export function validateSaveReservation(body: Record<string, unknown>): Validati
   if (vdi && !isValidISODate(vdi)) return { ok: false, message: 'รูปแบบวันที่ไม่ถูกต้อง (YYYY-MM-DD)' };
 
   const data: Record<string, unknown> = {};
-  SAVE_RESERVATION_FIELDS.forEach(field => {
+  SAVE_RESERVATION_FIELDS.forEach((field) => {
     if (body[field] === undefined) return;
     if (SAVE_NUMERIC_FIELDS.includes(field)) {
       data[field] = sanitizeInt(body[field], 0);
     } else if (field === 'status') {
       const s = sanitizeStr(body[field], 50);
-      data[field] = (s === 'รอตรวจสอบผู้เข้าร่วม' || s === '') ? s : 'รอตรวจสอบผู้เข้าร่วม';
+      data[field] = s === 'รอตรวจสอบผู้เข้าร่วม' || s === '' ? s : 'รอตรวจสอบผู้เข้าร่วม';
     } else {
       const cap = SAVE_STRING_CAPS[field] || 1000;
       data[field] = sanitizeStr(body[field], cap);
@@ -36,8 +41,8 @@ export function validateSaveReservation(body: Record<string, unknown>): Validati
 }
 
 export function generateUniqueRefServer(existingRefs: string[]): string {
-  const existing = new Set(existingRefs.map(r => String(r).trim()));
-  let ref = '';
+  const existing = new Set(existingRefs.map((r) => String(r).trim()));
+  let ref: string;
   let attempts = 0;
   do {
     ref = 'VIS-' + Math.floor(10000 + Math.random() * 90000);
@@ -48,7 +53,7 @@ export function generateUniqueRefServer(existingRefs: string[]): string {
 
 export async function collectActiveRefs(env: Env): Promise<string[]> {
   const rows = await getActiveReservations(env.DB);
-  return rows.map(r => String(r.ref || '').trim()).filter(Boolean);
+  return rows.map((r) => String(r.ref || '').trim()).filter(Boolean);
 }
 
 export async function findDuplicateActive(
@@ -75,18 +80,24 @@ export function parseUpdateBookingFields(body: Record<string, unknown>): UpdateB
   const changes: Record<string, unknown> = {};
   const errors: string[] = [];
 
-  UPDATE_BOOKING_FIELDS.forEach(field => {
+  UPDATE_BOOKING_FIELDS.forEach((field) => {
     if (body[field] === undefined) return;
     let value: unknown;
     if (UPDATE_BOOKING_NUMERIC.includes(field)) {
       value = sanitizeInt(body[field], 0);
     } else if (field === 'visitDateISO') {
       const s = sanitizeStr(body[field], 10);
-      if (s && !isValidISODate(s)) { errors.push('รูปแบบวันที่ไม่ถูกต้อง (YYYY-MM-DD)'); return; }
+      if (s && !isValidISODate(s)) {
+        errors.push('รูปแบบวันที่ไม่ถูกต้อง (YYYY-MM-DD)');
+        return;
+      }
       value = s;
     } else if (field === 'status') {
       const s = sanitizeStr(body[field], 50);
-      if (!VALID_STATUSES.includes(s as never)) { errors.push('สถานะไม่ถูกต้อง: ' + s); return; }
+      if (!VALID_STATUSES.includes(s as never)) {
+        errors.push('สถานะไม่ถูกต้อง: ' + s);
+        return;
+      }
       value = s;
     } else {
       value = sanitizeStr(body[field], UPDATE_BOOKING_CAPS[field] || 1000);

@@ -24,20 +24,24 @@ export async function getRolesHandler(env: Env): Promise<Record<string, unknown>
   return { status: 'ok', roles };
 }
 
-export async function handleCreateRole(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleCreateRole(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
     return { status: 'error', message: 'เฉพาะผู้ดูแลสูงสุดเท่านั้นที่สามารถสร้างบทบาทใหม่ได้' };
   }
 
   const roleName = sanitizeStr(body.roleName, 100);
-  const permissionsInput = Array.isArray(body.permissions) ? body.permissions.map(p => String(p)) : [];
+  const permissionsInput = Array.isArray(body.permissions) ? body.permissions.map((p) => String(p)) : [];
 
   if (!roleName) return { status: 'error', message: 'กรุณากรอกชื่อบทบาท' };
   if (permissionsInput.length === 0) {
     return { status: 'error', message: 'กรุณาเลือกอย่างน้อยหนึ่งสิทธิ์สำหรับบทบาท' };
   }
 
-  const invalidPermissions = permissionsInput.filter(p => !(AVAILABLE_PERMISSIONS as readonly string[]).includes(p));
+  const invalidPermissions = permissionsInput.filter((p) => !(AVAILABLE_PERMISSIONS as readonly string[]).includes(p));
   if (invalidPermissions.length > 0) {
     return { status: 'error', message: 'สิทธิ์ต่อไปนี้ไม่ถูกต้อง: ' + invalidPermissions.join(', ') };
   }

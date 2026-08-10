@@ -7,13 +7,17 @@ export async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest('SHA-256', data);
   return Array.from(new Uint8Array(digest))
-    .map(b => ('0' + b.toString(16)).slice(-2))
+    .map((b) => ('0' + b.toString(16)).slice(-2))
     .join('');
 }
 
-export async function hashPassword(env: { PASSWORD_SALT?: string }, username: string, password: string): Promise<string> {
+export async function hashPassword(
+  env: { PASSWORD_SALT?: string },
+  username: string,
+  password: string
+): Promise<string> {
   const salt = getPasswordSalt(env);
-  return 'sha256$' + await sha256Hex(salt + '|' + String(username).toLowerCase() + '|' + String(password));
+  return 'sha256$' + (await sha256Hex(salt + '|' + String(username).toLowerCase() + '|' + String(password)));
 }
 
 export async function verifyPassword(

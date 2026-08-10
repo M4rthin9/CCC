@@ -6,6 +6,7 @@ import { dispatchAction, RouteCtx } from './routes/dispatcher';
 import { sanitizeStr } from './config';
 import { cleanupExpiredDiscipline } from './services/disciplineService';
 import { archiveOldReservations } from './services/archiveService';
+import { deleteExpiredRefreshTokens } from './db/queries/refreshTokens';
 import { handleHealthHtml, handleHealthJson } from './routes/health';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -19,7 +20,12 @@ app.options('*', (c) => {
 // ── Legacy action dispatch (1:1 with the Apps Script GET_ROUTES/POST_ROUTES).
 //    GET  /?action=...      (params in query string)
 //    POST / {action, ...}   (JSON or form body; defaults to saveReservation)
-async function runDispatch(request: Request, env: Env, isGet: boolean, body: Record<string, unknown>): Promise<Response> {
+async function runDispatch(
+  request: Request,
+  env: Env,
+  isGet: boolean,
+  body: Record<string, unknown>
+): Promise<Response> {
   const ip = sanitizeStr(body.ip, 64) || getClientIp(request);
   const userAgent = sanitizeStr(body.userAgent, 500) || getUserAgent(request);
 
@@ -35,26 +41,48 @@ async function runDispatch(request: Request, env: Env, isGet: boolean, body: Rec
 
 // ── REST aliases (new-frontend friendly; the action protocol remains primary) ──
 // GET aliases
-app.get('/api/reservations', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getAll', ...queryToBody(c.req.raw) }));
-app.get('/api/reservations/archive', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getArchivedReservations', ...queryToBody(c.req.raw) }));
+app.get('/api/reservations', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getAll', ...queryToBody(c.req.raw) })
+);
+app.get('/api/reservations/archive', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getArchivedReservations', ...queryToBody(c.req.raw) })
+);
 app.get('/api/reservations/counts', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getCountsByDate' }));
-app.get('/api/lookup', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'lookupByRef', ...queryToBody(c.req.raw) }));
+app.get('/api/lookup', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'lookupByRef', ...queryToBody(c.req.raw) })
+);
 app.get('/api/prisoners', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getPrisoners' }));
-app.get('/api/prisoners/recheck', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'recheckPrisoner', ...queryToBody(c.req.raw) }));
+app.get('/api/prisoners/recheck', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'recheckPrisoner', ...queryToBody(c.req.raw) })
+);
 app.get('/api/roles', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getRoles' }));
 app.get('/api/users', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getUsers' }));
-app.get('/api/eventlog', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getEventLogs', ...queryToBody(c.req.raw) }));
+app.get('/api/eventlog', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getEventLogs', ...queryToBody(c.req.raw) })
+);
 app.get('/api/settings', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getSettings' }));
 app.get('/api/version', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getDataVersion' }));
 app.get('/api/ping', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'ping' }));
 
 // POST aliases
-app.post('/api/login', async (c) => runDispatch(c.req.raw, c.env, false, { action: 'login', ...(await bodyToObj(c.req.raw)) }));
-app.post('/api/refresh', async (c) => runDispatch(c.req.raw, c.env, false, { action: 'refresh', ...(await bodyToObj(c.req.raw)) }));
-app.post('/api/reservations', async (c) => runDispatch(c.req.raw, c.env, false, { action: 'saveReservation', ...(await bodyToObj(c.req.raw)) }));
-app.post('/api/reservations/cancel', async (c) => runDispatch(c.req.raw, c.env, false, { action: 'publicCancelBooking', ...(await bodyToObj(c.req.raw)) }));
-app.post('/api/reservations/slip', async (c) => runDispatch(c.req.raw, c.env, false, { action: 'uploadSlip', ...(await bodyToObj(c.req.raw)) }));
-app.post('/api/notes', async (c) => runDispatch(c.req.raw, c.env, false, { action: 'addNote', ...(await bodyToObj(c.req.raw)) }));
+app.post('/api/login', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'login', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/refresh', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'refresh', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/reservations', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'saveReservation', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/reservations/cancel', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'publicCancelBooking', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/reservations/slip', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'uploadSlip', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/notes', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'addNote', ...(await bodyToObj(c.req.raw)) })
+);
 
 // ── Generic action-dispatch endpoints (POST / or /api with {action}) ──
 app.post('/', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw)));
@@ -98,7 +126,8 @@ async function bodyToObj(request: Request): Promise<Record<string, unknown>> {
 // ── Error handler ─────────────────────────────────────────────────
 app.onError((err, c) => {
   const headers = makeCorsHeaders(c.req.raw, c.env);
-  return jsonResponse({ status: 'error', message: 'Server error: ' + String(err.message || err) }, 500, headers);
+  console.error('[Error] ' + c.req.method + ' ' + new URL(c.req.url).pathname + ':', String(err.message || err));
+  return jsonResponse({ status: 'error', message: 'Internal server error' }, 500, headers);
 });
 
 // ── Worker entry ──────────────────────────────────────────────────
@@ -114,6 +143,7 @@ async function runCron(cron: string, env: Env): Promise<void> {
   try {
     if (cron === '0 17 * * *') {
       const result = await cleanupExpiredDiscipline(env);
+      await deleteExpiredRefreshTokens(env);
       console.log('[Cron] discipline cleanup:', JSON.stringify(result));
     } else if (cron === '15 17 1 */3 *') {
       const result = await archiveOldReservations(env);

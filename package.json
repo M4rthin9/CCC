@@ -12,6 +12,10 @@
     "db:seed": "tsx scripts/migrate-sheets.ts",
     "db:execute": "wrangler d1 execute ccc-reservations --remote --file=./data/seed.sql",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src scripts",
+    "lint:fix": "eslint src scripts --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\" \"*.{json,mjs}\" \"**/*.{md,yml,yaml}\" \"!data/**\" \"!node_modules/**\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\" \"*.{json,mjs}\" \"!data/**\" \"!node_modules/**\"",
     "build": "tsc --noEmit && wrangler deploy --dry-run"
   },
   "dependencies": {
@@ -20,9 +24,15 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260801.1",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.1",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.9.0",
+    "prettier": "^3.9.6",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.66.0",
     "wrangler": "^4.0.0"
   }
 }

@@ -19,9 +19,7 @@ export async function logEvent(
   meta?: LogMeta
 ): Promise<void> {
   try {
-    const detailsStr = details && typeof details === 'object'
-      ? JSON.stringify(details)
-      : String(details || '');
+    const detailsStr = details && typeof details === 'object' ? JSON.stringify(details) : String(details || '');
     await insertEventLog(env.DB, {
       timestamp: formatBangkok(new Date()),
       username: sanitizeStr(username || 'system', 100),

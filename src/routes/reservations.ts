@@ -1,21 +1,31 @@
 import { PUBLIC_CACHE_TTL, VALID_STATUSES, ACTIVE_STATUSES } from '../constants';
-import { sanitizeStr, sanitizeInt, normalizeVisitDateISO, isValidISODate, formatBangkok, formatDateISO } from '../config';
-import { cacheKeyArchived, cacheKeyCounts, cacheKeyReservations, lookupCacheKey } from '../cache/keys';
-import { cacheGetLarge, cachePutLarge, cacheRemove, cacheGet } from '../cache/kv';
+import { sanitizeStr, normalizeVisitDateISO, formatDateISO } from '../config';
+import { cacheKeyArchived, cacheKeyCounts, cacheKeyReservations } from '../cache/keys';
+import { cacheGetLarge, cachePutLarge, cacheRemove } from '../cache/kv';
 import {
-  getActiveReservations, getArchivedReservations, getReservationsByRefs,
-  updateReservationColumns, insertReservation, deleteReservation, clearAllReservations,
-  countReservationsByDate, getAllRefs, insertArchivedReservation
+  getActiveReservations,
+  getArchivedReservations,
+  getReservationsByRefs,
+  updateReservationColumns,
+  insertReservation,
+  countReservationsByDate,
+  getAllRefs,
 } from '../db/queries/reservations';
 import { hasPermission } from '../db/queries/roles';
 import {
-  invalidateLookupCache, invalidatePrisonerLookupCache, invalidateReservationsCache,
-  invalidateArchivedCache
+  invalidateLookupCache,
+  invalidatePrisonerLookupCache,
+  invalidateReservationsCache,
 } from '../cache/invalidation';
 import { computeApprovalTotals } from '../services/pricing';
 import { logEvent } from '../services/logger';
 import { getPrisonerDiscipline } from '../services/disciplineService';
-import { generateUniqueRefServer, parseUpdateBookingFields, findDuplicateActive, validateSaveReservation } from '../services/reservationService';
+import {
+  generateUniqueRefServer,
+  parseUpdateBookingFields,
+  findDuplicateActive,
+  validateSaveReservation,
+} from '../services/reservationService';
 import { Env, Reservation } from '../types';
 import { AuthenticatedUser } from '../auth/middleware';
 
@@ -37,15 +47,24 @@ export async function getAllReservations(env: Env): Promise<Record<string, unkno
   return { status: 'ok', rows };
 }
 
-export async function getAllReservationsWithArchive(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function getAllReservationsWithArchive(
+  env: Env,
+  body: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const active = await getActiveReservations(env.DB);
   if (!(body && body.includeArchive)) {
     return { status: 'ok', rows: active };
   }
   const archived = await getArchivedReservations(env.DB);
-  const activeRefs = new Set(active.map(r => String(r.ref || '').trim().toUpperCase()));
+  const activeRefs = new Set(
+    active.map((r) =>
+      String(r.ref || '')
+        .trim()
+        .toUpperCase()
+    )
+  );
   const merged = active.slice();
-  archived.forEach(r => {
+  archived.forEach((r) => {
     const ref = String(r.ref || '').trim();
     if (ref && !activeRefs.has(ref.toUpperCase())) {
       merged.push(Object.assign({}, r, { _archived: true }));
@@ -54,7 +73,10 @@ export async function getAllReservationsWithArchive(env: Env, body: Record<strin
   return { status: 'ok', rows: merged };
 }
 
-export async function getArchivedReservationsHandler(env: Env, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function getArchivedReservationsHandler(
+  env: Env,
+  params: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const key = cacheKeyArchived(env);
   const cached = await cacheGetLarge(env.CACHE_KV, key);
   let rows: Reservation[] | null = null;
@@ -74,7 +96,7 @@ export async function getArchivedReservationsHandler(env: Env, params: Record<st
   const from = sanitizeStr(params.from, 10);
   const to = sanitizeStr(params.to, 10);
   if (from || to) {
-    rows = rows.filter(r => {
+    rows = rows.filter((r) => {
       const vdi = String(r.visitDateISO || '').trim();
       if (!/^\d{4}-\d{2}-\d{2}$/.test(vdi)) return false;
       if (from && vdi < from) return false;
@@ -100,7 +122,11 @@ export async function getCountsByDate(env: Env): Promise<Record<string, unknown>
   return { status: 'ok', counts };
 }
 
-export async function handleDedupeReservations(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleDedupeReservations(
+  env: Env,
+  _body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   const canManage = await hasPermission(env.DB, user.username, 'manage_users');
   const canApprove = await hasPermission(env.DB, user.username, 'approve');
   if (!canManage && !canApprove) {
@@ -112,7 +138,11 @@ export async function handleDedupeReservations(env: Env, body: Record<string, un
   return { status: 'ok', removed: 0, message: 'ไม่พบเลขอ้างอิงซ้ำในชีต' };
 }
 
-export async function handleFindDuplicateBookings(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleFindDuplicateBookings(
+  env: Env,
+  _body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   const canManage = await hasPermission(env.DB, user.username, 'manage_users');
   const canApprove = await hasPermission(env.DB, user.username, 'approve');
   if (!canManage && !canApprove) {
@@ -120,7 +150,10 @@ export async function handleFindDuplicateBookings(env: Env, body: Record<string,
   }
 
   const rows = await getActiveReservations(env.DB);
-  const groups: Record<string, { prisonerId: string; visitDateISO: string; rows: Array<{ row: number; ref: string; visitorName: string }> }> = {};
+  const groups: Record<
+    string,
+    { prisonerId: string; visitDateISO: string; rows: Array<{ row: number; ref: string; visitorName: string }> }
+  > = {};
   let i = 0;
   for (const row of rows) {
     i++;
@@ -138,8 +171,8 @@ export async function handleFindDuplicateBookings(env: Env, body: Record<string,
   }
 
   const duplicates = Object.keys(groups)
-    .filter(key => (groups[key]?.rows.length ?? 0) > 1)
-    .map(key => groups[key]!);
+    .filter((key) => (groups[key]?.rows.length ?? 0) > 1)
+    .map((key) => groups[key]!);
 
   return { status: 'ok', count: duplicates.length, duplicates };
 }
@@ -148,13 +181,17 @@ function isActive(status: unknown): boolean {
   return ACTIVE.includes(String(status || '').trim());
 }
 
-export async function handleCancelBooking(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleCancelBooking(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
 
   const today = formatDateISO(new Date());
-  const allExpired = rows.every(row => {
+  const allExpired = rows.every((row) => {
     const d = String(row.visitDateISO || '').trim();
     return /^\d{4}-\d{2}-\d{2}$/.test(d) && d < today;
   });
@@ -168,13 +205,23 @@ export async function handleCancelBooking(env: Env, body: Record<string, unknown
     await updateReservationColumns(env.DB, ref, [['cancelReason', sanitizeStr(body.reason, 2000)]]);
   }
 
-  await logEvent(env, user.username, 'booking_cancelled', ref, { previousStatus: prevStatus, affectedRows: rows.length }, 'success');
+  await logEvent(
+    env,
+    user.username,
+    'booking_cancelled',
+    ref,
+    { previousStatus: prevStatus, affectedRows: rows.length },
+    'success'
+  );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
   return { status: 'ok' };
 }
 
-export async function handlePublicCancelBooking(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function handlePublicCancelBooking(
+  env: Env,
+  body: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
@@ -182,31 +229,42 @@ export async function handlePublicCancelBooking(env: Env, body: Record<string, u
   const prevStatus = String(rows[0]!.status || '');
   await updateReservationColumns(env.DB, ref, [['status', 'ยกเลิก']]);
 
-  await logEvent(env, 'public', 'booking_cancelled', ref, { previousStatus: prevStatus, affectedRows: rows.length }, 'success');
+  await logEvent(
+    env,
+    'public',
+    'booking_cancelled',
+    ref,
+    { previousStatus: prevStatus, affectedRows: rows.length },
+    'success'
+  );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
   return { status: 'ok' };
 }
 
 const allowedTransitions: Record<string, string[]> = {
-  'รอตรวจสอบผู้เข้าร่วม': ['รอตรวจสอบวินัย', 'ไม่อนุมัติ', 'ยกเลิก'],
-  'รอตรวจสอบวินัย': ['รอชำระเงิน', 'ไม่อนุมัติ', 'ยกเลิก'],
-  'รอชำระเงิน': ['ชำระแล้ว', 'ยกเลิก'],
-  'ชำระแล้ว': ['เสร็จสิ้น', 'ยกเลิก'],
-  'เสร็จสิ้น': [],
-  'ไม่อนุมัติ': [],
-  'ยกเลิก': [],
+  รอตรวจสอบผู้เข้าร่วม: ['รอตรวจสอบวินัย', 'ไม่อนุมัติ', 'ยกเลิก'],
+  รอตรวจสอบวินัย: ['รอชำระเงิน', 'ไม่อนุมัติ', 'ยกเลิก'],
+  รอชำระเงิน: ['ชำระแล้ว', 'ยกเลิก'],
+  ชำระแล้ว: ['เสร็จสิ้น', 'ยกเลิก'],
+  เสร็จสิ้น: [],
+  ไม่อนุมัติ: [],
+  ยกเลิก: [],
 };
 
 const roleAllowedStatuses: Record<string, string[] | null> = {
-  'Superadmin': null,
-  'Admin': null,
-  'Tadtel': ['รอตรวจสอบวินัย'],
-  'Vinai': ['รอชำระเงิน', 'ไม่อนุมัติ', 'ยกเลิก'],
-  'Finance': ['ชำระแล้ว', 'เสร็จสิ้น', 'ไม่อนุมัติ'],
+  Superadmin: null,
+  Admin: null,
+  Tadtel: ['รอตรวจสอบวินัย'],
+  Vinai: ['รอชำระเงิน', 'ไม่อนุมัติ', 'ยกเลิก'],
+  Finance: ['ชำระแล้ว', 'เสร็จสิ้น', 'ไม่อนุมัติ'],
 };
 
-export async function handleUpdateStatus(env: Env, body: Record<string, unknown>, user: { username: string; role: string }): Promise<Record<string, unknown>> {
+export async function handleUpdateStatus(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string; role: string }
+): Promise<Record<string, unknown>> {
   const ref = sanitizeStr(body.ref, 64);
   const status = sanitizeStr(body.status, 50);
   if (!ref || !status) return { status: 'error', message: 'Missing ref or status' };
@@ -218,18 +276,28 @@ export async function handleUpdateStatus(env: Env, body: Record<string, unknown>
   let effectiveAllowed = roleAllowedStatuses[callerRole];
   if (effectiveAllowed === undefined) {
     const dynamicAllowed: string[] = [];
-    if (await hasPermission(env.DB, user.username, 'approve_participant')) dynamicAllowed.push('รอตรวจสอบวินัย', 'ไม่อนุมัติ');
-    if (await hasPermission(env.DB, user.username, 'approve_discipline')) dynamicAllowed.push('รอชำระเงิน', 'ไม่อนุมัติ', 'ยกเลิก');
-    if (await hasPermission(env.DB, user.username, 'confirm_payment')) dynamicAllowed.push('ชำระแล้ว', 'เสร็จสิ้น', 'ไม่อนุมัติ');
+    if (await hasPermission(env.DB, user.username, 'approve_participant'))
+      dynamicAllowed.push('รอตรวจสอบวินัย', 'ไม่อนุมัติ');
+    if (await hasPermission(env.DB, user.username, 'approve_discipline'))
+      dynamicAllowed.push('รอชำระเงิน', 'ไม่อนุมัติ', 'ยกเลิก');
+    if (await hasPermission(env.DB, user.username, 'confirm_payment'))
+      dynamicAllowed.push('ชำระแล้ว', 'เสร็จสิ้น', 'ไม่อนุมัติ');
     if (await hasPermission(env.DB, user.username, 'cancel')) dynamicAllowed.push('ยกเลิก');
     effectiveAllowed = dynamicAllowed.length > 0 ? [...new Set(dynamicAllowed)] : [];
   }
 
-  const canFreeRejectCancel = ['Superadmin', 'Admin', 'Vinai'].includes(callerRole)
-    || await hasPermission(env.DB, user.username, 'cancel');
+  const canFreeRejectCancel =
+    ['Superadmin', 'Admin', 'Vinai'].includes(callerRole) || (await hasPermission(env.DB, user.username, 'cancel'));
 
   if (effectiveAllowed !== null && !effectiveAllowed.includes(status)) {
-    await logEvent(env, user.username, 'status_change_rejected', ref, { newStatus: status, reason: 'role_not_allowed', role: callerRole }, 'denied');
+    await logEvent(
+      env,
+      user.username,
+      'status_change_rejected',
+      ref,
+      { newStatus: status, reason: 'role_not_allowed', role: callerRole },
+      'denied'
+    );
     return { status: 'error', message: 'Role "' + callerRole + '" is not allowed to set status "' + status + '"' };
   }
 
@@ -238,7 +306,7 @@ export async function handleUpdateStatus(env: Env, body: Record<string, unknown>
 
   if (status === 'ไม่อนุมัติ' || status === 'ยกเลิก') {
     const today = formatDateISO(new Date());
-    const allExpired = rows.every(row => {
+    const allExpired = rows.every((row) => {
       const d = String(row.visitDateISO || '').trim();
       return /^\d{4}-\d{2}-\d{2}$/.test(d) && d < today;
     });
@@ -267,7 +335,14 @@ export async function handleUpdateStatus(env: Env, body: Record<string, unknown>
     return { status: 'ok', noop: true };
   }
   if (rejected) {
-    await logEvent(env, user.username, 'status_change_rejected', ref, { oldStatus: rejected.oldStatus, newStatus: rejected.newStatus, reason: 'invalid_transition' }, 'denied');
+    await logEvent(
+      env,
+      user.username,
+      'status_change_rejected',
+      ref,
+      { oldStatus: rejected.oldStatus, newStatus: rejected.newStatus, reason: 'invalid_transition' },
+      'denied'
+    );
     return { status: 'error', message: 'Cannot change from "' + rejected.oldStatus + '" to "' + status + '"' };
   }
 
@@ -277,19 +352,34 @@ export async function handleUpdateStatus(env: Env, body: Record<string, unknown>
   }
   await updateReservationColumns(env.DB, ref, cols);
 
-  await logEvent(env, user.username, 'status_changed', ref, { newStatus: status, affectedRows: rows.length }, 'success');
+  await logEvent(
+    env,
+    user.username,
+    'status_changed',
+    ref,
+    { newStatus: status, affectedRows: rows.length },
+    'success'
+  );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
   return { status: 'ok' };
 }
 
-export async function handleUpdateVisitorApproval(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleUpdateVisitorApproval(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   if (!body.ref) return { status: 'error', message: 'Missing ref' };
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
 
-  const mainApproved = String(body.visitorApproved || '').toString().trim().toLowerCase() === 'yes';
+  const mainApproved =
+    String(body.visitorApproved || '')
+      .toString()
+      .trim()
+      .toLowerCase() === 'yes';
   const extraVisitorApproved = body.extraVisitorApproved !== undefined ? String(body.extraVisitorApproved) : undefined;
   const extraVisitorNames = String(rows[0]!.extraVisitorNames || '');
 
@@ -297,7 +387,8 @@ export async function handleUpdateVisitorApproval(env: Env, body: Record<string,
 
   const cols: Array<[string, unknown]> = [];
   if (body.visitorApproved !== undefined) cols.push(['visitorApproved', sanitizeStr(body.visitorApproved, 8)]);
-  if (body.extraVisitorApproved !== undefined) cols.push(['extraVisitorApproved', sanitizeStr(body.extraVisitorApproved, 5000)]);
+  if (body.extraVisitorApproved !== undefined)
+    cols.push(['extraVisitorApproved', sanitizeStr(body.extraVisitorApproved, 5000)]);
   cols.push(['visitorCount', visitorCount]);
   cols.push(['total', total]);
 
@@ -309,22 +400,40 @@ export async function handleUpdateVisitorApproval(env: Env, body: Record<string,
 
   await updateReservationColumns(env.DB, ref, cols);
 
-  await logEvent(env, user.username, 'visitor_approval_updated', ref, {
-    visitorApproved: body.visitorApproved,
-    extraVisitorApproved: body.extraVisitorApproved,
-    visitorCount,
-    total,
-    affectedRows: rows.length,
-  }, 'success');
+  await logEvent(
+    env,
+    user.username,
+    'visitor_approval_updated',
+    ref,
+    {
+      visitorApproved: body.visitorApproved,
+      extraVisitorApproved: body.extraVisitorApproved,
+      visitorCount,
+      total,
+      affectedRows: rows.length,
+    },
+    'success'
+  );
   if (mainRejected) {
-    await logEvent(env, user.username, 'visitor_rejected_booking', ref, { reason: 'ผู้เยี่ยมหลักถูกปฏิเสธการเข้าร่วม', affectedRows: rows.length }, 'success');
+    await logEvent(
+      env,
+      user.username,
+      'visitor_rejected_booking',
+      ref,
+      { reason: 'ผู้เยี่ยมหลักถูกปฏิเสธการเข้าร่วม', affectedRows: rows.length },
+      'success'
+    );
   }
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
   return { status: 'ok', visitorCount, total };
 }
 
-export async function handleUpdateBooking(env: Env, body: Record<string, unknown>, user: { username: string; role: string }): Promise<Record<string, unknown>> {
+export async function handleUpdateBooking(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string; role: string }
+): Promise<Record<string, unknown>> {
   if (user.role !== 'Superadmin') {
     return { status: 'error', message: 'เฉพาะ Superadmin เท่านั้นที่สามารถแก้ไขการจองได้' };
   }
@@ -340,15 +449,28 @@ export async function handleUpdateBooking(env: Env, body: Record<string, unknown
   const touchesKeyFields = changes.prisonerId !== undefined || changes.visitDateISO !== undefined;
   if (touchesKeyFields) {
     const current = rows[0]!;
-    const effPrisonerId = changes.prisonerId !== undefined ? String(changes.prisonerId || '').trim() : String(current.prisonerId || '').trim();
-    const effDate = changes.visitDateISO !== undefined ? normalizeVisitDateISO(changes.visitDateISO) : normalizeVisitDateISO(current.visitDateISO);
+    const effPrisonerId =
+      changes.prisonerId !== undefined
+        ? String(changes.prisonerId || '').trim()
+        : String(current.prisonerId || '').trim();
+    const effDate =
+      changes.visitDateISO !== undefined
+        ? normalizeVisitDateISO(changes.visitDateISO)
+        : normalizeVisitDateISO(current.visitDateISO);
     const discipline = await getPrisonerDiscipline(env, effPrisonerId);
     if (discipline.restricted) {
       return { status: 'error', message: discipline.message };
     }
     const dupRef = await findDuplicateActive(env, effPrisonerId, effDate, ref);
     if (dupRef !== null) {
-      return { status: 'error', message: '⚠️ ไม่สามารถจองได้ — มีการจองผู้ต้องขังหมายเลข "' + effPrisonerId + '" ในวันนี้อยู่แล้ว' + (dupRef ? ' (Ref: ' + dupRef + ')' : '') };
+      return {
+        status: 'error',
+        message:
+          '⚠️ ไม่สามารถจองได้ — มีการจองผู้ต้องขังหมายเลข "' +
+          effPrisonerId +
+          '" ในวันนี้อยู่แล้ว' +
+          (dupRef ? ' (Ref: ' + dupRef + ')' : ''),
+      };
     }
   }
 
@@ -364,9 +486,20 @@ export async function handleUpdateBooking(env: Env, body: Record<string, unknown
   return { status: 'ok', message: 'แก้ไขการจองสำเร็จ' };
 }
 
-export async function handleCreateBooking(env: Env, body: Record<string, unknown>, user: AuthenticatedUser): Promise<Record<string, unknown>> {
+export async function handleCreateBooking(
+  env: Env,
+  body: Record<string, unknown>,
+  user: AuthenticatedUser
+): Promise<Record<string, unknown>> {
   if (!(await hasPermission(env.DB, user.username, 'create_booking'))) {
-    await logEvent(env, user.username, 'create_booking_rejected', '', { reason: 'role_not_allowed', role: user.role }, 'denied');
+    await logEvent(
+      env,
+      user.username,
+      'create_booking_rejected',
+      '',
+      { reason: 'role_not_allowed', role: user.role },
+      'denied'
+    );
     return { status: 'error', message: 'Role "' + user.role + '" is not allowed to create bookings' };
   }
 
@@ -386,7 +519,14 @@ export async function handleCreateBooking(env: Env, body: Record<string, unknown
 
   const dupRef = await findDuplicateActive(env, newPrisonerId, String(data.visitDateISO || ''), null);
   if (dupRef !== null) {
-    return { status: 'error', message: '⚠️ ไม่สามารถจองได้ — มีการจองผู้ต้องขังหมายเลข "' + newPrisonerId + '" ในวันนี้อยู่แล้ว' + (dupRef ? ' (Ref: ' + dupRef + ')' : '') };
+    return {
+      status: 'error',
+      message:
+        '⚠️ ไม่สามารถจองได้ — มีการจองผู้ต้องขังหมายเลข "' +
+        newPrisonerId +
+        '" ในวันนี้อยู่แล้ว' +
+        (dupRef ? ' (Ref: ' + dupRef + ')' : ''),
+    };
   }
 
   const existingRefs = await getAllRefs(env.DB);
@@ -409,10 +549,17 @@ export async function handleCreateBooking(env: Env, body: Record<string, unknown
   await insertReservation(env.DB, row);
   await invalidateReservationsCache(env);
   await invalidatePrisonerLookupCache(env, newPrisonerId);
-  await logEvent(env, user.username, 'booking_created_admin', ref, {
-    visitorName: data.visitorName,
-    prisonerName: data.prisonerName,
-    visitDate: data.visitDate,
-  }, 'success');
+  await logEvent(
+    env,
+    user.username,
+    'booking_created_admin',
+    ref,
+    {
+      visitorName: data.visitorName,
+      prisonerName: data.prisonerName,
+      visitDate: data.visitDate,
+    },
+    'success'
+  );
   return { status: 'ok', ref };
 }

@@ -1,5 +1,4 @@
 import { sanitizeStr } from '../config';
-import { MAX_SLIP_BYTES } from '../constants';
 import { getReservationsByRefs, updateReservationColumns } from '../db/queries/reservations';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
 import { logEvent } from '../services/logger';
@@ -30,7 +29,11 @@ export async function handleUploadSlip(env: Env, body: Record<string, unknown>):
   }
 }
 
-export async function handleUpdateSlipAndStatus(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleUpdateSlipAndStatus(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };

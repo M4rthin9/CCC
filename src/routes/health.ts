@@ -11,7 +11,16 @@ function startMs(): number {
   return START_TIME;
 }
 
-const TABLES = ['reservations', 'reservations_archive', 'prisoners', 'users', 'roles', 'event_log', 'notes', 'settings'];
+const TABLES = [
+  'reservations',
+  'reservations_archive',
+  'prisoners',
+  'users',
+  'roles',
+  'event_log',
+  'notes',
+  'settings',
+];
 
 interface HealthItem {
   ok: boolean;
@@ -37,7 +46,12 @@ export async function handleHealthJson(env: Env, request: Request): Promise<Reco
   // D1
   try {
     const v = await env.DB.prepare('SELECT 1 as v').first<{ v: number }>();
-    checks.push({ ok: v !== null, status: v !== null ? 'ok' : 'error', label: 'D1 database', detail: v !== null ? 'query ok' : 'no response' });
+    checks.push({
+      ok: v !== null,
+      status: v !== null ? 'ok' : 'error',
+      label: 'D1 database',
+      detail: v !== null ? 'query ok' : 'no response',
+    });
   } catch (e) {
     checks.push({ ok: false, status: 'error', label: 'D1 database', detail: String(e) });
   }
@@ -51,7 +65,12 @@ export async function handleHealthJson(env: Env, request: Request): Promise<Reco
     if (got === 'ok') {
       checks.push({ ok: true, status: 'ok', label: 'KV cache', detail: 'write/read/delete roundtrip ok' });
     } else {
-      checks.push({ ok: false, status: 'error', label: 'KV cache', detail: 'roundtrip mismatch (got ' + String(got) + ')' });
+      checks.push({
+        ok: false,
+        status: 'error',
+        label: 'KV cache',
+        detail: 'roundtrip mismatch (got ' + String(got) + ')',
+      });
     }
   } catch (e) {
     checks.push({ ok: false, status: 'error', label: 'KV cache', detail: String(e) });
@@ -60,12 +79,26 @@ export async function handleHealthJson(env: Env, request: Request): Promise<Reco
   // JWT
   const jwtSecret = env.JWT_SECRET || '';
   if (!jwtSecret) {
-    checks.push({ ok: false, status: 'warn', label: 'JWT_SECRET', detail: 'not set — login will fail. Run: wrangler secret put JWT_SECRET' });
+    checks.push({
+      ok: false,
+      status: 'warn',
+      label: 'JWT_SECRET',
+      detail: 'not set — login will fail. Run: wrangler secret put JWT_SECRET',
+    });
   } else {
     try {
-      const token = await signAccessToken(jwtSecret, { username: 'health', role: 'Health', displayName: 'Health Check' });
+      const token = await signAccessToken(jwtSecret, {
+        username: 'health',
+        role: 'Health',
+        displayName: 'Health Check',
+      });
       const verified = await verifyAccessToken(jwtSecret, token);
-      checks.push({ ok: verified !== null, status: verified !== null ? 'ok' : 'error', label: 'JWT (access token)', detail: verified !== null ? 'sign/verify roundtrip ok' : 'verify failed' });
+      checks.push({
+        ok: verified !== null,
+        status: verified !== null ? 'ok' : 'error',
+        label: 'JWT (access token)',
+        detail: verified !== null ? 'sign/verify roundtrip ok' : 'verify failed',
+      });
     } catch (e) {
       checks.push({ ok: false, status: 'error', label: 'JWT (access token)', detail: String(e) });
     }
@@ -94,7 +127,7 @@ export async function handleHealthJson(env: Env, request: Request): Promise<Reco
   }
 
   const url = new URL(request.url);
-  const failing = checks.filter(c => c.status === 'error');
+  const failing = checks.filter((c) => c.status === 'error');
 
   return {
     status: failing.length === 0 ? 'ok' : 'degraded',
@@ -110,6 +143,25 @@ export async function handleHealthJson(env: Env, request: Request): Promise<Reco
   };
 }
 
+function escapeHtml(s: unknown): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => {
+    switch (c) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&#39;';
+      default:
+        return c;
+    }
+  });
+}
+
 export async function handleHealthHtml(env: Env, request: Request): Promise<string> {
   const data = (await handleHealthJson(env, request)) as Record<string, unknown>;
   const checks = (data.checks ?? []) as HealthItem[];
@@ -117,6 +169,7 @@ export async function handleHealthHtml(env: Env, request: Request): Promise<stri
   const status = String(data.status);
   const overall = status === 'ok' ? 'OPERATIONAL' : 'DEGRADED';
   const overallColor = status === 'ok' ? '#22c55e' : '#f59e0b';
+  const workerUrl = escapeHtml(data.workerUrl);
 
   const chip = (c: HealthItem): string => {
     const colors: Record<string, string> = {
@@ -127,13 +180,29 @@ export async function handleHealthHtml(env: Env, request: Request): Promise<stri
     return '<span class="chip" style="background:' + colors[c.status] + '">' + c.status.toUpperCase() + '</span>';
   };
 
-  const checkRows = checks.map(c =>
-    '<tr><td>' + chip(c) + '</td><td class="label">' + c.label + '</td><td>' + (c.detail ?? '') + '</td></tr>'
-  ).join('');
+  const checkRows = checks
+    .map(
+      (c) =>
+        '<tr><td>' +
+        chip(c) +
+        '</td><td class="label">' +
+        escapeHtml(c.label) +
+        '</td><td>' +
+        escapeHtml(c.detail) +
+        '</td></tr>'
+    )
+    .join('');
 
-  const tableRows = tables.map(t =>
-    '<tr><td>' + t.name + '</td><td class="num">' + t.rows.toLocaleString() + '</td></tr>'
-  ).join('');
+  const tableRows = tables
+    .map(
+      (t) =>
+        '<tr><td>' +
+        escapeHtml(t.name) +
+        '</td><td class="num">' +
+        String(t.rows).replace(/[^0-9.,]/g, '') +
+        '</td></tr>'
+    )
+    .join('');
 
   return `<!doctype html>
 <html lang="en">
@@ -178,9 +247,9 @@ export async function handleHealthHtml(env: Env, request: Request): Promise<stri
     <span class="overall" style="background:${overallColor}">${overall}</span>
   </header>
   <div class="meta">
-    worker: <a href="${data.workerUrl}">${data.workerUrl}</a><br>
-    service ${data.service} v${data.version} · cache v${data.cacheVersion} · region: ${data.region ?? 'n/a'}<br>
-    uptime ${data.uptimeSeconds}s · checked at ${String(data.time).replace('T', ' ').replace('Z', ' UTC')}
+    worker: <a href="${workerUrl}">${workerUrl}</a><br>
+    service ${escapeHtml(data.service)} v${escapeHtml(data.version)} · cache v${escapeHtml(data.cacheVersion)} · region: ${escapeHtml(data.region) || 'n/a'}<br>
+    uptime ${escapeHtml(data.uptimeSeconds)}s · checked at ${escapeHtml(String(data.time).replace('T', ' ').replace('Z', ' UTC'))}
   </div>
 
   <div class="card">

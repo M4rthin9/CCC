@@ -3,18 +3,29 @@ import { AuthenticatedUser } from '../auth/middleware';
 import { jsonResponse } from '../middleware/http';
 import { logEvent } from '../services/logger';
 import {
-  handlePing, handleGetBackendUrl, handleResolveUrl, handleTestConnection,
-  handleGetSheetInfo, handleSaveReservation, handleLookupByRef
+  handlePing,
+  handleGetBackendUrl,
+  handleResolveUrl,
+  handleTestConnection,
+  handleGetSheetInfo,
+  handleSaveReservation,
+  handleLookupByRef,
 } from './public';
 import {
-  getAllReservations, getAllReservationsWithArchive, getArchivedReservationsHandler,
-  getCountsByDate, handleDedupeReservations, handleFindDuplicateBookings,
-  handleCancelBooking, handlePublicCancelBooking, handleUpdateStatus,
-  handleUpdateVisitorApproval, handleUpdateBooking, handleCreateBooking
+  getAllReservations,
+  getAllReservationsWithArchive,
+  getArchivedReservationsHandler,
+  getCountsByDate,
+  handleDedupeReservations,
+  handleFindDuplicateBookings,
+  handleCancelBooking,
+  handlePublicCancelBooking,
+  handleUpdateStatus,
+  handleUpdateVisitorApproval,
+  handleUpdateBooking,
+  handleCreateBooking,
 } from './reservations';
-import {
-  handleGetPrisoners, handleImportPrisoners, handleSyncPrisonerWings, handleRecheckPrisoner
-} from './prisoners';
+import { handleGetPrisoners, handleImportPrisoners, handleSyncPrisonerWings, handleRecheckPrisoner } from './prisoners';
 import { getUsersHandler, handleCreateUser, handleUpdateUser, handleDeleteUser } from './users';
 import { getRolesHandler, handleCreateRole } from './roles';
 import { handleGetEventLogs, handleLogClientEvent } from './eventlog';
@@ -52,7 +63,11 @@ const GET_ROUTES: Record<string, Route> = {
   lookupByRef: { auth: false, handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body) },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
   getDataVersion: { auth: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
-  getEventLogs: { auth: true, handler: async (ctx) => handleGetEventLogs(ctx.env, ctx.body, { username: ctx.body.username as string || ctx.user?.username || '' }) },
+  getEventLogs: {
+    auth: true,
+    handler: async (ctx) =>
+      handleGetEventLogs(ctx.env, ctx.body, { username: (ctx.body.username as string) || ctx.user?.username || '' }),
+  },
   getPrisoners: { auth: false, handler: async (ctx) => handleGetPrisoners(ctx.env) },
   getRoles: { auth: true, handler: async (ctx) => getRolesHandler(ctx.env) },
   getUsers: { auth: true, handler: async (ctx) => getUsersHandler(ctx.env) },
@@ -70,7 +85,10 @@ const POST_ROUTES: Record<string, Route> = {
   changePassword: { auth: false, handler: async (ctx) => handleChangePassword(ctx.env, ctx.body) },
   saveReservation: { auth: false, handler: async (ctx) => handleSaveReservation(ctx.env, ctx.body, meta(ctx)) },
   dedupeReservations: { auth: true, handler: async (ctx) => handleDedupeReservations(ctx.env, ctx.body, ctx.user!) },
-  findDuplicateBookings: { auth: true, handler: async (ctx) => handleFindDuplicateBookings(ctx.env, ctx.body, ctx.user!) },
+  findDuplicateBookings: {
+    auth: true,
+    handler: async (ctx) => handleFindDuplicateBookings(ctx.env, ctx.body, ctx.user!),
+  },
   getAll: { auth: true, handler: async (ctx) => getAllReservations(ctx.env) },
   getAllWithArchive: { auth: true, handler: async (ctx) => getAllReservationsWithArchive(ctx.env, ctx.body) },
   getCountsByDate: { auth: false, handler: async (ctx) => getCountsByDate(ctx.env) },
@@ -79,11 +97,17 @@ const POST_ROUTES: Record<string, Route> = {
   getDataVersion: { auth: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
   publicCancelBooking: { auth: false, handler: async (ctx) => handlePublicCancelBooking(ctx.env, ctx.body) },
   uploadSlip: { auth: false, handler: async (ctx) => handleUploadSlip(ctx.env, ctx.body) },
-  updateSlipAndStatus: { auth: false, handler: async (ctx) => handleUpdateSlipAndStatus(ctx.env, ctx.body, { username: ctx.user?.username || 'public' }) },
+  updateSlipAndStatus: {
+    auth: false,
+    handler: async (ctx) => handleUpdateSlipAndStatus(ctx.env, ctx.body, { username: ctx.user?.username || 'public' }),
+  },
   getNotes: { auth: false, handler: async (ctx) => handleGetNotes(ctx.env, ctx.body) },
   cancelBooking: { auth: true, handler: async (ctx) => handleCancelBooking(ctx.env, ctx.body, ctx.user!) },
   updateStatus: { auth: true, handler: async (ctx) => handleUpdateStatus(ctx.env, ctx.body, ctx.user!) },
-  updateVisitorApproval: { auth: true, handler: async (ctx) => handleUpdateVisitorApproval(ctx.env, ctx.body, ctx.user!) },
+  updateVisitorApproval: {
+    auth: true,
+    handler: async (ctx) => handleUpdateVisitorApproval(ctx.env, ctx.body, ctx.user!),
+  },
   createBooking: { auth: true, handler: async (ctx) => handleCreateBooking(ctx.env, ctx.body, ctx.user!) },
   createUser: { auth: true, handler: async (ctx) => handleCreateUser(ctx.env, ctx.body, meta(ctx)) },
   createRole: { auth: true, handler: async (ctx) => handleCreateRole(ctx.env, ctx.body, ctx.user!) },
@@ -108,7 +132,15 @@ export async function dispatchAction(ctx: RouteCtx, action: string, isGet: boole
   if (!route) return jsonResponse({ status: 'error', message: 'Unknown action' });
 
   if (route.auth && !ctx.user) {
-    await logEvent(ctx.env, ctx.body.username as string || 'unknown', action, ctx.body.ref as string || '', { reason: 'unauthorized' }, 'denied', meta(ctx));
+    await logEvent(
+      ctx.env,
+      (ctx.body.username as string) || 'unknown',
+      action,
+      (ctx.body.ref as string) || '',
+      { reason: 'unauthorized' },
+      'denied',
+      meta(ctx)
+    );
     return jsonResponse({ status: 'error', message: 'Unauthorized' });
   }
 
@@ -116,7 +148,16 @@ export async function dispatchAction(ctx: RouteCtx, action: string, isGet: boole
     const result = await route.handler(ctx);
     return jsonResponse(result);
   } catch (e) {
-    await logEvent(ctx.env, ctx.user?.username || 'system', action + '_error', ctx.body.ref as string || '', { error: String(e) }, 'error', meta(ctx));
-    return jsonResponse({ status: 'error', message: 'Server error: ' + String(e) });
+    console.error('[Dispatch:' + action + ']', String(e));
+    await logEvent(
+      ctx.env,
+      ctx.user?.username || 'system',
+      action + '_error',
+      (ctx.body.ref as string) || '',
+      { error: String(e) },
+      'error',
+      meta(ctx)
+    );
+    return jsonResponse({ status: 'error', message: 'Server error' });
   }
 }

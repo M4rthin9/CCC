@@ -20,11 +20,9 @@ export async function cachePutLarge(
     const chunkCount = Math.ceil(dataString.length / CACHE_CHUNK_SIZE);
     await Promise.all(
       Array.from({ length: chunkCount }, (_, i) =>
-        kv.put(
-          key + '_chunk_' + i,
-          dataString.slice(i * CACHE_CHUNK_SIZE, (i + 1) * CACHE_CHUNK_SIZE),
-          { expirationTtl: ttlSeconds }
-        )
+        kv.put(key + '_chunk_' + i, dataString.slice(i * CACHE_CHUNK_SIZE, (i + 1) * CACHE_CHUNK_SIZE), {
+          expirationTtl: ttlSeconds,
+        })
       )
     );
     await kv.put(key, '__chunks:' + chunkCount, { expirationTtl: ttlSeconds });
@@ -40,9 +38,7 @@ export async function cacheGetLarge(kv: KVNamespace, key: string): Promise<strin
     if (meta.indexOf('__chunks:') === 0) {
       const chunkCount = parseInt(meta.substring('__chunks:'.length), 10) || 0;
       if (chunkCount <= 0) return null;
-      const parts = await Promise.all(
-        Array.from({ length: chunkCount }, (_, i) => kv.get(key + '_chunk_' + i))
-      );
+      const parts = await Promise.all(Array.from({ length: chunkCount }, (_, i) => kv.get(key + '_chunk_' + i)));
       let out = '';
       for (let i = 0; i < chunkCount; i++) {
         const p = parts[i];
@@ -75,12 +71,7 @@ export async function cacheRemoveLarge(kv: KVNamespace, key: string): Promise<vo
   }
 }
 
-export async function cachePut(
-  kv: KVNamespace,
-  key: string,
-  value: string,
-  ttlSeconds: number
-): Promise<void> {
+export async function cachePut(kv: KVNamespace, key: string, value: string, ttlSeconds: number): Promise<void> {
   try {
     await kv.put(key, value, { expirationTtl: ttlSeconds });
   } catch {

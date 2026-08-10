@@ -5,9 +5,13 @@ import { CACHE_VERSION, PASSWORD_SALT } from './constants';
 export const TIMEZONE = 'Asia/Bangkok';
 
 export function formatDateISO(date: Date): string {
-  return date.getFullYear() + '-' +
-    String(date.getMonth() + 1).padStart(2, '0') + '-' +
-    String(date.getDate()).padStart(2, '0');
+  return (
+    date.getFullYear() +
+    '-' +
+    String(date.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(date.getDate()).padStart(2, '0')
+  );
 }
 
 export function formatBangkok(date: Date): string {
@@ -72,7 +76,9 @@ export function normalizeVisitDateISO(value: unknown): string {
 }
 
 export function isActiveReservationStatus(status: unknown): boolean {
-  return ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย', 'รอชำระเงิน', 'ชำระแล้ว', 'เสร็จสิ้น'].includes(String(status || '').trim());
+  return ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย', 'รอชำระเงิน', 'ชำระแล้ว', 'เสร็จสิ้น'].includes(
+    String(status || '').trim()
+  );
 }
 
 export function todayISO(): string {

@@ -1,13 +1,9 @@
 import { sanitizeStr } from '../config';
-import { cacheKeyUsers } from '../cache/keys';
-import { cacheRemoveLarge } from '../cache/kv';
 import { getAllUsers, createUser, updateUserColumns, deleteUser, userExists } from '../db/queries/users';
 import { isValidRoleName } from '../db/queries/roles';
 import { hashPassword } from '../auth/password';
 import { hasPermission } from '../db/queries/roles';
-import {
-  invalidateUserCache, invalidateAllUsersCache
-} from '../cache/invalidation';
+import { invalidateUserCache, invalidateAllUsersCache } from '../cache/invalidation';
 import { clearDefaultAccountFlag } from '../db/queries/settings';
 import { logEvent } from '../services/logger';
 import { Env } from '../types';
@@ -17,9 +13,16 @@ export async function getUsersHandler(env: Env): Promise<Record<string, unknown>
   return { status: 'ok', users };
 }
 
-export async function handleCreateUser(env: Env, body: Record<string, unknown>, meta: { ip: string; userAgent: string }): Promise<Record<string, unknown>> {
+export async function handleCreateUser(
+  env: Env,
+  body: Record<string, unknown>,
+  meta: { ip: string; userAgent: string }
+): Promise<Record<string, unknown>> {
   const adminUser = body.adminUser || body.username;
-  if (String(adminUser).toLowerCase() !== 'superadmin' && !(await hasPermission(env.DB, String(adminUser), 'manage_users'))) {
+  if (
+    String(adminUser).toLowerCase() !== 'superadmin' &&
+    !(await hasPermission(env.DB, String(adminUser), 'manage_users'))
+  ) {
     return { status: 'error', message: 'เฉพาะผู้ดูแลสูงสุดเท่านั้นที่สามารถสร้างผู้ใช้ได้' };
   }
 
@@ -56,7 +59,11 @@ export async function handleCreateUser(env: Env, body: Record<string, unknown>, 
   return { status: 'ok', message: 'ผู้ใช้ถูกสร้างสำเร็จ', user: { username: newUsername, role: newRole } };
 }
 
-export async function handleUpdateUser(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleUpdateUser(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
     return { status: 'error', message: 'เฉพาะผู้ดูแลสูงสุดเท่านั้นที่สามารถแก้ไขผู้ใช้ได้' };
   }
@@ -84,11 +91,22 @@ export async function handleUpdateUser(env: Env, body: Record<string, unknown>, 
   if (cols.length > 0) await updateUserColumns(env.DB, targetUser, cols);
   await invalidateUserCache(env, targetUser);
   await invalidateAllUsersCache(env);
-  await logEvent(env, user.username, 'update_user', targetUser, { role: body.role, displayName: body.displayName }, 'success');
+  await logEvent(
+    env,
+    user.username,
+    'update_user',
+    targetUser,
+    { role: body.role, displayName: body.displayName },
+    'success'
+  );
   return { status: 'ok', message: 'อัปเดตผู้ใช้สำเร็จ' };
 }
 
-export async function handleDeleteUser(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleDeleteUser(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
     return { status: 'error', message: 'เฉพาะผู้ดูแลสูงสุดเท่านั้นที่สามารถลบผู้ใช้ได้' };
   }

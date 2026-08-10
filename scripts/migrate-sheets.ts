@@ -26,22 +26,66 @@ const OUT_FILE = join(DATA_DIR, 'seed.sql');
 const PASSWORD_SALT = 'cc-cafe-reservation-v1';
 
 const RESERVATION_COLUMNS = [
-  'ref', 'timestamp', 'visitorName', 'visitorId', 'visitorPhone', 'relation',
-  'religion', 'allergy', 'extraVisitorReligions', 'extraVisitorAllergies',
-  'extraVisitorNames', 'visitorApproved', 'extraVisitorApproved',
-  'prisonerName', 'prisonerId', 'wing', 'visitDate', 'visitDateISO',
-  'visitorCount', 'totalPersons', 'total', 'adultCount', 'child5to8Count', 'childUnder5Count',
-  'status', 'slipImage', 'cancelReason', 'createdAt', 'updatedAt', 'version', 'createdBy',
+  'ref',
+  'timestamp',
+  'visitorName',
+  'visitorId',
+  'visitorPhone',
+  'relation',
+  'religion',
+  'allergy',
+  'extraVisitorReligions',
+  'extraVisitorAllergies',
+  'extraVisitorNames',
+  'visitorApproved',
+  'extraVisitorApproved',
+  'prisonerName',
+  'prisonerId',
+  'wing',
+  'visitDate',
+  'visitDateISO',
+  'visitorCount',
+  'totalPersons',
+  'total',
+  'adultCount',
+  'child5to8Count',
+  'childUnder5Count',
+  'status',
+  'slipImage',
+  'cancelReason',
+  'createdAt',
+  'updatedAt',
+  'version',
+  'createdBy',
 ];
 
 const NUMERIC_RESERVATION_COLUMNS = new Set([
-  'visitorCount', 'totalPersons', 'total', 'adultCount', 'child5to8Count', 'childUnder5Count', 'version',
+  'visitorCount',
+  'totalPersons',
+  'total',
+  'adultCount',
+  'child5to8Count',
+  'childUnder5Count',
+  'version',
 ]);
 
 const ROLE_PERMISSION_COLUMNS = [
-  'approve', 'reject', 'confirm_payment', 'reject_payment', 'cancel', 'visitor_approval',
-  'view_slip', 'view_detail', 'export', 'print', 'manage_users', 'view_eventlog',
-  'approve_discipline', 'reject_discipline', 'approve_participant', 'manage_settings',
+  'approve',
+  'reject',
+  'confirm_payment',
+  'reject_payment',
+  'cancel',
+  'visitor_approval',
+  'view_slip',
+  'view_detail',
+  'export',
+  'print',
+  'manage_users',
+  'view_eventlog',
+  'approve_discipline',
+  'reject_discipline',
+  'approve_participant',
+  'manage_settings',
 ];
 
 const PRISONER_COLUMNS = ['prisonerId', 'prisonerName', 'wing', 'status', 'vinaiDate', 'note'];
@@ -56,23 +100,31 @@ function parseCsv(text: string): string[][] {
     const ch = text[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; }
-        else inQuotes = false;
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
       } else {
         field += ch;
       }
     } else if (ch === '"') {
       inQuotes = true;
     } else if (ch === ',') {
-      row.push(field); field = '';
+      row.push(field);
+      field = '';
     } else if (ch === '\n') {
-      row.push(field); field = '';
-      rows.push(row); row = [];
+      row.push(field);
+      field = '';
+      rows.push(row);
+      row = [];
     } else if (ch !== '\r') {
       field += ch;
     }
   }
-  if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
   return rows;
 }
 
@@ -86,7 +138,7 @@ function hashPassword(username: string, password: string): string {
 }
 
 function detectTable(headers: string[]): string | null {
-  const h = new Set(headers.map(x => String(x).trim()));
+  const h = new Set(headers.map((x) => String(x).trim()));
   if (h.has('username') && h.has('password')) return 'users';
   if (h.has('roleName')) return 'roles';
   if (h.has('ref') && h.has('visitDateISO') && h.has('prisonerId')) {
@@ -103,13 +155,16 @@ function readCsvFile(path: string): { headers: string[]; rows: string[][] } {
   const text = readFileSync(path, 'utf8').replace(/^\uFEFF/, '');
   const parsed = parseCsv(text);
   if (parsed.length === 0) return { headers: [], rows: [] };
-  const headers = (parsed[0] ?? []).map(h => String(h).trim());
-  const rows = parsed.slice(1).filter(r => r.length > 1 && r.some(c => String(c).trim() !== ''));
+  const headers = (parsed[0] ?? []).map((h) => String(h).trim());
+  const rows = parsed.slice(1).filter((r) => r.length > 1 && r.some((c) => String(c).trim() !== ''));
   return { headers, rows };
 }
 
 // ── Generators ─────────────────────────────────────────────────────────────
-function genUsers(rows: string[][], headers: string[]): { sql: string[]; defaultAccounts: Record<string, string>; counts: Record<string, number> } {
+function genUsers(
+  rows: string[][],
+  headers: string[]
+): { sql: string[]; defaultAccounts: Record<string, string>; counts: Record<string, number> } {
   const sql: string[] = [];
   const defaultAccounts: Record<string, string> = {};
   const idx = (name: string) => headers.indexOf(name);
@@ -134,13 +189,17 @@ function genUsers(rows: string[][], headers: string[]): { sql: string[]; default
     }
     const displayName = String(row[dIdx] ?? '').trim() || username;
     const createdAt = String(row[cIdx] ?? '').trim() || new Date().toISOString();
-    values.push(`(${sq(username)}, ${sq(stored)}, ${sq(String(row[rIdx] ?? 'User').trim())}, ${sq(displayName)}, ${sq(createdAt)}, 'TRUE')`);
+    values.push(
+      `(${sq(username)}, ${sq(stored)}, ${sq(String(row[rIdx] ?? 'User').trim())}, ${sq(displayName)}, ${sq(createdAt)}, 'TRUE')`
+    );
     added++;
   }
 
   for (let i = 0; i < values.length; i += 200) {
     const batch = values.slice(i, i + 200);
-    sql.push(`INSERT INTO users (username, password, role, displayName, createdAt, passwordMigrated) VALUES\n  ${batch.join(',\n  ')};`);
+    sql.push(
+      `INSERT INTO users (username, password, role, displayName, createdAt, passwordMigrated) VALUES\n  ${batch.join(',\n  ')};`
+    );
   }
   return { sql, defaultAccounts, counts: { added } };
 }
@@ -153,16 +212,23 @@ function genRoles(rows: string[][], headers: string[]): string[] {
   for (const row of rows) {
     const roleName = String(row[rIdx] ?? '').trim();
     if (!roleName) continue;
-    const perms = ROLE_PERMISSION_COLUMNS.map(col => {
+    const perms = ROLE_PERMISSION_COLUMNS.map((col) => {
       const ci = headers.indexOf(col);
-      const v = ci >= 0 ? String(row[ci] ?? '').trim().toUpperCase() : 'FALSE';
+      const v =
+        ci >= 0
+          ? String(row[ci] ?? '')
+              .trim()
+              .toUpperCase()
+          : 'FALSE';
       return v === 'TRUE' || v === '1' ? 1 : 0;
     });
     values.push(`(${sq(roleName)}, ${perms.join(', ')})`);
   }
   for (let i = 0; i < values.length; i += 100) {
     const batch = values.slice(i, i + 100);
-    sql.push(`INSERT OR REPLACE INTO roles (roleName, ${ROLE_PERMISSION_COLUMNS.join(', ')}) VALUES\n  ${batch.join(',\n  ')};`);
+    sql.push(
+      `INSERT OR REPLACE INTO roles (roleName, ${ROLE_PERMISSION_COLUMNS.join(', ')}) VALUES\n  ${batch.join(',\n  ')};`
+    );
   }
   return sql;
 }
@@ -191,7 +257,11 @@ function genPrisoners(rows: string[][], headers: string[]): { sql: string[]; cou
   return { sql, counts: { added } };
 }
 
-function genReservations(rows: string[][], headers: string[], table: string): { sql: string[]; counts: Record<string, number> } {
+function genReservations(
+  rows: string[][],
+  headers: string[],
+  table: string
+): { sql: string[]; counts: Record<string, number> } {
   const sql: string[] = [];
   const idx = (name: string) => headers.indexOf(name);
   const refIdx = idx('ref');
@@ -206,10 +276,13 @@ function genReservations(rows: string[][], headers: string[], table: string): { 
   for (const row of rows) {
     const ref = String(row[refIdx] ?? '').trim();
     if (!ref) continue;
-    if (seenRefs.has(ref)) { dupSkipped++; continue; }
+    if (seenRefs.has(ref)) {
+      dupSkipped++;
+      continue;
+    }
     seenRefs.add(ref);
 
-    const vals = RESERVATION_COLUMNS.map(col => {
+    const vals = RESERVATION_COLUMNS.map((col) => {
       const ci = idx(col);
       if (ci < 0) {
         if (col === 'createdAt' || col === 'updatedAt') return sq(now);
@@ -247,7 +320,7 @@ function genEventLog(rows: string[][], headers: string[]): string[] {
   for (const row of rows) {
     const ts = String(row[idx('timestamp')] ?? '').trim();
     if (!ts) continue;
-    const vals = cols.map(col => sq(String(row[idx(col)] ?? '')));
+    const vals = cols.map((col) => sq(String(row[idx(col)] ?? '')));
     values.push(`(${vals.join(', ')})`);
   }
   for (let i = 0; i < values.length; i += 200) {
@@ -266,7 +339,7 @@ function genNotes(rows: string[][], headers: string[]): string[] {
   for (const row of rows) {
     const ref = String(row[idx('ref')] ?? '').trim();
     if (!ref) continue;
-    const vals = cols.map(col => sq(String(row[idx(col)] ?? '')));
+    const vals = cols.map((col) => sq(String(row[idx(col)] ?? '')));
     values.push(`(${vals.join(', ')})`);
   }
   for (let i = 0; i < values.length; i += 200) {
@@ -287,7 +360,7 @@ if (!existsSync(DATA_DIR)) {
   process.exit(1);
 }
 
-const files = readdirSync(DATA_DIR).filter(f => f.toLowerCase().endsWith('.csv'));
+const files = readdirSync(DATA_DIR).filter((f) => f.toLowerCase().endsWith('.csv'));
 if (files.length === 0) {
   console.error('No CSV files found in ./data.');
   process.exit(1);
@@ -321,7 +394,7 @@ for (const file of files) {
     }
     case 'roles': {
       sql.push(...genRoles(rows, headers));
-      summary.push(`roles: ${rows.filter(r => String(r[headers.indexOf('roleName')] ?? '').trim()).length} rows`);
+      summary.push(`roles: ${rows.filter((r) => String(r[headers.indexOf('roleName')] ?? '').trim()).length} rows`);
       break;
     }
     case 'prisoners': {
@@ -367,6 +440,6 @@ if (Object.keys(defaultAccounts).length > 0) {
 writeFileSync(OUT_FILE, sql.join('\n'), 'utf8');
 
 console.log('Migration summary:');
-summary.forEach(s => console.log('  - ' + s));
+summary.forEach((s) => console.log('  - ' + s));
 console.log(`\nWrote ${OUT_FILE} (${(Buffer.byteLength(sql.join('\n'), 'utf8') / 1024).toFixed(1)} KB).`);
 console.log('\nApply it with:\n  wrangler d1 execute ccc-reservations --remote --file=./data/seed.sql');

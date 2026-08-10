@@ -4,7 +4,11 @@ import { hasPermission } from '../db/queries/roles';
 import { logEvent } from '../services/logger';
 import { Env } from '../types';
 
-export async function handleGetEventLogs(env: Env, params: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleGetEventLogs(
+  env: Env,
+  params: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   if (!(await hasPermission(env.DB, user.username, 'view_eventlog'))) {
     return { status: 'error', message: 'ไม่มีสิทธิ์ดูบันทึกการทำงาน' };
   }
@@ -18,7 +22,11 @@ export async function handleGetEventLogs(env: Env, params: Record<string, unknow
   return { status: 'ok', logs };
 }
 
-export async function handleLogClientEvent(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleLogClientEvent(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   await logEvent(
     env,
     user.username || 'client',

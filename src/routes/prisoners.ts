@@ -2,9 +2,7 @@ import { PUBLIC_CACHE_TTL } from '../constants';
 import { sanitizeStr } from '../config';
 import { cacheKeyPrisoners } from '../cache/keys';
 import { cacheGetLarge, cachePutLarge, cacheRemove } from '../cache/kv';
-import {
-  getMinifiedPrisoners, getPrisonerById, getPrisonerIdToWingMap, upsertPrisoner
-} from '../db/queries/prisoners';
+import { getMinifiedPrisoners, getPrisonerById, getPrisonerIdToWingMap, upsertPrisoner } from '../db/queries/prisoners';
 import { getActiveReservations } from '../db/queries/reservations';
 import { hasPermission } from '../db/queries/roles';
 import { invalidatePrisonersCache, invalidateReservationsCache } from '../cache/invalidation';
@@ -29,7 +27,11 @@ export async function handleGetPrisoners(env: Env): Promise<Record<string, unkno
   return { status: 'ok', prisoners };
 }
 
-export async function handleImportPrisoners(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleImportPrisoners(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
     return { status: 'error', message: 'ไม่มีสิทธิ์นำเข้าข้อมูลผู้ต้องขัง' };
   }
@@ -63,7 +65,8 @@ export async function handleImportPrisoners(env: Env, body: Record<string, unkno
       vinaiDate: sanitizeStr(p.vinaiDate, 40),
       note: sanitizeStr(p.note, 2000),
     });
-    if (existing) updated++; else added++;
+    if (existing) updated++;
+    else added++;
   }
 
   await invalidatePrisonersCache(env);
@@ -77,7 +80,11 @@ export async function handleImportPrisoners(env: Env, body: Record<string, unkno
   };
 }
 
-export async function handleSyncPrisonerWings(env: Env, body: Record<string, unknown>, user: { username: string }): Promise<Record<string, unknown>> {
+export async function handleSyncPrisonerWings(
+  env: Env,
+  _body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
   if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
     return { status: 'error', message: 'Unauthorized' };
   }
@@ -91,8 +98,7 @@ export async function handleSyncPrisonerWings(env: Env, body: Record<string, unk
     if (!prisonerId || !wingMap[prisonerId]) continue;
     const currentWing = String(row.wing || '').trim();
     if (currentWing !== wingMap[prisonerId]) {
-      await env.DB.prepare('UPDATE reservations SET wing = ? WHERE ref = ?')
-        .bind(wingMap[prisonerId], row.ref).run();
+      await env.DB.prepare('UPDATE reservations SET wing = ? WHERE ref = ?').bind(wingMap[prisonerId], row.ref).run();
       updated++;
     }
   }
@@ -114,10 +120,12 @@ export async function handleRecheckPrisoner(env: Env, body: Record<string, unkno
     status: 'ok',
     prisonerId: pid,
     restricted,
-    prisoner: p ? {
-      prisonerName: String(p.prisonerName || ''),
-      status: String(p.status || ''),
-      vinaiDate: String(p.vinaiDate || ''),
-    } : null,
+    prisoner: p
+      ? {
+          prisonerName: String(p.prisonerName || ''),
+          status: String(p.status || ''),
+          vinaiDate: String(p.vinaiDate || ''),
+        }
+      : null,
   };
 }

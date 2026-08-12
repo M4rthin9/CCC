@@ -31,7 +31,7 @@ import { getRolesHandler, handleCreateRole } from './roles';
 import { handleGetEventLogs, handleLogClientEvent } from './eventlog';
 import { handleAddNote, handleGetNotes } from './notes';
 import { handleSaveSettings, handleGetSettings, handleGetDataVersion } from './settings';
-import { handleUploadSlip, handleUpdateSlipAndStatus, handleGetSlipByRef } from './slip';
+import { handleUploadSlip, handleUpdateSlipAndStatus, handleGetSlipByRef, handleVerifySlip } from './slip';
 import { handleLogin, handleChangePassword, handleRefresh } from './auth';
 import { handleGeneratePromptPayQr, handleGetPromptPayConfig } from './promptpay';
 import {
@@ -90,6 +90,7 @@ const GET_ROUTES: Record<string, Route> = {
   recheckPrisoner: { auth: true, handler: async (ctx) => handleRecheckPrisoner(ctx.env, ctx.body) },
   generatePromptPayQr: { auth: false, handler: async (ctx) => handleGeneratePromptPayQr(ctx.body) },
   getPromptPayConfig: { auth: false, handler: async (ctx) => handleGetPromptPayConfig(ctx.env) },
+  verifySlip: { auth: false, handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body) },
 };
 
 const POST_ROUTES: Record<string, Route> = {
@@ -141,6 +142,7 @@ const POST_ROUTES: Record<string, Route> = {
   logClientEvent: { auth: true, handler: async (ctx) => handleLogClientEvent(ctx.env, ctx.body, ctx.user!) },
   generatePromptPayQr: { auth: false, handler: async (ctx) => handleGeneratePromptPayQr(ctx.body) },
   getPromptPayConfig: { auth: false, handler: async (ctx) => handleGetPromptPayConfig(ctx.env) },
+  verifySlip: { auth: false, handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body) },
   subscribe: { auth: false, handler: async (ctx) => handleSubscribe(ctx.env, ctx.body) },
   unsubscribe: { auth: false, handler: async (ctx) => handleUnsubscribe(ctx.env, ctx.body) },
   linkLine: { auth: false, handler: async (ctx) => handleLinkLine(ctx.env, ctx.body) },

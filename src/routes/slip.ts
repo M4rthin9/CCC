@@ -5,6 +5,8 @@ import { logEvent } from '../services/logger';
 import { notify } from '../services/notifications';
 import { Env } from '../types';
 
+export { handleVerifySlip } from '../services/slipverify';
+
 // D1 cells cap at ~2MB per value, so the legacy 20MB limit is reduced here.
 const D1_SLIP_MAX_BYTES = 2 * 1024 * 1024;
 

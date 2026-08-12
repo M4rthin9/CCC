@@ -8,6 +8,8 @@ import { Env } from '../types';
 export interface TurnstileVerifyResult {
   success: boolean;
   errorCodes?: string[];
+  hostname?: string;
+  action?: string;
 }
 
 export async function verifyTurnstileToken(env: Env, token: unknown, remoteIp?: string): Promise<boolean> {
@@ -26,11 +28,38 @@ export async function verifyTurnstileToken(env: Env, token: unknown, remoteIp?: 
       body: payload.toString(),
     });
 
-    if (!resp.ok) return false;
+    if (!resp.ok) {
+      console.error('[Turnstile] siteverify HTTP error:', resp.status, await resp.text().catch(() => ''));
+      return false;
+    }
+
     const result = (await resp.json()) as TurnstileVerifyResult;
-    return result.success === true;
-  } catch {
-    // Fail closed on any network/parse error.
+
+    if (result.success !== true) {
+      console.error('[Turnstile] verification failed:', JSON.stringify(result));
+      return false;
+    }
+
+    // Validate hostname against allowed list when configured.
+    const allowedHostnames = (env.TURNSTILE_ALLOWED_HOSTNAMES || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (allowedHostnames.length > 0 && result.hostname) {
+      const responseHostname = result.hostname.toLowerCase();
+      const isAllowed = allowedHostnames.some(
+        (allowed) => responseHostname === allowed || responseHostname.endsWith('.' + allowed)
+      );
+      if (!isAllowed) {
+        console.error('[Turnstile] hostname mismatch:', responseHostname, 'allowed:', allowedHostnames);
+        return false;
+      }
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[Turnstile] verification error:', err);
     return false;
   }
 }

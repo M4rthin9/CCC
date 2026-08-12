@@ -33,6 +33,7 @@ import { handleAddNote, handleGetNotes } from './notes';
 import { handleSaveSettings, handleGetSettings, handleGetDataVersion } from './settings';
 import { handleUploadSlip, handleUpdateSlipAndStatus, handleGetSlipByRef } from './slip';
 import { handleLogin, handleChangePassword, handleRefresh } from './auth';
+import { handleGeneratePromptPayQr } from './promptpay';
 
 export interface RouteCtx {
   env: Env;
@@ -77,6 +78,7 @@ const GET_ROUTES: Record<string, Route> = {
   getSheetInfo: { auth: true, handler: async (ctx) => handleGetSheetInfo(ctx.env) },
   getSettings: { auth: true, handler: async (ctx) => handleGetSettings(ctx.env) },
   recheckPrisoner: { auth: true, handler: async (ctx) => handleRecheckPrisoner(ctx.env, ctx.body) },
+  generatePromptPayQr: { auth: false, handler: async (ctx) => handleGeneratePromptPayQr(ctx.body) },
 };
 
 const POST_ROUTES: Record<string, Route> = {
@@ -126,6 +128,7 @@ const POST_ROUTES: Record<string, Route> = {
   getEventLogs: { auth: true, handler: async (ctx) => handleGetEventLogs(ctx.env, ctx.body, ctx.user!) },
   recheckPrisoner: { auth: true, handler: async (ctx) => handleRecheckPrisoner(ctx.env, ctx.body) },
   logClientEvent: { auth: true, handler: async (ctx) => handleLogClientEvent(ctx.env, ctx.body, ctx.user!) },
+  generatePromptPayQr: { auth: false, handler: async (ctx) => handleGeneratePromptPayQr(ctx.body) },
 };
 
 export async function dispatchAction(ctx: RouteCtx, action: string, isGet: boolean): Promise<Response> {

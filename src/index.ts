@@ -83,6 +83,12 @@ app.post('/api/reservations/slip', async (c) =>
 app.post('/api/notes', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'addNote', ...(await bodyToObj(c.req.raw)) })
 );
+app.get('/api/promptpay/qr', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'generatePromptPayQr', ...queryToBody(c.req.raw) })
+);
+app.post('/api/promptpay/qr', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'generatePromptPayQr', ...(await bodyToObj(c.req.raw)) })
+);
 
 // ── Generic action-dispatch endpoints (POST / or /api with {action}) ──
 app.post('/', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw)));

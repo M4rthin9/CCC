@@ -4,6 +4,7 @@ export interface Env {
   JWT_SECRET: string;
   JWT_REFRESH_SECRET: string;
   TURNSTILE_SECRET: string;
+  TURNSTILE_ALLOWED_HOSTNAMES: string;
   CACHE_VERSION: string;
   PASSWORD_SALT: string;
   ALLOWED_ORIGINS: string;

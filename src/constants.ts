@@ -263,3 +263,50 @@ export const MAX_SLIP_BYTES = 20 * 1024 * 1024;
 
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+// ── Notifications ─────────────────────────────────────────────────────────
+// Event names flow through the `notify` action. Only these names are accepted.
+export const NOTIFICATION_EVENTS = [
+  'booking_submitted',
+  'booking_cancelled',
+  'status_changed',
+  'payment_confirmed',
+  'visitor_approved',
+  'visitor_rejected',
+] as const;
+
+export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
+
+// Thai copy templates. {placeholders} are filled from the request body.
+export const NOTIFY_TEMPLATES: Record<NotificationEvent, { subject: string; body: string }> = {
+  booking_submitted: {
+    subject: 'แจ้งเตือน: รับการจองแล้ว',
+    body: 'การจองเลขที่ {ref} ถูกส่งแล้ว\nผู้ต้องขัง: {prisonerName}\nวันที่เข้าเยี่ยม: {visitDate}\nยอดรวม: {total} บาท\nสถานะ: {status}',
+  },
+  booking_cancelled: {
+    subject: 'แจ้งเตือน: การจองถูกยกเลิก',
+    body: 'การจองเลขที่ {ref} ถูกยกเลิก{reason}\nผู้ต้องขัง: {prisonerName}',
+  },
+  status_changed: {
+    subject: 'แจ้งเตือน: สถานะการจองเปลี่ยน',
+    body: 'การจองเลขที่ {ref}\nสถานะเปลี่ยนเป็น: {status}\nผู้ต้องขัง: {prisonerName}\nวันที่เข้าเยี่ยม: {visitDate}',
+  },
+  payment_confirmed: {
+    subject: 'แจ้งเตือน: ยืนยันการชำระเงิน',
+    body: 'การจองเลขที่ {ref} ชำระเงินแล้วเรียบร้อย\nยอดรวม: {total} บาท\nวันที่เข้าเยี่ยม: {visitDate}',
+  },
+  visitor_approved: {
+    subject: 'แจ้งเตือน: อนุมัติผู้เข้าร่วม',
+    body: 'การจองเลขที่ {ref} ได้รับการอนุมัติ\nจำนวนผู้เข้าร่วม: {visitorCount} คน\nยอดรวม: {total} บาท',
+  },
+  visitor_rejected: {
+    subject: 'แจ้งเตือน: การจองไม่ผ่านอนุมัติ',
+    body: 'การจองเลขที่ {ref} ถูกปฏิเสธ{reason}\nผู้ต้องขัง: {prisonerName}',
+  },
+};
+
+export const NOTIFICATION_CHANNELS = ['push', 'line'] as const;
+
+export const LINE_MESSAGE_CAP = 200; // monthly push-message quota shared by a LINE OA
+export const LINE_CAP_SETTING_KEY = 'line_monthly_cap';
+export const NOTIFY_MAX_BODY_BYTES = 1000;

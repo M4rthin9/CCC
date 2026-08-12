@@ -2,6 +2,7 @@ import { sanitizeStr } from '../config';
 import { getReservationsByRefs, getStoredSlipByRef, updateReservationColumns } from '../db/queries/reservations';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
 import { logEvent } from '../services/logger';
+import { notify } from '../services/notifications';
 import { Env } from '../types';
 
 // D1 cells cap at ~2MB per value, so the legacy 20MB limit is reduced here.
@@ -38,7 +39,8 @@ export async function handleUpdateSlipAndStatus(
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
 
-  const cols: Array<[string, unknown]> = [['status', sanitizeStr(body.status, 50) || 'ชำระแล้ว']];
+  const status = sanitizeStr(body.status, 50) || 'ชำระแล้ว';
+  const cols: Array<[string, unknown]> = [['status', status]];
   if (body.slipImage) {
     const slipVal = String(body.slipImage);
     if (slipVal.indexOf('data:image') === 0) {
@@ -50,9 +52,17 @@ export async function handleUpdateSlipAndStatus(
   }
   await updateReservationColumns(env.DB, ref, cols);
 
-  await logEvent(env, user.username, 'slip_and_status_updated', ref, { status: body.status }, 'success');
+  await logEvent(env, user.username, 'slip_and_status_updated', ref, { status }, 'success');
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
+  if (status === 'ชำระแล้ว') {
+    await notify(env, {
+      ref,
+      type: 'payment_confirmed',
+      total: rows[0]?.total,
+      visitDate: rows[0]?.visitDate,
+    }).catch(() => undefined);
+  }
   return { status: 'ok' };
 }
 

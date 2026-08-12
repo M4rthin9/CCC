@@ -19,6 +19,7 @@ import {
 } from '../cache/invalidation';
 import { computeApprovalTotals } from '../services/pricing';
 import { logEvent } from '../services/logger';
+import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
 import {
   generateUniqueRefServer,
@@ -215,6 +216,12 @@ export async function handleCancelBooking(
   );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
+  await notify(env, {
+    ref,
+    type: 'booking_cancelled',
+    prisonerName: rows[0]?.prisonerName,
+    reason: body.reason ? ' ด้วยเหตุผล: ' + sanitizeStr(body.reason, 2000) : '',
+  }).catch(() => undefined);
   return { status: 'ok' };
 }
 
@@ -239,6 +246,12 @@ export async function handlePublicCancelBooking(
   );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
+  await notify(env, {
+    ref,
+    type: 'booking_cancelled',
+    prisonerName: rows[0]?.prisonerName,
+    reason: body.reason ? ' ด้วยเหตุผล: ' + sanitizeStr(body.reason, 2000) : '',
+  }).catch(() => undefined);
   return { status: 'ok' };
 }
 
@@ -362,6 +375,38 @@ export async function handleUpdateStatus(
   );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
+
+  const reasonText = body.reason ? ' ด้วยเหตุผล: ' + sanitizeStr(body.reason, 2000) : '';
+  if (status === 'ชำระแล้ว') {
+    await notify(env, {
+      ref,
+      type: 'payment_confirmed',
+      total: rows[0]?.total,
+      visitDate: rows[0]?.visitDate,
+    }).catch(() => undefined);
+  } else if (status === 'ไม่อนุมัติ') {
+    await notify(env, {
+      ref,
+      type: 'visitor_rejected',
+      prisonerName: rows[0]?.prisonerName,
+      reason: reasonText,
+    }).catch(() => undefined);
+  } else if (status === 'ยกเลิก') {
+    await notify(env, {
+      ref,
+      type: 'booking_cancelled',
+      prisonerName: rows[0]?.prisonerName,
+      reason: reasonText,
+    }).catch(() => undefined);
+  } else {
+    await notify(env, {
+      ref,
+      type: 'status_changed',
+      status,
+      prisonerName: rows[0]?.prisonerName,
+      visitDate: rows[0]?.visitDate,
+    }).catch(() => undefined);
+  }
   return { status: 'ok' };
 }
 
@@ -426,6 +471,22 @@ export async function handleUpdateVisitorApproval(
   }
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
+
+  if (mainRejected) {
+    await notify(env, {
+      ref,
+      type: 'visitor_rejected',
+      prisonerName: rows[0]?.prisonerName,
+      reason: ' ด้วยเหตุผล: ผู้เยี่ยมหลักถูกปฏิเสธการเข้าร่วม',
+    }).catch(() => undefined);
+  } else if (body.visitorApproved !== undefined) {
+    await notify(env, {
+      ref,
+      type: 'visitor_approved',
+      visitorCount,
+      total,
+    }).catch(() => undefined);
+  }
   return { status: 'ok', visitorCount, total };
 }
 

@@ -33,7 +33,17 @@ import { handleAddNote, handleGetNotes } from './notes';
 import { handleSaveSettings, handleGetSettings, handleGetDataVersion } from './settings';
 import { handleUploadSlip, handleUpdateSlipAndStatus, handleGetSlipByRef } from './slip';
 import { handleLogin, handleChangePassword, handleRefresh } from './auth';
-import { handleGeneratePromptPayQr } from './promptpay';
+import { handleGeneratePromptPayQr, handleGetPromptPayConfig } from './promptpay';
+import {
+  handleNotify,
+  handleLinkLine,
+  handleSubscribe,
+  handleUnsubscribe,
+  getNotificationSettingsHandler,
+  setLineMonthlyCapHandler,
+  getNotificationLogsHandler,
+  processPendingHandler,
+} from './notifications';
 
 export interface RouteCtx {
   env: Env;
@@ -79,6 +89,7 @@ const GET_ROUTES: Record<string, Route> = {
   getSettings: { auth: true, handler: async (ctx) => handleGetSettings(ctx.env) },
   recheckPrisoner: { auth: true, handler: async (ctx) => handleRecheckPrisoner(ctx.env, ctx.body) },
   generatePromptPayQr: { auth: false, handler: async (ctx) => handleGeneratePromptPayQr(ctx.body) },
+  getPromptPayConfig: { auth: false, handler: async (ctx) => handleGetPromptPayConfig(ctx.env) },
 };
 
 const POST_ROUTES: Record<string, Route> = {
@@ -129,6 +140,21 @@ const POST_ROUTES: Record<string, Route> = {
   recheckPrisoner: { auth: true, handler: async (ctx) => handleRecheckPrisoner(ctx.env, ctx.body) },
   logClientEvent: { auth: true, handler: async (ctx) => handleLogClientEvent(ctx.env, ctx.body, ctx.user!) },
   generatePromptPayQr: { auth: false, handler: async (ctx) => handleGeneratePromptPayQr(ctx.body) },
+  getPromptPayConfig: { auth: false, handler: async (ctx) => handleGetPromptPayConfig(ctx.env) },
+  subscribe: { auth: false, handler: async (ctx) => handleSubscribe(ctx.env, ctx.body) },
+  unsubscribe: { auth: false, handler: async (ctx) => handleUnsubscribe(ctx.env, ctx.body) },
+  linkLine: { auth: false, handler: async (ctx) => handleLinkLine(ctx.env, ctx.body) },
+  notify: { auth: true, handler: async (ctx) => handleNotify(ctx.env, ctx.body) },
+  getNotificationSettings: { auth: true, handler: async (ctx) => getNotificationSettingsHandler(ctx.env) },
+  setLineMonthlyCap: {
+    auth: true,
+    handler: async (ctx) => setLineMonthlyCapHandler(ctx.env, ctx.body, ctx.user!),
+  },
+  getNotificationLogs: { auth: true, handler: async (ctx) => getNotificationLogsHandler(ctx.env, ctx.body) },
+  processPendingNotifications: {
+    auth: true,
+    handler: async (ctx) => processPendingHandler(ctx.env, ctx.user!),
+  },
 };
 
 export async function dispatchAction(ctx: RouteCtx, action: string, isGet: boolean): Promise<Response> {

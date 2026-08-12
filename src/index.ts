@@ -8,6 +8,8 @@ import { cleanupExpiredDiscipline } from './services/disciplineService';
 import { archiveOldReservations } from './services/archiveService';
 import { deleteExpiredRefreshTokens } from './db/queries/refreshTokens';
 import { handleHealthHtml, handleHealthJson } from './routes/health';
+import { handleLineWebhook } from './routes/notifications';
+import { processPendingNotifications } from './services/notifications';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -90,6 +92,44 @@ app.post('/api/promptpay/qr', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'generatePromptPayQr', ...(await bodyToObj(c.req.raw)) })
 );
 
+// ── Notifications (Web Push + LINE) ────────────────────────────────
+app.post('/api/notify', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'notify', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/notify/subscribe', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'subscribe', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/notify/unsubscribe', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'unsubscribe', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/notify/processPending', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'processPendingNotifications', ...(await bodyToObj(c.req.raw)) })
+);
+app.get('/api/notify/settings', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getNotificationSettings' })
+);
+app.post('/api/notify/settings', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'getNotificationSettings', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/notify/cap', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'setLineMonthlyCap', ...(await bodyToObj(c.req.raw)) })
+);
+app.get('/api/notify/logs', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getNotificationLogs', ...queryToBody(c.req.raw) })
+);
+app.post('/api/notify/logs', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'getNotificationLogs', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/link-line', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'linkLine', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/line/webhook', async (c) => {
+  const response = await handleLineWebhook(c.env, c.req.raw);
+  const headers = makeCorsHeaders(c.req.raw, c.env);
+  Object.entries(headers).forEach(([k, v]) => response.headers.set(k, v));
+  return response;
+});
+
 // ── Generic action-dispatch endpoints (POST / or /api with {action}) ──
 app.post('/', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw)));
 app.post('/api', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw)));
@@ -150,7 +190,9 @@ async function runCron(cron: string, env: Env): Promise<void> {
     if (cron === '0 17 * * *') {
       const result = await cleanupExpiredDiscipline(env);
       await deleteExpiredRefreshTokens(env);
+      const notif = await processPendingNotifications(env);
       console.log('[Cron] discipline cleanup:', JSON.stringify(result));
+      console.log('[Cron] notifications:', JSON.stringify(notif));
     } else if (cron === '15 17 1 */3 *') {
       const result = await archiveOldReservations(env);
       console.log('[Cron] archive:', JSON.stringify(result));

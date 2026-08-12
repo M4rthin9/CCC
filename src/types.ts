@@ -8,6 +8,16 @@ export interface Env {
   CACHE_VERSION: string;
   PASSWORD_SALT: string;
   ALLOWED_ORIGINS: string;
+  // Notifications (Web Push + LINE). VAPID keys and LINE credentials are secrets.
+  LINE_OA_ID?: string;
+  LINE_CHANNEL_ACCESS_TOKEN?: string;
+  LINE_CHANNEL_SECRET?: string;
+  LINE_MONTHLY_CAP?: string;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
+  NOTIFY_PUSH_ENABLED?: string;
+  NOTIFY_LINE_ENABLED?: string;
 }
 
 export interface User {

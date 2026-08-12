@@ -1,4 +1,4 @@
-import { TABLES } from '../../constants';
+import { LINE_CAP_SETTING_KEY, TABLES } from '../../constants';
 import { Note } from '../../types';
 
 export function addNote(
@@ -101,4 +101,23 @@ export function clearDefaultAccountFlag(db: D1Database, username: string): Promi
     delete map[key];
     await setDefaultAccountHashes(db, map);
   });
+}
+
+export function getLineMonthlyCap(db: D1Database): Promise<number> {
+  return db
+    .prepare(`SELECT value FROM ${TABLES.settings} WHERE key = ?`)
+    .bind(LINE_CAP_SETTING_KEY)
+    .first<{ value: string }>()
+    .then((r) => (r ? parseInt(r.value, 10) || 0 : 0));
+}
+
+export function setLineMonthlyCap(db: D1Database, cap: number): Promise<void> {
+  return db
+    .prepare(
+      `INSERT INTO ${TABLES.settings} (key, value, savedBy, savedAt) VALUES (?, ?, 'system', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, savedAt = excluded.savedAt`
+    )
+    .bind(LINE_CAP_SETTING_KEY, String(cap), new Date().toISOString())
+    .run()
+    .then(() => undefined);
 }

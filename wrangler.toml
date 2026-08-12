@@ -17,6 +17,13 @@ ALLOWED_ORIGINS = "*"
 # Example: booking.example.com,www.example.com
 TURNSTILE_ALLOWED_HOSTNAMES = "ccc-frontend.pages.dev,cafe.dpdns.org"
 
+# ── Notifications (Web Push + LINE) ────────────────────────────────
+# Feature switches (set to "true" to enable).
+NOTIFY_PUSH_ENABLED = "false"
+NOTIFY_LINE_ENABLED = "false"
+# Fallback LINE monthly push-message cap (an admin-overridable setting wins).
+LINE_MONTHLY_CAP = "200"
+
 # ── D1 database ────────────────────────────────────────────────────
 # Create with:  wrangler d1 create ccc-reservations
 # then paste the returned database_id here and in the migration script note.

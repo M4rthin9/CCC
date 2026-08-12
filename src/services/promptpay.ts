@@ -17,7 +17,7 @@ export function buildTlv(tag: string, value: string): string {
   }
   if (value.length > 99) {
     throw new Error(
-      `EMVCo value for tag "${tag}" is ${value.length} chars, exceeds the 99-char max for a 2-digit length field.`,
+      `EMVCo value for tag "${tag}" is ${value.length} chars, exceeds the 99-char max for a 2-digit length field.`
     );
   }
   const length = String(value.length).padStart(2, '0');
@@ -42,9 +42,7 @@ export function buildPromptPayBillPayment({
   pointOfInitiation = '11',
 }: PromptPayBillPaymentOptions): string {
   if (!/^\d{15}$/.test(billerId)) {
-    throw new Error(
-      `Invalid Biller ID "${billerId}" (must be exactly 15 digits: Tax ID + suffix).`,
-    );
+    throw new Error(`Invalid Biller ID "${billerId}" (must be exactly 15 digits: Tax ID + suffix).`);
   }
   if (typeof ref1 !== 'string' || ref1.length === 0) {
     throw new Error('Reference 1 (ref1) is required and must be a non-empty string.');
@@ -68,9 +66,7 @@ export function buildPromptPayBillPayment({
 
   const currency = buildTlv('53', '764');
   const amountTlv =
-    amount !== undefined && amount !== null && amount !== ''
-      ? buildTlv('54', Number(amount).toFixed(2))
-      : '';
+    amount !== undefined && amount !== null && amount !== '' ? buildTlv('54', Number(amount).toFixed(2)) : '';
 
   const country = buildTlv('58', 'TH');
   const additionalData = buildTlv('62', buildTlv('07', ref3));

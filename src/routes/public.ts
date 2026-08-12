@@ -14,6 +14,7 @@ import { invalidatePrisonerLookupCache, invalidateReservationsCache } from '../c
 import { logEvent } from '../services/logger';
 import { validateSaveReservation, generateUniqueRefServer, findDuplicateActive } from '../services/reservationService';
 import { getPrisonerDiscipline } from '../services/disciplineService';
+import { notify } from '../services/notifications';
 import { Env, Reservation } from '../types';
 
 export async function handlePing(): Promise<Record<string, unknown>> {
@@ -148,6 +149,14 @@ export async function handleSaveReservation(
     'success',
     meta
   );
+  await notify(env, {
+    ref,
+    type: 'booking_submitted',
+    prisonerName: data.prisonerName,
+    visitDate: data.visitDate,
+    total: data.total,
+    status: data.status,
+  }).catch(() => undefined);
   return { status: 'ok', ref };
 }
 

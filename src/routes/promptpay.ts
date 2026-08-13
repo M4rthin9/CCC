@@ -1,4 +1,4 @@
-import { buildPromptPayBillPayment, renderPromptPayCardSvg } from '../services/promptpay';
+import { buildPromptPayBillPayment, renderPromptPayCardSvg, TAG62_MAX_LENGTH } from '../services/promptpay';
 import { getPromptPayConfig, PROMPTPAY_MERCHANT_NAME } from '../services/promptpayConfig';
 import { renderQr } from '../services/qrImage';
 import { getReservationByRef } from '../db/queries/reservations';
@@ -32,7 +32,7 @@ function sanitizeAdditionalData(value: unknown): Partial<AdditionalDataFields> {
   for (const key of ADDITIONAL_DATA_KEYS) {
     const raw = (value as Record<string, unknown>)[key];
     if (typeof raw !== 'string' || !raw.trim()) continue;
-    out[key] = raw.trim().slice(0, 32);
+    out[key] = raw.trim().slice(0, TAG62_MAX_LENGTH);
   }
   return out;
 }
@@ -77,7 +77,9 @@ export async function handleGeneratePromptPayQr(
   }
 
   try {
-    const additionalData: AdditionalDataFields = { billNumber: ref, storeLabel: PROMPTPAY_MERCHANT_NAME };
+    // storeLabel carries the ASCII merchant name, not PROMPTPAY_MERCHANT_NAME:
+    // Thai text in tag 62 breaks the byte offsets every scanner reads by.
+    const additionalData: AdditionalDataFields = { billNumber: ref, storeLabel: cfg.merchantNameEn };
     const payload = buildPromptPayBillPayment({
       billerId: cfg.billerId,
       ref1: cfg.ref1,
@@ -85,6 +87,12 @@ export async function handleGeneratePromptPayQr(
       ref3: cfg.ref3,
       amount,
       additionalData,
+      merchant: {
+        name: cfg.merchantNameEn,
+        city: cfg.merchantCity,
+        categoryCode: cfg.merchantCategoryCode,
+      },
+      recipient: cfg.recipient,
     });
     const qrCardSvg = renderPromptPayCardSvg(payload, {
       merchantName: PROMPTPAY_MERCHANT_NAME,
@@ -121,6 +129,12 @@ async function handleSampleQr(env: Env, body: Record<string, unknown>): Promise<
       amount: amount || undefined,
       pointOfInitiation: pointOfInitiation === '12' ? '12' : '11',
       additionalData,
+      merchant: {
+        name: cfg.merchantNameEn,
+        city: cfg.merchantCity,
+        categoryCode: cfg.merchantCategoryCode,
+      },
+      recipient: cfg.recipient,
     });
     const qrCardSvg = renderPromptPayCardSvg(payload, {
       merchantName,

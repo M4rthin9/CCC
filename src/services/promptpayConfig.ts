@@ -1,4 +1,5 @@
 import { getSettings } from '../db/queries/settings';
+import type { PromptPayRecipient } from './promptpay';
 import { Env } from '../types';
 
 /** Fallback biller identity, mirrors Dashboard PROMPTPAY_DEFAULTS. */
@@ -10,9 +11,16 @@ export const PROMPTPAY_DEFAULTS = {
   pointOfInitiation: '11',
 } as const;
 
-/** Receiving-account merchant label shown on the QR card caption and carried
- *  in tag-62 `storeLabel` (mirrors the Dashboard's "accountName"). */
+/** Receiving-account merchant label shown on the QR card caption (mirrors the
+ *  Dashboard's "accountName"). Display only — Thai text cannot go on the wire,
+ *  see `toWireText` in `services/promptpay.ts`. */
 export const PROMPTPAY_MERCHANT_NAME = 'ร้านสงเคราะห์ผู้ต้องขัง';
+
+/** EMVCo tags 59/60 are mandatory and must be printable ASCII. These are the
+ *  wire-side counterparts of PROMPTPAY_MERCHANT_NAME; override from admin
+ *  Settings (`promptpay.merchantNameEn` / `promptpay.merchantCity`). */
+export const PROMPTPAY_MERCHANT_NAME_EN = 'CIDA PRISON SHOP';
+export const PROMPTPAY_MERCHANT_CITY = 'BANGKOK';
 
 export interface PromptPayConfig {
   billerId: string;
@@ -20,6 +28,29 @@ export interface PromptPayConfig {
   ref2: string;
   ref3: string;
   pointOfInitiation: '11' | '12';
+  /** Tag 59 — ASCII merchant name. */
+  merchantNameEn: string;
+  /** Tag 60 — ASCII merchant city. */
+  merchantCity: string;
+  /** Tag 52 — 4-digit MCC, omitted when unset. */
+  merchantCategoryCode?: string;
+  /** When set, mint a plain PromptPay credit transfer (tag 29) instead of a
+   *  BillPayment QR — payable without a registered biller agreement. */
+  recipient?: PromptPayRecipient;
+}
+
+/** Read the optional tag-29 recipient out of the settings blob. Anything
+ *  malformed degrades to `undefined`, i.e. the BillPayment path. */
+function readRecipient(raw: Record<string, unknown>): PromptPayRecipient | undefined {
+  const kind = typeof raw.recipientType === 'string' ? raw.recipientType : '';
+  if (kind === 'bankAccount') {
+    const bankCode = typeof raw.bankCode === 'string' ? raw.bankCode : '';
+    const accountNo = typeof raw.accountNo === 'string' ? raw.accountNo : '';
+    return bankCode && accountNo ? { kind, bankCode, accountNo } : undefined;
+  }
+  if (kind !== 'mobile' && kind !== 'nationalId' && kind !== 'eWallet') return undefined;
+  const value = typeof raw.recipient === 'string' ? raw.recipient.trim() : '';
+  return value ? { kind, value } : undefined;
 }
 
 /**
@@ -42,5 +73,18 @@ export async function getPromptPayConfig(env: Env): Promise<PromptPayConfig> {
     ref2: typeof raw.ref2 === 'string' ? raw.ref2 : PROMPTPAY_DEFAULTS.ref2,
     ref3: typeof raw.ref3 === 'string' ? raw.ref3 : PROMPTPAY_DEFAULTS.ref3,
     pointOfInitiation: raw.pointOfInitiation === '12' ? '12' : '11',
+    merchantNameEn:
+      typeof raw.merchantNameEn === 'string' && raw.merchantNameEn.trim()
+        ? raw.merchantNameEn.trim()
+        : PROMPTPAY_MERCHANT_NAME_EN,
+    merchantCity:
+      typeof raw.merchantCity === 'string' && raw.merchantCity.trim()
+        ? raw.merchantCity.trim()
+        : PROMPTPAY_MERCHANT_CITY,
+    merchantCategoryCode:
+      typeof raw.merchantCategoryCode === 'string' && /^\d{4}$/.test(raw.merchantCategoryCode)
+        ? raw.merchantCategoryCode
+        : undefined,
+    recipient: readRecipient(raw),
   };
 }

@@ -138,10 +138,46 @@ const payWithAdditional = buildPromptPayBillPayment({
   amount: 500,
   pointOfInitiation: '12',
   additionalData: { billNumber: 'VIS-00001', storeLabel: 'ร้านสงเคราะห์ผู้ต้องขัง' },
+  merchant: { name: 'CIDA PRISON SHOP', city: 'BANGKOK' },
 });
 const parsedAdditional = parsePayload(payWithAdditional);
 check('additionalData billNumber on wire', parsedAdditional.additionalData?.billNumber ?? '', 'VIS-00001');
-check('additionalData storeLabel on wire', parsedAdditional.additionalData?.storeLabel ?? '', 'ร้านสงเคราะห์ผู้ต้องขัง');
+// Thai text is dropped, never emitted: EMVCo lengths count characters but every
+// scanner reads bytes, so a 23-char / 63-byte value desyncs the whole payload.
+check('non-ascii storeLabel dropped', parsedAdditional.additionalData?.storeLabel === undefined, true);
+check('payload is pure ascii', /^[\x20-\x7E]*$/.test(payWithAdditional), true);
+// EMVCo marks merchant name (59) and city (60) mandatory.
+check('merchant name on wire', payWithAdditional.includes('5916CIDA PRISON SHOP'), true);
+check('merchant city on wire', payWithAdditional.includes('6007BANGKOK'), true);
+check('crc valid with merchant tags', parsedAdditional.crc?.valid ?? false, true);
+
+// Float baht must land on satang precision — tag 54 is length-prefixed, so a
+// stray 100.30000000000001 would be read as a different number by the bank.
+check(
+  'amount rounded to satang',
+  buildPromptPayBillPayment({ billerId, ref1: paymentRef1, amount: 0.1 + 0.2 }).includes('54040.30'),
+  true
+);
+// Reference caps: BOT allows at most 20 chars per reference.
+let refTooLong = false;
+try {
+  buildPromptPayBillPayment({ billerId, ref1: 'A'.repeat(21), amount: 500 });
+} catch {
+  refTooLong = true;
+}
+check('ref1 over 20 chars rejected', refTooLong, true);
+
+// Plain PromptPay credit transfer (tag 29) — payable with no biller agreement.
+const payMobile = buildPromptPayBillPayment({
+  billerId,
+  ref1: paymentRef1,
+  amount: 250,
+  recipient: { kind: 'mobile', value: '081-234-5678' },
+  merchant: { name: 'CIDA PRISON SHOP', city: 'BANGKOK' },
+});
+const parsedMobile = parsePayload(payMobile);
+check('mobile QR uses promptpay template', parsedMobile.merchant?.kind ?? '', 'promptpay');
+check('mobile QR crc valid', parsedMobile.crc?.valid ?? false, true);
 
 // Branded card render: ECC-H QR in a 600x800 SVG carrying the caption.
 const cardSvg = renderPromptPayCardSvg(payWithAdditional, {
@@ -174,18 +210,12 @@ check('payment-wrong-ref1 reason', (r3b.detail?.reason as string) ?? '', 'paymen
 
 const r3c = (await verifySlipBytes(fakeDb, await qrPng(payWithAdditional), booking)).result;
 check('payment-additional status', r3c.status, 'unreadable');
-check(
-  'payment-additional reason',
-  (r3c.detail?.reason as string) ?? '',
-  'payment_qr_only',
-);
+check('payment-additional reason', (r3c.detail?.reason as string) ?? '', 'payment_qr_only');
 const verifyAdditional = r3c.detail?.additionalData as Record<string, unknown> | undefined;
 check('verify returns billNumber', (verifyAdditional?.billNumber as string) ?? '', 'VIS-00001');
-check(
-  'verify returns storeLabel',
-  (verifyAdditional?.storeLabel as string) ?? '',
-  'ร้านสงเคราะห์ผู้ต้องขัง',
-);
+// The Thai store label never reaches the wire, so it cannot come back out of a
+// scanned slip either; the ASCII merchant name is what round-trips.
+check('verify drops non-ascii storeLabel', verifyAdditional?.storeLabel === undefined, true);
 
 const r4 = (await verifySlipBytes(fakeDb, await qrPng(slipVerify), booking)).result;
 check('slip-verify status', r4.status, 'slip_verify');
@@ -198,14 +228,16 @@ const r5 = (await verifySlipBytes(fakeDb, await qrPng(tmSlipVerify), booking)).r
 check('tm-slip-verify status', r5.status, 'slip_verify');
 check('tm-slip-verify kind', r5.kind, 'trueMoneySlipVerify');
 
-const r6 = (
-  await verifySlipBytes(fakeDb, await combine(await qrPng(payOk), await qrPng(slipVerify)), booking)
-).result;
+const r6 = (await verifySlipBytes(fakeDb, await combine(await qrPng(payOk), await qrPng(slipVerify)), booking)).result;
 // Combined slip: the real Mini-QR wins — the slip is real, and the payment QR
 // is surfaced as extra context for the backoffice approval.
 check('two-qr status', r6.status, 'slip_verify');
 check('two-qr qrCount>=2', r6.qrCount >= 2, true);
-check('two-qr detail ref1', (r6.detail?.paymentQr as Record<string, unknown> | undefined)?.reference1 === paymentRef1, true);
+check(
+  'two-qr detail ref1',
+  (r6.detail?.paymentQr as Record<string, unknown> | undefined)?.reference1 === paymentRef1,
+  true
+);
 
 const r7 = (await verifySlipBytes(fakeDb, await toJpeg(await qrPng(payOk)), booking)).result;
 check('jpeg path status', r7.status, 'unreadable');
@@ -227,7 +259,11 @@ check('duplicate ref', r9.duplicateOfRef ?? '', 'VIS-99999');
 // Slip Verify Mini-QR generator (thai-qr-payment `buildSlipVerify` /
 // `buildTrueMoneySlipVerify`) — the anti-scammer artifact: a fake/edited slip
 // has no Mini-QR (or one whose bank+transRef fails the issuer lookup).
-const miniBankPayload = buildSlipVerifyPayload({ provider: 'bank', sendingBank: '002', transRef: '0002123123121200011' });
+const miniBankPayload = buildSlipVerifyPayload({
+  provider: 'bank',
+  sendingBank: '002',
+  transRef: '0002123123121200011',
+});
 check('mini bank payload === buildSlipVerify', miniBankPayload, slipVerify);
 check('mini bank parses', parseSlipVerify(miniBankPayload)?.sendingBank ?? '', '002');
 
@@ -280,13 +316,7 @@ check('approve main-only adultCount', String(mainAdult.adultCount), '1');
 check('approve main-only child5to8Count', String(mainAdult.child5to8Count), '1');
 check('approve main-only childUnder5Count', String(mainAdult.childUnder5Count), '0');
 
-const singleChildExtra = computeApprovalTotals(
-  true,
-  'yes',
-  'B|2|บุตร / ธิดา|4',
-  'บิดา / มารดา',
-  '30'
-);
+const singleChildExtra = computeApprovalTotals(true, 'yes', 'B|2|บุตร / ธิดา|4', 'บิดา / มารดา', '30');
 check('approve single extra child <5 free', String(singleChildExtra.total), '2000');
 check('approve single extra childUnder5Count', String(singleChildExtra.childUnder5Count), '1');
 
@@ -338,7 +368,14 @@ const { db: capDb, stmts: capStmts, batches: capBatches } = makeCapDb();
 const replaced = await importPrisonersBulk(
   capDb,
   [
-    { prisonerId: 'A', prisonerName: 'ใหม่ A', wing: '2', status: 'ติดวินัย งดเยี่ยม', vinaiDate: '2025-01-01', note: 'x' },
+    {
+      prisonerId: 'A',
+      prisonerName: 'ใหม่ A',
+      wing: '2',
+      status: 'ติดวินัย งดเยี่ยม',
+      vinaiDate: '2025-01-01',
+      note: 'x',
+    },
     { prisonerId: 'B', prisonerName: 'เก่า B', wing: '2', status: '', vinaiDate: '', note: '' },
     { prisonerId: 'D', prisonerName: 'ใหม่ D', wing: '4', status: '', vinaiDate: '', note: '' },
   ],
@@ -349,7 +386,11 @@ check('import replace updated', String(replaced.updated), '2');
 check('import replace removed', String(replaced.removed), '1');
 check('import replace wingChanged', String(replaced.wingChanged), '1');
 check('import replace wingChanges id', String(replaced.wingChanges[0]?.prisonerId), 'A');
-check('import replace delete leads batch', String(capBatches[0]![0]!.sql.trim().toUpperCase().startsWith('DELETE FROM PRISONERS')), 'true');
+check(
+  'import replace delete leads batch',
+  String(capBatches[0]![0]!.sql.trim().toUpperCase().startsWith('DELETE FROM PRISONERS')),
+  'true'
+);
 check('import replace single batch', String(capBatches.length), '1');
 const capInserts = capStmts.filter((s) => s.sql.includes('INSERT'));
 check('import replace insert statements', String(capInserts.length), '1');
@@ -357,13 +398,18 @@ check('import replace insert params', String(capInserts[0]!.params.length), '18'
 
 const { db: capDbBig, stmts: bigStmts, batches: bigBatches } = makeCapDb();
 const bigRows: PrisonerImportRow[] = [];
-for (let i = 0; i < 20000; i++) bigRows.push({ prisonerId: 'P' + i, prisonerName: 'N' + i, wing: '1', status: '', vinaiDate: '', note: '' });
+for (let i = 0; i < 20000; i++)
+  bigRows.push({ prisonerId: 'P' + i, prisonerName: 'N' + i, wing: '1', status: '', vinaiDate: '', note: '' });
 const bigResult = await importPrisonersBulk(capDbBig, bigRows, []);
 check('import 20k added', String(bigResult.added), '20000');
 const bigInserts = bigStmts.filter((s) => s.sql.includes('INSERT'));
 check('import 20k statement count', String(bigInserts.length), '1250');
 check('import 20k max params per stmt', String(Math.max(...bigInserts.map((s) => s.params.length)) <= 100), 'true');
-check('import 20k delete first in batch 0', String(bigBatches[0]![0]!.sql.trim().toUpperCase().startsWith('DELETE FROM PRISONERS')), 'true');
+check(
+  'import 20k delete first in batch 0',
+  String(bigBatches[0]![0]!.sql.trim().toUpperCase().startsWith('DELETE FROM PRISONERS')),
+  'true'
+);
 check('import 20k batch 0 size', String(bigBatches[0]!.length), '100');
 check('import 20k total batches', String(bigBatches.length), '13');
 

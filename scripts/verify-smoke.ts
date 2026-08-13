@@ -11,6 +11,7 @@ import { verifySlipBytes } from '../src/services/slipverify';
 import { buildPromptPayBillPayment, renderPromptPayCardSvg } from '../src/services/promptpay';
 import { computeApprovalTotals } from '../src/services/pricing';
 import { buildSlipVerifyPayload, renderSlipVerifyMiniQr } from '../src/services/slipQr';
+import { importPrisonersBulk, type PrisonerImportRow } from '../src/db/queries/prisoners';
 import { PROMPTPAY_DEFAULTS } from '../src/services/promptpayConfig';
 import type { Reservation } from '../src/types';
 
@@ -305,6 +306,82 @@ const mainRejected = computeApprovalTotals(false, 'yes', 'B|2|บุตร / ธ
 check('approve main rejected total', String(mainRejected.total), '1000');
 check('approve main rejected visitorCount', String(mainRejected.visitorCount), '0');
 check('approve main rejected no children counted', String(mainRejected.child5to8Count), '0');
+
+// --- prisoner import full-replace semantics ---
+type CapturedStmt = { sql: string; params: unknown[] };
+function makeCapDb(): { db: D1Database; stmts: CapturedStmt[]; batches: CapturedStmt[][] } {
+  const stmts: CapturedStmt[] = [];
+  const batches: CapturedStmt[][] = [];
+  const db = {
+    prepare: (sql: string) => ({
+      sql,
+      params: [] as unknown[],
+      bind: (...params: unknown[]) => {
+        const stmt = { sql, params };
+        stmts.push(stmt);
+        return stmt;
+      },
+    }),
+    batch: async (list: unknown[]) => {
+      batches.push(list as CapturedStmt[]);
+    },
+  } as unknown as D1Database;
+  return { db, stmts, batches };
+}
+
+const oldList = [
+  { prisonerId: 'A', prisonerName: 'เก่า A', wing: '1' },
+  { prisonerId: 'B', prisonerName: 'เก่า B', wing: '2' },
+  { prisonerId: 'C', prisonerName: 'เก่า C', wing: '3' },
+];
+const { db: capDb, stmts: capStmts, batches: capBatches } = makeCapDb();
+const replaced = await importPrisonersBulk(
+  capDb,
+  [
+    { prisonerId: 'A', prisonerName: 'ใหม่ A', wing: '2', status: 'ติดวินัย งดเยี่ยม', vinaiDate: '2025-01-01', note: 'x' },
+    { prisonerId: 'B', prisonerName: 'เก่า B', wing: '2', status: '', vinaiDate: '', note: '' },
+    { prisonerId: 'D', prisonerName: 'ใหม่ D', wing: '4', status: '', vinaiDate: '', note: '' },
+  ],
+  oldList
+);
+check('import replace added', String(replaced.added), '1');
+check('import replace updated', String(replaced.updated), '2');
+check('import replace removed', String(replaced.removed), '1');
+check('import replace wingChanged', String(replaced.wingChanged), '1');
+check('import replace wingChanges id', String(replaced.wingChanges[0]?.prisonerId), 'A');
+check('import replace delete leads batch', String(capBatches[0]![0]!.sql.trim().toUpperCase().startsWith('DELETE FROM PRISONERS')), 'true');
+check('import replace single batch', String(capBatches.length), '1');
+const capInserts = capStmts.filter((s) => s.sql.includes('INSERT'));
+check('import replace insert statements', String(capInserts.length), '1');
+check('import replace insert params', String(capInserts[0]!.params.length), '18');
+
+const { db: capDbBig, stmts: bigStmts, batches: bigBatches } = makeCapDb();
+const bigRows: PrisonerImportRow[] = [];
+for (let i = 0; i < 20000; i++) bigRows.push({ prisonerId: 'P' + i, prisonerName: 'N' + i, wing: '1', status: '', vinaiDate: '', note: '' });
+const bigResult = await importPrisonersBulk(capDbBig, bigRows, []);
+check('import 20k added', String(bigResult.added), '20000');
+const bigInserts = bigStmts.filter((s) => s.sql.includes('INSERT'));
+check('import 20k statement count', String(bigInserts.length), '1250');
+check('import 20k max params per stmt', String(Math.max(...bigInserts.map((s) => s.params.length)) <= 100), 'true');
+check('import 20k delete first in batch 0', String(bigBatches[0]![0]!.sql.trim().toUpperCase().startsWith('DELETE FROM PRISONERS')), 'true');
+check('import 20k batch 0 size', String(bigBatches[0]!.length), '100');
+check('import 20k total batches', String(bigBatches.length), '13');
+
+const { db: capDbDup, stmts: dupStmts } = makeCapDb();
+const dedup = await importPrisonersBulk(
+  capDbDup,
+  [
+    { prisonerId: 'X', prisonerName: 'Name 1', wing: '1', status: '', vinaiDate: '', note: '' },
+    { prisonerId: 'X', prisonerName: 'Name 2', wing: '9', status: '', vinaiDate: '', note: '' },
+  ],
+  []
+);
+check('import dedup total', String(dedup.total), '1');
+check('import dedup added', String(dedup.added), '1');
+const dupInserts = dupStmts.filter((s) => s.sql.includes('INSERT'));
+check('import dedup single insert', String(dupInserts.length), '1');
+check('import dedup last row name wins', String(dupInserts[0]!.params[1]), 'Name 2');
+check('import dedup last row wing wins', String(dupInserts[0]!.params[2]), '9');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

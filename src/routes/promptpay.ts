@@ -1,6 +1,5 @@
 import { buildPromptPayBillPayment } from '../services/promptpay';
 import { getPromptPayConfig } from '../services/promptpayConfig';
-import { ensureBookingPaymentRef } from '../services/paymentRef';
 import { renderQr } from '../services/qrImage';
 import { getReservationByRef } from '../db/queries/reservations';
 import { checkRateLimit } from '../cache/kv';
@@ -13,19 +12,16 @@ const QR_RATE_LIMIT_MAX = 30;
 const QR_RATE_LIMIT_TTL_SECONDS = 60;
 
 /**
- * Per-booking PromptPay Bill Payment QR (Pillar 1).
+ * PromptPay Bill Payment QR.
  *
  * Two paths:
- *  - body.ref set  -> public, per-booking: ref1 = minted 'PP…' (paymentRef.ts),
- *                     ref2 = the booking's ref without dashes ('VIS00001'),
- *                     amount = the booking's server-authoritative total.
- *                     Rate-limited per IP (30/60s), no auth.
+ *  - body.ref set  -> public, per-booking: amount = the booking's
+ *                     server-authoritative total; biller identity and
+ *                     ref1/ref2/ref3 come from the resolved PromptPay config
+ *                     (admin Settings), falling back to the fixed
+ *                     PROMPTPAY_DEFAULTS. Rate-limited per IP (30/60s).
  *  - body.ref empty -> sample/diagnostic path, admin-only: builds a QR from
- *                     explicit billerId/ref1/ref2/ref3/amount fields. This is
- *                     the only place the static sample ref is still rendered.
- *
- * `getPromptPayConfig` was deleted as a route (per plan) — the config service
- * stays for internal use only.
+ *                     explicit billerId/ref1/ref2/ref3/amount fields.
  */
 export async function handleGeneratePromptPayQr(
   env: Env,
@@ -47,9 +43,7 @@ export async function handleGeneratePromptPayQr(
   const booking = await getReservationByRef(env.DB, ref);
   if (!booking) return { status: 'error', message: 'Ref not found' };
 
-  const paymentRef1 = await ensureBookingPaymentRef(env, ref);
   const cfg = await getPromptPayConfig(env);
-  const ref2 = String(booking.ref || '').replace(/-/g, '');
   const amount = Number(booking.total);
 
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -59,15 +53,15 @@ export async function handleGeneratePromptPayQr(
   try {
     const payload = buildPromptPayBillPayment({
       billerId: cfg.billerId,
-      ref1: paymentRef1,
-      ref2,
+      ref1: cfg.ref1,
+      ref2: cfg.ref2,
       ref3: cfg.ref3,
       amount,
     });
     const { qrDataUrl } = await renderQr(payload);
     const base = { status: 'ok', payload, qrDataUrl, amount };
     if (user) {
-      return { ...base, billerId: cfg.billerId, ref1: paymentRef1, ref2, ref3: cfg.ref3 };
+      return { ...base, billerId: cfg.billerId, ref1: cfg.ref1, ref2: cfg.ref2, ref3: cfg.ref3 };
     }
     return base;
   } catch (e) {

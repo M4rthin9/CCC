@@ -91,6 +91,12 @@ app.get('/api/promptpay/qr', async (c) =>
 app.post('/api/promptpay/qr', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'generatePromptPayQr', ...(await bodyToObj(c.req.raw)) })
 );
+app.get('/api/promptpay/slip-verify', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'generateSlipVerifyQr', ...queryToBody(c.req.raw) })
+);
+app.post('/api/promptpay/slip-verify', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'generateSlipVerifyQr', ...(await bodyToObj(c.req.raw)) })
+);
 
 // ── Notifications (Web Push + LINE) ────────────────────────────────
 app.post('/api/notify', async (c) =>

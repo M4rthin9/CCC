@@ -34,6 +34,7 @@ import { handleSaveSettings, handleGetSettings, handleGetDataVersion } from './s
 import { handleUploadSlip, handleUpdateSlipAndStatus, handleGetSlipByRef, handleVerifySlip } from './slip';
 import { handleLogin, handleChangePassword, handleRefresh } from './auth';
 import { handleGeneratePromptPayQr } from './promptpay';
+import { handleGenerateSlipVerifyQr } from './slipQr';
 import {
   handleNotify,
   handleLinkLine,
@@ -92,6 +93,7 @@ const GET_ROUTES: Record<string, Route> = {
     auth: false,
     handler: async (ctx) => handleGeneratePromptPayQr(ctx.env, ctx.body, ctx.user, ctx.ip),
   },
+  generateSlipVerifyQr: { auth: true, handler: async (ctx) => handleGenerateSlipVerifyQr(ctx.body) },
   verifySlip: { auth: false, handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body) },
 };
 
@@ -146,6 +148,7 @@ const POST_ROUTES: Record<string, Route> = {
     auth: false,
     handler: async (ctx) => handleGeneratePromptPayQr(ctx.env, ctx.body, ctx.user, ctx.ip),
   },
+  generateSlipVerifyQr: { auth: true, handler: async (ctx) => handleGenerateSlipVerifyQr(ctx.body) },
   verifySlip: { auth: false, handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body) },
   subscribe: { auth: false, handler: async (ctx) => handleSubscribe(ctx.env, ctx.body) },
   unsubscribe: { auth: false, handler: async (ctx) => handleUnsubscribe(ctx.env, ctx.body) },

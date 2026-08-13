@@ -10,12 +10,14 @@ import {
   findReservationBySlipFingerprint,
 } from '../db/queries/reservations';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
-import { getPromptPayConfig } from './promptpayConfig';
-import { ensureBookingPaymentRef } from './paymentRef';
 import { logEvent } from './logger';
 import { Env, Reservation } from '../types';
 
-export type SlipVerifyStatus = 'ok' | 'mismatch' | 'slip_verify' | 'unreadable' | 'duplicate';
+// slipverify only judges authenticity: 'slip_verify' = genuine bank/TrueMoney
+// Mini-QR found (slip is real — backoffice then approves the payment),
+// 'unreadable' = cannot confirm real (incl. paymentQr-only slips), 'duplicate'
+// = the same real transaction was already used elsewhere.
+export type SlipVerifyStatus = 'slip_verify' | 'unreadable' | 'duplicate';
 
 export interface SlipVerifyResult {
   status: SlipVerifyStatus;
@@ -23,8 +25,6 @@ export interface SlipVerifyResult {
   qrCount: number;
   at: string;
   detail: Record<string, unknown> | null;
-  match?: Record<string, unknown>;
-  mismatch?: string[];
   duplicateOfRef?: string;
 }
 
@@ -243,63 +243,14 @@ function parseEnvelope(payload: string): ParsedEnvelope | null {
   }
 }
 
-// Pillar 1: matching is now against the booking's own per-booking refs —
-// ref1 = the minted 'PP…' payment ref, ref2 = the booking ref without dashes,
-// biller = the resolved biller identity. The static sample refs are never
-// expected here anymore.
-function buildPaymentResult(
-  payment: ParsedEnvelope,
-  expectedBillerId: string,
-  booking: Reservation,
-  paymentRef1: string,
+// Slip authenticity: a genuine bank/TrueMoney Mini-QR (which carries a real
+// transaction id) proves the slip is real. The backoffice performs the actual
+// payment approval afterwards — this layer never auto-confirms.
+function buildRealSlipResult(
+  slip: ParsedEnvelope,
+  paymentQr: ParsedEnvelope | null,
   qrCount: number
 ): SlipVerifyResult {
-  const d = payment.detail;
-  const expectedAmount = Number(booking.total);
-  const expectedAmountKnown = Number.isFinite(expectedAmount) && booking.total !== undefined && booking.total !== null;
-  const foundAmount = typeof d.amount === 'number' ? d.amount : null;
-
-  const expectedRef2 = String(booking.ref || '').replace(/-/g, '');
-
-  const billerMatch = d.billerId === expectedBillerId;
-  const ref1Match = d.reference1 === paymentRef1;
-  const ref2Match = d.reference2 === expectedRef2;
-  const amountMatch =
-    expectedAmountKnown && foundAmount !== null ? Math.abs(foundAmount - expectedAmount) < 0.005 : null;
-
-  const mismatch: string[] = [];
-  if (!billerMatch) mismatch.push('biller');
-  if (!ref1Match) mismatch.push('ref1');
-  if (!ref2Match) mismatch.push('ref2');
-  if (amountMatch === false) mismatch.push('amount');
-
-  // Our own generated payment QR carries no transaction id — matching
-  // biller/refs/amount only proves the QR was rendered by us, not that it
-  // was actually paid (e.g. a screenshot of the unpaid QR would match too).
-  // Route it to manual review instead of auto-confirming.
-  return {
-    status: mismatch.length === 0 ? 'slip_verify' : 'mismatch',
-    kind: 'paymentQr',
-    qrCount,
-    at: formatBangkok(new Date()),
-    detail: {
-      ...d,
-      payload: payment.payload,
-      ...(mismatch.length === 0 ? { reviewRequired: true, reviewReason: 'no_transaction_id' } : {}),
-    },
-    match: {
-      biller: billerMatch,
-      ref1: ref1Match,
-      ref2: ref2Match,
-      amount: amountMatch,
-      amountExpected: expectedAmountKnown ? expectedAmount : null,
-      amountFound: foundAmount,
-    },
-    mismatch,
-  };
-}
-
-function buildSlipVerifyOnlyResult(slip: ParsedEnvelope, qrCount: number): SlipVerifyResult {
   return {
     status: 'slip_verify',
     kind: slip.kind,
@@ -308,8 +259,28 @@ function buildSlipVerifyOnlyResult(slip: ParsedEnvelope, qrCount: number): SlipV
     detail: {
       ...slip.detail,
       payload: slip.payload,
-      // The Mini-QR has no amount or biller identity — manual review required.
+      ...(paymentQr ? { paymentQr: { ...paymentQr.detail, payload: paymentQr.payload } } : {}),
+      // Real Mini-QR detected — authenticity confirmed. The backoffice still
+      // approves the payment itself.
       reviewRequired: true,
+      reviewReason: 'backoffice_approval',
+    },
+  };
+}
+
+// Our own generated payment QR carries no bank transaction id — it only proves
+// the QR was rendered by us, never that it was actually paid. A slip that is
+// "just" our QR is therefore unverified and treated as suspicious.
+function buildPaymentQrOnlyResult(payment: ParsedEnvelope, qrCount: number): SlipVerifyResult {
+  return {
+    status: 'unreadable',
+    kind: 'paymentQr',
+    qrCount,
+    at: formatBangkok(new Date()),
+    detail: {
+      ...payment.detail,
+      payload: payment.payload,
+      reason: 'payment_qr_only',
     },
   };
 }
@@ -344,9 +315,7 @@ interface VerifyOutcome {
 export async function verifySlipBytes(
   db: D1Database,
   imageBytes: Uint8Array,
-  expectedBillerId: string,
-  booking: Reservation,
-  paymentRef1: string
+  booking: Reservation
 ): Promise<VerifyOutcome> {
   const imageHash = await sha256Hex(imageBytes);
   const img = decodeSlipImage(imageBytes);
@@ -387,16 +356,16 @@ export async function verifySlipBytes(
   const payment = envelopes.find((e) => e.kind === 'paymentQr') ?? null;
   const slip = envelopes.find((e) => e.kind === 'slipVerify' || e.kind === 'trueMoneySlipVerify') ?? null;
 
-  const result = payment
-    ? buildPaymentResult(payment, expectedBillerId, booking, paymentRef1, payloads.length)
-    : slip
-      ? buildSlipVerifyOnlyResult(slip, payloads.length)
+  const result = slip
+    ? buildRealSlipResult(slip, payment, payloads.length)
+    : payment
+      ? buildPaymentQrOnlyResult(payment, payloads.length)
       : ({
           status: 'unreadable',
           kind: 'none',
           qrCount: payloads.length,
           at: formatBangkok(new Date()),
-          detail: { reason: 'no_supported_qr' },
+          detail: { reason: payloads.length ? 'no_supported_qr' : 'no_qr_found' },
         } satisfies SlipVerifyResult);
 
   const fingerprint = fingerprintEnvelope(slip);
@@ -452,15 +421,7 @@ export async function handleVerifySlip(env: Env, body: Record<string, unknown>):
     return { status: 'error', message: 'No slip image available' };
   }
 
-  const cfg = await getPromptPayConfig(env);
-  const paymentRef1 = await ensureBookingPaymentRef(env, ref);
-  const { result, fingerprint, imageHash } = await verifySlipBytes(
-    env.DB,
-    imageBytes,
-    cfg.billerId,
-    booking,
-    paymentRef1
-  );
+  const { result, fingerprint, imageHash } = await verifySlipBytes(env.DB, imageBytes, booking);
   await persistVerify(env, ref, result, fingerprint, imageHash);
   return { status: 'ok', result };
 }

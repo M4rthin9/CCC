@@ -4,7 +4,7 @@ import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['node_modules/**', 'dist/**', '.wrangler/**', 'data/**', 'Frontend/**'] },
+  { ignores: ['node_modules/**', 'dist/**', '.wrangler/**', 'data/**', 'Frontend/**', 'src/vendor/**'] },
 
   js.configs.recommended,
 

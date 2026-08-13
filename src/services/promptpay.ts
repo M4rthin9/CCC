@@ -1,4 +1,7 @@
 import { ThaiQRPaymentBuilder } from '@thai-qr-payment/payload';
+import type { AdditionalDataFields } from '@thai-qr-payment/payload';
+import { encodeQR } from '../vendor/thai-qr-payment/qr.js';
+import { renderCard } from '../vendor/thai-qr-payment/render.js';
 
 // EMVCo BillPayment references are application-defined free text. The hard
 // wire constraint is the 99-byte cap of a 2-digit length field. Most bank apps
@@ -14,6 +17,19 @@ export interface PromptPayBillPaymentOptions {
   ref3?: string;
   amount?: string | number;
   pointOfInitiation?: '11' | '12';
+  /** Optional tag-62 sub-fields (bill number, store label, etc.). `ref3`
+   *  still rides in sub-tag 07 (terminal label) unless an explicit
+   *  `terminalLabel` is given here, which then wins. */
+  additionalData?: Partial<AdditionalDataFields>;
+}
+
+export interface PromptPayCardOptions {
+  merchantName?: string;
+  amountLabel?: string;
+  showCaption?: boolean;
+  theme?: 'color' | 'silhouette';
+  background?: string;
+  accent?: string;
 }
 
 /**
@@ -35,6 +51,7 @@ export function buildPromptPayBillPayment({
   ref3 = '0000',
   amount,
   pointOfInitiation,
+  additionalData,
 }: PromptPayBillPaymentOptions): string {
   if (!/^\d{1,15}$/.test(billerId)) {
     throw new Error(`Invalid Biller ID "${billerId}" (must be 1-15 digits: Tax ID + suffix).`);
@@ -70,7 +87,9 @@ export function buildPromptPayBillPayment({
     reference2: effRef2,
   });
 
-  if (ref3) builder.additionalData({ terminalLabel: ref3 });
+  const mergedAdditional: AdditionalDataFields = additionalData ?? {};
+  if (ref3) mergedAdditional.terminalLabel = ref3;
+  builder.additionalData(mergedAdditional);
 
   // A payable amount sets tag 54 and flips the library to POI '12' on its own;
   // the explicit point-of-initiation only matters for static QRs.
@@ -81,4 +100,22 @@ export function buildPromptPayBillPayment({
   }
 
   return builder.build();
+}
+
+/**
+ * Branded PromptPay card (Thai QR Payment header + PromptPay sub-mark +
+ * error-correction-H QR), rendered server-side as a self-contained SVG string.
+ * Built on `thai-qr-payment/render`, which bundles the brand assets; the
+ * caller displays it as trusted markup (e.g. `{@html }` in Svelte).
+ */
+export function renderPromptPayCardSvg(payload: string, options?: PromptPayCardOptions): string {
+  const matrix = encodeQR(payload, { errorCorrectionLevel: 'H' });
+  return renderCard(matrix, {
+    theme: options?.theme,
+    background: options?.background,
+    accent: options?.accent,
+    showCaption: options?.showCaption ?? true,
+    merchantName: options?.merchantName,
+    amountLabel: options?.amountLabel,
+  });
 }

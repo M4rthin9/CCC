@@ -10,6 +10,10 @@ export const PROMPTPAY_DEFAULTS = {
   pointOfInitiation: '11',
 } as const;
 
+/** Receiving-account merchant label shown on the QR card caption and carried
+ *  in tag-62 `storeLabel` (mirrors the Dashboard's "accountName"). */
+export const PROMPTPAY_MERCHANT_NAME = 'ร้านสงเคราะห์ผู้ต้องขัง';
+
 export interface PromptPayConfig {
   billerId: string;
   ref1: string;

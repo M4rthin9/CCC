@@ -8,7 +8,7 @@ import {
 import UPNG from 'upng-js';
 import { encode as encodeJpeg } from 'jpeg-js';
 import { verifySlipBytes } from '../src/services/slipverify';
-import { buildPromptPayBillPayment } from '../src/services/promptpay';
+import { buildPromptPayBillPayment, renderPromptPayCardSvg } from '../src/services/promptpay';
 import { buildSlipVerifyPayload, renderSlipVerifyMiniQr } from '../src/services/slipQr';
 import { PROMPTPAY_DEFAULTS } from '../src/services/promptpayConfig';
 import type { Reservation } from '../src/types';
@@ -127,6 +127,29 @@ const paddedOk =
   parsedMerchant.billerId === '099400016550100';
 check('biller zero-padded to 15', paddedOk, true);
 
+// Tag-62 additional data: bill number + store label ride in the wire payload
+// and round-trip through the parser, so the verify-slip return can surface them.
+const payWithAdditional = buildPromptPayBillPayment({
+  billerId,
+  ref1: paymentRef1,
+  ref2: paymentRef2,
+  amount: 500,
+  pointOfInitiation: '12',
+  additionalData: { billNumber: 'VIS-00001', storeLabel: 'ร้านสงเคราะห์ผู้ต้องขัง' },
+});
+const parsedAdditional = parsePayload(payWithAdditional);
+check('additionalData billNumber on wire', parsedAdditional.additionalData?.billNumber ?? '', 'VIS-00001');
+check('additionalData storeLabel on wire', parsedAdditional.additionalData?.storeLabel ?? '', 'ร้านสงเคราะห์ผู้ต้องขัง');
+
+// Branded card render: ECC-H QR in a 600x800 SVG carrying the caption.
+const cardSvg = renderPromptPayCardSvg(payWithAdditional, {
+  merchantName: 'ร้านสงเคราะห์ผู้ต้องขัง',
+  amountLabel: '500 บาท',
+});
+check('card svg starts with <svg', cardSvg.startsWith('<svg'), true);
+check('card svg has viewBox', cardSvg.includes('viewBox'), true);
+check('card svg carries caption', cardSvg.includes('ร้านสงเคราะห์ผู้ต้องขัง'), true);
+
 const r1 = (await verifySlipBytes(fakeDb, await qrPng(payOk), booking)).result;
 // Our payment QR carries no bank transaction id — a slip that is "just" our
 // QR is unverified (payment_qr_only), regardless of what fields it carries.
@@ -146,6 +169,21 @@ check('payment-bad-biller reason', (r3.detail?.reason as string) ?? '', 'payment
 const r3b = (await verifySlipBytes(fakeDb, await qrPng(payWrongRef1), booking)).result;
 check('payment-wrong-ref1 status', r3b.status, 'unreadable');
 check('payment-wrong-ref1 reason', (r3b.detail?.reason as string) ?? '', 'payment_qr_only');
+
+const r3c = (await verifySlipBytes(fakeDb, await qrPng(payWithAdditional), booking)).result;
+check('payment-additional status', r3c.status, 'unreadable');
+check(
+  'payment-additional reason',
+  (r3c.detail?.reason as string) ?? '',
+  'payment_qr_only',
+);
+const verifyAdditional = r3c.detail?.additionalData as Record<string, unknown> | undefined;
+check('verify returns billNumber', (verifyAdditional?.billNumber as string) ?? '', 'VIS-00001');
+check(
+  'verify returns storeLabel',
+  (verifyAdditional?.storeLabel as string) ?? '',
+  'ร้านสงเคราะห์ผู้ต้องขัง',
+);
 
 const r4 = (await verifySlipBytes(fakeDb, await qrPng(slipVerify), booking)).result;
 check('slip-verify status', r4.status, 'slip_verify');

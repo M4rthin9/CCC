@@ -236,6 +236,7 @@ function parseEnvelope(payload: string): ParsedEnvelope | null {
         pointOfInitiation: parsed.pointOfInitiation,
         crcValid: parsed.crc.valid,
         crcTruncated: parsed.crc.truncated,
+        ...(parsed.additionalData ? { additionalData: parsed.additionalData } : {}),
       },
     };
   } catch {

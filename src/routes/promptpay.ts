@@ -1,5 +1,5 @@
-import { buildPromptPayBillPayment } from '../services/promptpay';
-import { getPromptPayConfig } from '../services/promptpayConfig';
+import { buildPromptPayBillPayment, renderPromptPayCardSvg } from '../services/promptpay';
+import { getPromptPayConfig, PROMPTPAY_MERCHANT_NAME } from '../services/promptpayConfig';
 import { renderQr } from '../services/qrImage';
 import { getReservationByRef } from '../db/queries/reservations';
 import { checkRateLimit } from '../cache/kv';
@@ -7,9 +7,35 @@ import { rateLimitKey } from '../cache/keys';
 import { sanitizeStr } from '../config';
 import { Env } from '../types';
 import { AuthenticatedUser } from '../auth/middleware';
+import type { AdditionalDataFields } from '@thai-qr-payment/payload';
 
 const QR_RATE_LIMIT_MAX = 30;
 const QR_RATE_LIMIT_TTL_SECONDS = 60;
+
+const ADDITIONAL_DATA_KEYS = [
+  'billNumber',
+  'mobileNumber',
+  'storeLabel',
+  'loyaltyNumber',
+  'referenceLabel',
+  'customerLabel',
+  'terminalLabel',
+  'purposeOfTransaction',
+  'consumerDataRequest',
+] as const;
+
+/** Pull known tag-62 sub-fields out of an arbitrary JSON body value, capped so
+ *  a malicious caller can't stuff a huge tag 62 into the wire payload. */
+function sanitizeAdditionalData(value: unknown): Partial<AdditionalDataFields> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Partial<AdditionalDataFields> = {};
+  for (const key of ADDITIONAL_DATA_KEYS) {
+    const raw = (value as Record<string, unknown>)[key];
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    out[key] = raw.trim().slice(0, 32);
+  }
+  return out;
+}
 
 /**
  * PromptPay Bill Payment QR.
@@ -51,15 +77,21 @@ export async function handleGeneratePromptPayQr(
   }
 
   try {
+    const additionalData: AdditionalDataFields = { billNumber: ref, storeLabel: PROMPTPAY_MERCHANT_NAME };
     const payload = buildPromptPayBillPayment({
       billerId: cfg.billerId,
       ref1: cfg.ref1,
       ref2: cfg.ref2,
       ref3: cfg.ref3,
       amount,
+      additionalData,
+    });
+    const qrCardSvg = renderPromptPayCardSvg(payload, {
+      merchantName: PROMPTPAY_MERCHANT_NAME,
+      amountLabel: `${amount.toLocaleString()} บาท`,
     });
     const { qrDataUrl } = await renderQr(payload);
-    const base = { status: 'ok', payload, qrDataUrl, amount };
+    const base = { status: 'ok', payload, qrDataUrl, qrCardSvg, amount, additionalData };
     if (user) {
       return { ...base, billerId: cfg.billerId, ref1: cfg.ref1, ref2: cfg.ref2, ref3: cfg.ref3 };
     }
@@ -77,6 +109,8 @@ async function handleSampleQr(env: Env, body: Record<string, unknown>): Promise<
   const ref3 = sanitizeStr(body.ref3, 64) || cfg.ref3;
   const amount = sanitizeStr(body.amount, 16);
   const pointOfInitiation = sanitizeStr(body.pointOfInitiation, 2) || undefined;
+  const merchantName = sanitizeStr(body.merchantName, 32) || PROMPTPAY_MERCHANT_NAME;
+  const additionalData = sanitizeAdditionalData(body.additionalData);
 
   try {
     const payload = buildPromptPayBillPayment({
@@ -86,9 +120,26 @@ async function handleSampleQr(env: Env, body: Record<string, unknown>): Promise<
       ref3,
       amount: amount || undefined,
       pointOfInitiation: pointOfInitiation === '12' ? '12' : '11',
+      additionalData,
+    });
+    const qrCardSvg = renderPromptPayCardSvg(payload, {
+      merchantName,
+      amountLabel: amount ? `${amount} บาท` : undefined,
     });
     const { qrDataUrl } = await renderQr(payload);
-    return { status: 'ok', payload, qrDataUrl, amount: amount || 0, billerId, ref1, ref2, ref3 };
+    return {
+      status: 'ok',
+      payload,
+      qrDataUrl,
+      qrCardSvg,
+      amount: amount || 0,
+      billerId,
+      ref1,
+      ref2,
+      ref3,
+      merchantName,
+      additionalData,
+    };
   } catch (e) {
     return { status: 'error', message: String(e instanceof Error ? e.message : e) };
   }

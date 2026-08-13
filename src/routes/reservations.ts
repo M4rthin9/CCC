@@ -425,12 +425,18 @@ export async function handleUpdateVisitorApproval(
       .toString()
       .trim()
       .toLowerCase() === 'yes';
-  const extraVisitorApproved = body.extraVisitorApproved !== undefined ? String(body.extraVisitorApproved) : undefined;
+  // Fall back to the persisted approvals when only the main visitor is being
+  // approved, so previously-approved extra visitors keep their fees (and their
+  // child discounts) instead of being wiped out of the total.
+  const extraVisitorApproved =
+    body.extraVisitorApproved !== undefined
+      ? String(body.extraVisitorApproved)
+      : String(rows[0]!.extraVisitorApproved || '') || undefined;
   const extraVisitorNames = String(rows[0]!.extraVisitorNames || '');
   const mainRelation = String(rows[0]!.relation || '');
   const mainAge = String(rows[0]!.visitorAge || '');
 
-  const { visitorCount, total } = computeApprovalTotals(
+  const { visitorCount, total, adultCount, child5to8Count, childUnder5Count } = computeApprovalTotals(
     mainApproved,
     extraVisitorApproved,
     extraVisitorNames,
@@ -444,6 +450,9 @@ export async function handleUpdateVisitorApproval(
     cols.push(['extraVisitorApproved', sanitizeStr(body.extraVisitorApproved, 5000)]);
   cols.push(['visitorCount', visitorCount]);
   cols.push(['total', total]);
+  cols.push(['adultCount', adultCount]);
+  cols.push(['child5to8Count', child5to8Count]);
+  cols.push(['childUnder5Count', childUnder5Count]);
 
   const mainRejected = body.visitorApproved !== undefined && !mainApproved;
   if (mainRejected) {
@@ -463,6 +472,9 @@ export async function handleUpdateVisitorApproval(
       extraVisitorApproved: body.extraVisitorApproved,
       visitorCount,
       total,
+      adultCount,
+      child5to8Count,
+      childUnder5Count,
       affectedRows: rows.length,
     },
     'success'
@@ -495,7 +507,7 @@ export async function handleUpdateVisitorApproval(
       total,
     }).catch(() => undefined);
   }
-  return { status: 'ok', visitorCount, total };
+  return { status: 'ok', visitorCount, total, adultCount, child5to8Count, childUnder5Count };
 }
 
 export async function handleUpdateBooking(

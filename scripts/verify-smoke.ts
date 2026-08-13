@@ -9,6 +9,7 @@ import UPNG from 'upng-js';
 import { encode as encodeJpeg } from 'jpeg-js';
 import { verifySlipBytes } from '../src/services/slipverify';
 import { buildPromptPayBillPayment, renderPromptPayCardSvg } from '../src/services/promptpay';
+import { computeApprovalTotals } from '../src/services/pricing';
 import { buildSlipVerifyPayload, renderSlipVerifyMiniQr } from '../src/services/slipQr';
 import { PROMPTPAY_DEFAULTS } from '../src/services/promptpayConfig';
 import type { Reservation } from '../src/types';
@@ -260,6 +261,50 @@ try {
   miniBadDateThrew = true;
 }
 check('mini tm date validated', miniBadDateThrew, true);
+
+// Approve-visitor recalc (computeApprovalTotals) — the fee is recomputed from
+// each visitor's age ladder (<5 free, 5-8 half, 9+ full) using only approved
+// visitors. Persisted extra approvals are fed in when only the main visitor is
+// approved, so extra fees are never dropped.
+const mainAdult = computeApprovalTotals(
+  true,
+  'no;;yes',
+  'A|1|บิดา / มารดา|30;;B|2|บุตร / ธิดา|6',
+  'บิดา / มารดา',
+  '30'
+);
+check('approve main-only keeps approved extra (child 5-8)', String(mainAdult.total), '2500');
+check('approve main-only visitorCount', String(mainAdult.visitorCount), '2');
+check('approve main-only adultCount', String(mainAdult.adultCount), '1');
+check('approve main-only child5to8Count', String(mainAdult.child5to8Count), '1');
+check('approve main-only childUnder5Count', String(mainAdult.childUnder5Count), '0');
+
+const singleChildExtra = computeApprovalTotals(
+  true,
+  'yes',
+  'B|2|บุตร / ธิดา|4',
+  'บิดา / มารดา',
+  '30'
+);
+check('approve single extra child <5 free', String(singleChildExtra.total), '2000');
+check('approve single extra childUnder5Count', String(singleChildExtra.childUnder5Count), '1');
+
+const childAge9 = computeApprovalTotals(true, 'yes', 'B|2|บุตร / ธิดา|9', 'บิดา / มารดา', '30');
+check('approve extra child age 9 full fee', String(childAge9.total), '3000');
+check('approve extra child age 9 adultCount', String(childAge9.adultCount), '2');
+
+const mainChild5to8 = computeApprovalTotals(true, undefined, '', 'บุตร / ธิดา', '6');
+check('approve main child 5-8 half', String(mainChild5to8.total), '1500');
+check('approve main child 5-8 child5to8Count', String(mainChild5to8.child5to8Count), '1');
+
+const mainChildUnder5 = computeApprovalTotals(true, undefined, '', 'บุตร / ธิดา', '4');
+check('approve main child <5 free', String(mainChildUnder5.total), '1000');
+check('approve main child <5 childUnder5Count', String(mainChildUnder5.childUnder5Count), '1');
+
+const mainRejected = computeApprovalTotals(false, 'yes', 'B|2|บุตร / ธิดา|6', 'บิดา / มารดา', '30');
+check('approve main rejected total', String(mainRejected.total), '1000');
+check('approve main rejected visitorCount', String(mainRejected.visitorCount), '0');
+check('approve main rejected no children counted', String(mainRejected.child5to8Count), '0');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

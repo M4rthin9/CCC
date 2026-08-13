@@ -151,39 +151,57 @@ export function applyServerPricing(data: Record<string, unknown>): { clientTotal
   return { clientTotal, serverTotal: cost.total };
 }
 
-// Computes the corrected visitorCount and total given the approval strings,
-// mirroring handleUpdateVisitorApproval. D.3a: the main visitor now earns the
-// child discount too (inputs finally available via the visitorAge column).
+export interface ApprovalTotals {
+  visitorCount: number;
+  total: number;
+  adultCount: number;
+  child5to8Count: number;
+  childUnder5Count: number;
+}
+
+// Computes the corrected visitorCount, total, and age-bucket counts given the
+// approval strings, mirroring handleUpdateVisitorApproval. Only approved
+// ('yes') visitors are charged; rejected and still-pending ones are dropped.
+// The age ladder (<5 free, 5-8 half, 9+ full) applies per visitor, matching
+// the booking-time computeBookingCost. Extras are always parsed so a single
+// extra (no ';;' separator) and legacy 'name (relation)' rows still get the
+// child discount when an age is stored.
 export function computeApprovalTotals(
   mainApproved: boolean,
   extraVisitorApproved: string | undefined,
   extraVisitorNames: string | undefined,
   mainRelation = '',
   mainAge = ''
-): { visitorCount: number; total: number } {
-  const mainFee = mainApproved ? mainVisitorFee(mainRelation, mainAge) : MAIN_VISITOR_FEE;
-  let correctTotal = PRISONER_FEE + mainFee;
-  let extraYesCount = 0;
-
-  if (extraVisitorApproved) {
-    const allApprovals = String(extraVisitorApproved).split(';;');
-    extraYesCount = allApprovals.filter((v) => (v || '').trim().toLowerCase() === 'yes').length;
-
-    const raw = String(extraVisitorNames || '');
-    if (raw.includes(';;')) {
-      const extras = parseExtraVisitorNames(raw);
-      let extraFeeSum = 0;
-      extras.forEach((v, idx) => {
-        if ((allApprovals[idx] || '').trim().toLowerCase() === 'yes') {
-          extraFeeSum += extraVisitorFee(v.relation, v.age);
-        }
-      });
-      correctTotal += extraFeeSum;
-    } else {
-      correctTotal += extraYesCount * EXTRA_VISITOR_FEE;
-    }
+): ApprovalTotals {
+  // Rejecting the main visitor auto-cancels the whole booking (the route sets
+  // status to ไม่อนุมัติ), so nobody attends and only the prisoner fee remains.
+  if (!mainApproved) {
+    return { visitorCount: 0, total: PRISONER_FEE, adultCount: 0, child5to8Count: 0, childUnder5Count: 0 };
   }
 
-  const correctVisitorCount = (mainApproved ? 1 : 0) + extraYesCount;
-  return { visitorCount: correctVisitorCount, total: correctTotal };
+  const mainFee = mainVisitorFee(mainRelation, mainAge);
+  let total = PRISONER_FEE + mainFee;
+  let adultCount = 0;
+  let child5to8Count = 0;
+  let childUnder5Count = 0;
+
+  if (mainFee === 0) childUnder5Count += 1;
+  else if (mainFee < MAIN_VISITOR_FEE) child5to8Count += 1;
+  else adultCount += 1;
+
+  const allApprovals = String(extraVisitorApproved || '').split(';;');
+  const extras = parseExtraVisitorNames(extraVisitorNames);
+  let extraYesCount = 0;
+  extras.forEach((v, idx) => {
+    if ((allApprovals[idx] || '').trim().toLowerCase() !== 'yes') return;
+    extraYesCount += 1;
+    const fee = extraVisitorFee(v.relation, v.age);
+    total += fee;
+    if (fee === 0) childUnder5Count += 1;
+    else if (fee < EXTRA_VISITOR_FEE) child5to8Count += 1;
+    else adultCount += 1;
+  });
+
+  const visitorCount = 1 + extraYesCount;
+  return { visitorCount, total, adultCount, child5to8Count, childUnder5Count };
 }

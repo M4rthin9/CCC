@@ -94,11 +94,12 @@ export async function handleGeneratePromptPayQr(
       },
       recipient: cfg.recipient,
     });
+    const { qrDataUrl } = await renderQr(payload);
     const qrCardSvg = renderPromptPayCardSvg(payload, {
       merchantName: PROMPTPAY_MERCHANT_NAME,
       amountLabel: `${amount.toLocaleString()} บาท`,
+      qrDataUrl,
     });
-    const { qrDataUrl } = await renderQr(payload);
     const base = { status: 'ok', payload, qrDataUrl, qrCardSvg, amount, additionalData };
     if (user) {
       return { ...base, billerId: cfg.billerId, ref1: cfg.ref1, ref2: cfg.ref2, ref3: cfg.ref3 };
@@ -136,11 +137,12 @@ async function handleSampleQr(env: Env, body: Record<string, unknown>): Promise<
       },
       recipient: cfg.recipient,
     });
+    const { qrDataUrl } = await renderQr(payload);
     const qrCardSvg = renderPromptPayCardSvg(payload, {
       merchantName,
       amountLabel: amount ? `${amount} บาท` : undefined,
+      qrDataUrl,
     });
-    const { qrDataUrl } = await renderQr(payload);
     return {
       status: 'ok',
       payload,

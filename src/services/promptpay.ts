@@ -87,6 +87,9 @@ export interface PromptPayCardOptions {
   theme?: 'color' | 'silhouette';
   background?: string;
   accent?: string;
+  /** PNG data URL from `renderQr`. Supplied, it replaces the vendor's vector
+   *  QR — see `renderPromptPayCardSvg`. */
+  qrDataUrl?: string;
 }
 
 function assertRef(label: string, value: string): void {
@@ -229,23 +232,62 @@ export function buildPromptPayBillPayment({
   return builder.build();
 }
 
+/** The vendor card draws the symbol as `<g transform="translate(..) scale(..)">
+ *  <path d=".."/></g>` — one run-length path per module row, scaled by a
+ *  fractional 500/size factor. Matched so it can be swapped for a raster. */
+const VENDOR_QR_GROUP = /<g transform="translate\([^"]*\)[^"]*"><path d="[^"]*" fill="[^"]*"\/><\/g>/;
+
+/** Geometry of the vendor card's white QR panel (`<rect x=50 y=250 500x500>`). */
+const CARD_QR_BOX = { x: 50, y: 250, size: 500 };
+
 /**
- * Branded PromptPay card (Thai QR Payment header + PromptPay sub-mark +
- * error-correction-H QR), rendered server-side as a self-contained SVG string.
- * Built on `thai-qr-payment/render`, which bundles the brand assets; the
- * caller displays it as trusted markup (e.g. `{@html }` in Svelte).
+ * Branded PromptPay card (Thai QR Payment header + PromptPay sub-mark + QR),
+ * rendered server-side as a self-contained SVG string. Built on
+ * `thai-qr-payment/render`, which bundles the brand assets; the caller displays
+ * it as trusted markup (e.g. `{@html }` in Svelte).
+ *
+ * The vendor's own QR is not scannable in practice, for two compounding
+ * reasons: it scales the module grid by a fractional 500/size under
+ * `shape-rendering="crispEdges"`, so module edges snap to device pixels
+ * independently and neighbouring modules end up different widths; and it fills
+ * the white panel edge to edge, leaving no quiet zone at all. Pass
+ * `options.qrDataUrl` (a PNG from `renderQr`, which bakes in whole-pixel
+ * modules and a 4-module quiet zone) and it is substituted for that vector
+ * group, along with the centre logo overlay that would otherwise sit on top of
+ * the symbol. Without it the card falls back to the vendor's vector QR, which
+ * is for display only.
  *
  * The card caption is SVG text, not wire data — Thai merchant names are safe
  * here even though `toWireText` strips them from the payload.
  */
 export function renderPromptPayCardSvg(payload: string, options?: PromptPayCardOptions): string {
   const matrix = encodeQR(payload, { errorCorrectionLevel: 'H' });
-  return renderCard(matrix, {
+  const raster = options?.qrDataUrl;
+  const svg = renderCard(matrix, {
     theme: options?.theme,
     background: options?.background,
     accent: options?.accent,
     showCaption: options?.showCaption ?? true,
     merchantName: options?.merchantName,
     amountLabel: options?.amountLabel,
+    // Typed as a string (a logo override) but read as a boolean flag by the
+    // bundle; false keeps the centre clear for the raster.
+    ...(raster ? { centerOverlay: false as unknown as string } : {}),
   });
+
+  if (!raster) return svg;
+
+  const { x, y, size } = CARD_QR_BOX;
+  const image =
+    `<image x="${x}" y="${y}" width="${size}" height="${size}" ` +
+    `href="${escapeXmlAttribute(raster)}" xlink:href="${escapeXmlAttribute(raster)}" ` +
+    'preserveAspectRatio="xMidYMid meet"/>';
+  const replaced = svg.replace(VENDOR_QR_GROUP, image);
+  // Bundle markup changed shape — keep the vector QR rather than ship a card
+  // with no symbol on it. `qrDataUrl` remains the scannable output either way.
+  return replaced === svg ? svg : replaced;
+}
+
+function escapeXmlAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

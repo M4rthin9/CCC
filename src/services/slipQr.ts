@@ -27,7 +27,6 @@ export interface SlipVerifyMiniQrInput {
 export interface SlipVerifyMiniQrOutput {
   provider: SlipVerifyProvider;
   payload: string;
-  svg: string;
   qrDataUrl: string;
   detail: Record<string, unknown>;
 }
@@ -55,10 +54,10 @@ export function buildSlipVerifyPayload(input: SlipVerifyMiniQrInput): string {
   return buildSlipVerify({ sendingBank, transRef });
 }
 
-/** Build a Slip Verify Mini-QR payload and render it to SVG. */
+/** Build a Slip Verify Mini-QR payload and render it to a scannable PNG. */
 export async function renderSlipVerifyMiniQr(input: SlipVerifyMiniQrInput): Promise<SlipVerifyMiniQrOutput> {
   const payload = buildSlipVerifyPayload(input);
-  const { svg, qrDataUrl } = await renderQr(payload);
+  const { qrDataUrl } = await renderQr(payload);
   const detail =
     input.provider === 'truemoney'
       ? {
@@ -67,5 +66,5 @@ export async function renderSlipVerifyMiniQr(input: SlipVerifyMiniQrInput): Prom
           date: String(input.date || ''),
         }
       : { sendingBank: String(input.sendingBank || ''), transRef: String(input.transRef || '') };
-  return { provider: input.provider, payload, svg, qrDataUrl, detail };
+  return { provider: input.provider, payload, qrDataUrl, detail };
 }

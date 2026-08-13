@@ -6,11 +6,13 @@ import {
   parseTrueMoneySlipVerify,
 } from '@thai-qr-payment/payload';
 import UPNG from 'upng-js';
+import jsQR from 'jsqr';
 import { encode as encodeJpeg } from 'jpeg-js';
 import { verifySlipBytes } from '../src/services/slipverify';
 import { buildPromptPayBillPayment, renderPromptPayCardSvg } from '../src/services/promptpay';
 import { computeApprovalTotals } from '../src/services/pricing';
 import { buildSlipVerifyPayload, renderSlipVerifyMiniQr } from '../src/services/slipQr';
+import { renderQr } from '../src/services/qrImage';
 import { importPrisonersBulk, type PrisonerImportRow } from '../src/db/queries/prisoners';
 import { PROMPTPAY_DEFAULTS } from '../src/services/promptpayConfig';
 import type { Reservation } from '../src/types';
@@ -33,6 +35,15 @@ const booking = { ref: 'VIS-00001', total: 500 } as Reservation;
 const fakeDb = {
   prepare: () => ({ bind: () => ({ first: async () => null }) }),
 } as unknown as D1Database;
+
+/** Read a rendered PNG data URL back with jsQR — the same decoder the slip
+ *  verifier runs on uploaded images. */
+function decodeQrDataUrl(dataUrl: string): string {
+  const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]!), (c) => c.charCodeAt(0));
+  const png = UPNG.decode(bytes);
+  const rgba = new Uint8ClampedArray(UPNG.toRGBA8(png)[0]!);
+  return jsQR(rgba, png.width, png.height)?.data ?? '';
+}
 
 async function qrPng(text: string): Promise<Uint8Array> {
   return toBuffer(text, { type: 'png', width: 512, margin: 2, errorCorrectionLevel: 'M' });
@@ -179,14 +190,25 @@ const parsedMobile = parsePayload(payMobile);
 check('mobile QR uses promptpay template', parsedMobile.merchant?.kind ?? '', 'promptpay');
 check('mobile QR crc valid', parsedMobile.crc?.valid ?? false, true);
 
-// Branded card render: ECC-H QR in a 600x800 SVG carrying the caption.
+// The QR the payer actually scans: a PNG at whole-pixel modules. Decode it
+// back with the same reader used on uploaded slips — if this round-trips, a
+// bank app reads it too.
+const renderedPay = await renderQr(payWithAdditional);
+check('payment qr is png', renderedPay.qrDataUrl.startsWith('data:image/png;base64,'), true);
+check('payment qr decodes to payload', decodeQrDataUrl(renderedPay.qrDataUrl), payWithAdditional);
+
+// Branded card render: 600x800 SVG carrying the caption, with the raster QR
+// spliced in place of the vendor's fractionally-scaled vector one.
 const cardSvg = renderPromptPayCardSvg(payWithAdditional, {
   merchantName: 'ร้านสงเคราะห์ผู้ต้องขัง',
   amountLabel: '500 บาท',
+  qrDataUrl: renderedPay.qrDataUrl,
 });
 check('card svg starts with <svg', cardSvg.startsWith('<svg'), true);
 check('card svg has viewBox', cardSvg.includes('viewBox'), true);
 check('card svg carries caption', cardSvg.includes('ร้านสงเคราะห์ผู้ต้องขัง'), true);
+check('card svg embeds raster qr', cardSvg.includes('<image x="50" y="250"'), true);
+check('card svg drops vector qr path', /<g transform="translate/.test(cardSvg), false);
 
 const r1 = (await verifySlipBytes(fakeDb, await qrPng(payOk), booking)).result;
 // Our payment QR carries no bank transaction id — a slip that is "just" our
@@ -277,7 +299,7 @@ check('mini tm payload === buildTrueMoneySlipVerify', miniTmPayload, tmSlipVerif
 check('mini tm parses', parseTrueMoneySlipVerify(miniTmPayload)?.transactionId ?? '', 'TXN0001234567');
 
 const rendered = await renderSlipVerifyMiniQr({ provider: 'bank', sendingBank: '014', transRef: 'PPTEST0001' });
-check('mini render data-url', rendered.qrDataUrl.startsWith('data:image/svg+xml;base64,'), true);
+check('mini render data-url', rendered.qrDataUrl.startsWith('data:image/png;base64,'), true);
 const r10 = (await verifySlipBytes(fakeDb, await qrPng(rendered.payload), booking)).result;
 check('mini rendered verifies', r10.status, 'slip_verify');
 check('mini rendered kind', r10.kind, 'slipVerify');

@@ -94,7 +94,7 @@ export async function handleGeneratePromptPayQr(
       },
       recipient: cfg.recipient,
     });
-    const qrCardSvg = renderPromptPayCardSvg(payload, {
+    const qrCardSvg = await renderPromptPayCardSvg(payload, {
       merchantName: PROMPTPAY_MERCHANT_NAME,
       amountLabel: `${amount.toLocaleString()} บาท`,
     });
@@ -136,7 +136,7 @@ async function handleSampleQr(env: Env, body: Record<string, unknown>): Promise<
       },
       recipient: cfg.recipient,
     });
-    const qrCardSvg = renderPromptPayCardSvg(payload, {
+    const qrCardSvg = await renderPromptPayCardSvg(payload, {
       merchantName,
       amountLabel: amount ? `${amount} บาท` : undefined,
     });

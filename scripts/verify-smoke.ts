@@ -179,8 +179,8 @@ const parsedMobile = parsePayload(payMobile);
 check('mobile QR uses promptpay template', parsedMobile.merchant?.kind ?? '', 'promptpay');
 check('mobile QR crc valid', parsedMobile.crc?.valid ?? false, true);
 
-// Branded card render: ECC-H QR in a 600x800 SVG carrying the caption.
-const cardSvg = renderPromptPayCardSvg(payWithAdditional, {
+// Branded card render: ECC-H QR in a 600x830 SVG carrying the caption.
+const cardSvg = await renderPromptPayCardSvg(payWithAdditional, {
   merchantName: 'ร้านสงเคราะห์ผู้ต้องขัง',
   amountLabel: '500 บาท',
 });

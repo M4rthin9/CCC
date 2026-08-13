@@ -17,7 +17,7 @@ import {
   invalidatePrisonerLookupCache,
   invalidateReservationsCache,
 } from '../cache/invalidation';
-import { computeApprovalTotals } from '../services/pricing';
+import { computeApprovalTotals, applyServerPricing } from '../services/pricing';
 import { logEvent } from '../services/logger';
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
@@ -427,8 +427,16 @@ export async function handleUpdateVisitorApproval(
       .toLowerCase() === 'yes';
   const extraVisitorApproved = body.extraVisitorApproved !== undefined ? String(body.extraVisitorApproved) : undefined;
   const extraVisitorNames = String(rows[0]!.extraVisitorNames || '');
+  const mainRelation = String(rows[0]!.relation || '');
+  const mainAge = String(rows[0]!.visitorAge || '');
 
-  const { visitorCount, total } = computeApprovalTotals(mainApproved, extraVisitorApproved, extraVisitorNames);
+  const { visitorCount, total } = computeApprovalTotals(
+    mainApproved,
+    extraVisitorApproved,
+    extraVisitorNames,
+    mainRelation,
+    mainAge
+  );
 
   const cols: Array<[string, unknown]> = [];
   if (body.visitorApproved !== undefined) cols.push(['visitorApproved', sanitizeStr(body.visitorApproved, 8)]);
@@ -535,6 +543,35 @@ export async function handleUpdateBooking(
     }
   }
 
+  // Server-authoritative pricing: recompute whenever a pricing input changed
+  // or any pricing numeric was supplied, and drop the client-supplied
+  // numerics from cols in favor of the authoritative ones.
+  const pricingInputs = ['relation', 'visitorAge', 'extraVisitorNames'];
+  const pricingNumerics = ['total', 'visitorCount', 'adultCount', 'child5to8Count', 'childUnder5Count', 'totalPersons'];
+  const touchedPricingInput = pricingInputs.some((f) => changes[f] !== undefined);
+  const suppliedNumeric = pricingNumerics.some((f) => changes[f] !== undefined);
+  if (touchedPricingInput || suppliedNumeric) {
+    const merged: Record<string, unknown> = { ...rows[0]!, ...changes };
+    const clientTotal =
+      merged.total !== undefined && merged.total !== null && merged.total !== '' ? Number(merged.total) : undefined;
+    const pricing = applyServerPricing(merged);
+    pricingNumerics.forEach((f) => {
+      const i = cols.findIndex(([c]) => c === f);
+      if (i >= 0) cols.splice(i, 1);
+    });
+    pricingNumerics.forEach((f) => cols.push([f, merged[f]]));
+    if (clientTotal !== undefined && clientTotal !== pricing.serverTotal) {
+      await logEvent(
+        env,
+        user.username,
+        'pricing_override',
+        ref,
+        { clientTotal, serverTotal: pricing.serverTotal },
+        'success'
+      );
+    }
+  }
+
   if (cols.length > 0) {
     cols.push(['updatedAt', new Date().toISOString()]);
     cols.push(['version', Number(rows[0]!.version || 1) + 1]);
@@ -571,6 +608,20 @@ export async function handleCreateBooking(
   if (!validation.ok) return { status: 'error', message: validation.message };
 
   const data = validation.data;
+
+  // Server-authoritative pricing (mirrors handleSaveReservation).
+  const { clientTotal, serverTotal } = applyServerPricing(data);
+  if (clientTotal !== undefined && clientTotal !== serverTotal) {
+    await logEvent(
+      env,
+      user.username,
+      'pricing_override',
+      String(data.ref || ''),
+      { clientTotal, serverTotal },
+      'success'
+    );
+  }
+
   const newPrisonerId = String(data.prisonerId || '').trim();
 
   const discipline = await getPrisonerDiscipline(env, newPrisonerId);

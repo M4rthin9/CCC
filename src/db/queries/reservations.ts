@@ -26,6 +26,8 @@ const RESERVATION_COLUMNS = [
   'adultCount',
   'child5to8Count',
   'childUnder5Count',
+  'visitorAge',
+  'payment_ref1',
   'status',
   'slipImage',
   'slip_verify_status',
@@ -190,9 +192,7 @@ export function findReservationBySlipFingerprint(
     .bind(...halfParams, ...halfParams)
     .first<{ ref: string; slip_fingerprint: string; slip_image_hash: string }>()
     .then((r) =>
-      r
-        ? { ref: r.ref, matchedBy: fingerprint && r.slip_fingerprint === fingerprint ? 'fingerprint' : 'image' }
-        : null
+      r ? { ref: r.ref, matchedBy: fingerprint && r.slip_fingerprint === fingerprint ? 'fingerprint' : 'image' } : null
     );
 }
 

@@ -13,6 +13,7 @@ import { verifyTurnstileToken } from '../middleware/turnstile';
 import { invalidatePrisonerLookupCache, invalidateReservationsCache } from '../cache/invalidation';
 import { logEvent } from '../services/logger';
 import { validateSaveReservation, generateUniqueRefServer, findDuplicateActive } from '../services/reservationService';
+import { applyServerPricing } from '../services/pricing';
 import { getPrisonerDiscipline } from '../services/disciplineService';
 import { notify } from '../services/notifications';
 import { Env, Reservation } from '../types';
@@ -98,6 +99,21 @@ export async function handleSaveReservation(
   }
 
   const data = validation.data;
+
+  // Server-authoritative pricing: never trust client-submitted totals/counts.
+  const { clientTotal, serverTotal } = applyServerPricing(data);
+  if (clientTotal !== undefined && clientTotal !== serverTotal) {
+    await logEvent(
+      env,
+      'public',
+      'pricing_override',
+      String(data.ref || ''),
+      { clientTotal, serverTotal },
+      'success',
+      meta
+    );
+  }
+
   const newPrisonerId = String(data.prisonerId || '').trim();
 
   const discipline = await getPrisonerDiscipline(env, newPrisonerId);

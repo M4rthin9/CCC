@@ -71,6 +71,8 @@ export interface Reservation {
   adultCount?: number;
   child5to8Count?: number;
   childUnder5Count?: number;
+  visitorAge?: string;
+  payment_ref1?: string;
   status?: string;
   slipImage?: string;
   cancelReason?: string;

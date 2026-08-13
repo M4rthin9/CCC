@@ -12,6 +12,7 @@
     "db:seed": "tsx scripts/migrate-sheets.ts",
     "db:execute": "wrangler d1 execute ccc-reservations --remote --file=./data/seed.sql",
     "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/verify-smoke.ts",
     "lint": "eslint src scripts",
     "lint:fix": "eslint src scripts --fix",
     "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\" \"*.{json,mjs}\" \"**/*.{md,yml,yaml}\" \"!data/**\" \"!node_modules/**\"",
@@ -24,6 +25,7 @@
     "jose": "^5.9.0",
     "jpeg-js": "^0.4.4",
     "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4",
     "upng-js": "^2.1.0"
   },
   "devDependencies": {
@@ -35,7 +37,6 @@
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.9.0",
     "prettier": "^3.9.6",
-    "qrcode": "^1.5.4",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.66.0",

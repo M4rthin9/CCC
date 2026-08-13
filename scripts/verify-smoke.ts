@@ -1,24 +1,19 @@
-import { buildSlipVerify, buildTrueMoneySlipVerify } from '@thai-qr-payment/payload';
+import { buildSlipVerify, buildTrueMoneySlipVerify, parsePayload } from '@thai-qr-payment/payload';
 import UPNG from 'upng-js';
 import { encode as encodeJpeg } from 'jpeg-js';
 import { verifySlipBytes } from '../src/services/slipverify';
 import { buildPromptPayBillPayment } from '../src/services/promptpay';
 import { PROMPTPAY_DEFAULTS } from '../src/services/promptpayConfig';
-import type { PromptPayConfig } from '../src/services/promptpayConfig';
 import type { Reservation } from '../src/types';
 
 const { toBuffer } = (await import('qrcode')) as unknown as {
   toBuffer: (text: string, opts: Record<string, unknown>) => Promise<Uint8Array>;
 };
 
-const cfg: PromptPayConfig = {
-  billerId: PROMPTPAY_DEFAULTS.billerId,
-  ref1: PROMPTPAY_DEFAULTS.ref1,
-  ref2: PROMPTPAY_DEFAULTS.ref2,
-  ref3: PROMPTPAY_DEFAULTS.ref3,
-  pointOfInitiation: '11',
-};
-
+// Pillar 1: verification matches the booking's per-booking refs — the minted
+// 'PP…' ref1 and the booking ref without dashes — against the resolved biller.
+const billerId = PROMPTPAY_DEFAULTS.billerId;
+const paymentRef1 = 'PPA7K2M9X4Q';
 const booking = { ref: 'VIS-00001', total: 500 } as Reservation;
 
 // No real D1 in this standalone script — stub a DB that always reports "no
@@ -68,71 +63,110 @@ function check(name: string, actual: string | boolean, expected: string | boolea
 }
 
 const payOk = buildPromptPayBillPayment({
-  billerId: cfg.billerId,
-  ref1: cfg.ref1,
-  ref2: cfg.ref2,
-  ref3: cfg.ref3,
+  billerId,
+  ref1: paymentRef1,
+  ref2: 'VIS00001',
   amount: 500,
   pointOfInitiation: '12',
 });
 const payBadAmount = buildPromptPayBillPayment({
-  billerId: cfg.billerId,
-  ref1: cfg.ref1,
-  ref2: cfg.ref2,
-  ref3: cfg.ref3,
+  billerId,
+  ref1: paymentRef1,
+  ref2: 'VIS00001',
   amount: 999,
   pointOfInitiation: '12',
 });
 const payBadBiller = buildPromptPayBillPayment({
   billerId: '111111111111111',
-  ref1: cfg.ref1,
-  ref2: cfg.ref2,
-  ref3: cfg.ref3,
+  ref1: paymentRef1,
+  ref2: 'VIS00001',
+  amount: 500,
+  pointOfInitiation: '12',
+});
+// A QR minted for a *different* booking — the per-booking ref1 must not match.
+const payWrongRef1 = buildPromptPayBillPayment({
+  billerId,
+  ref1: 'PPZZ99999999',
+  ref2: 'VIS00001',
   amount: 500,
   pointOfInitiation: '12',
 });
 const slipVerify = buildSlipVerify({ sendingBank: '002', transRef: '0002123123121200011' });
 const tmSlipVerify = buildTrueMoneySlipVerify({ eventType: 'P2P', transactionId: 'TXN0001234567', date: '25012024' });
 
-const r1 = (await verifySlipBytes(fakeDb, await qrPng(payOk), cfg, booking)).result;
+// Library parity (thai-qr-payment): zero/missing amount => static QR with no
+// tag 54 and POI '11'; billerIds shorter than 15 digits are zero-padded.
+const payStatic = buildPromptPayBillPayment({
+  billerId: '99400016550100',
+  ref1: paymentRef1,
+  ref2: 'VIS00001',
+  amount: 0,
+});
+const parsedStatic = parsePayload(payStatic);
+check('static poi is 11', parsedStatic.pointOfInitiation === 'static', true);
+check('static omits tag 54', parsedStatic.amount === null || parsedStatic.amount === undefined, true);
+const parsedPadded = parsePayload(
+  buildPromptPayBillPayment({ billerId: '99400016550100', ref1: paymentRef1, ref2: 'VIS00001', amount: 500 })
+);
+const parsedMerchant = parsedPadded.merchant;
+const paddedOk =
+  parsedMerchant !== undefined &&
+  parsedMerchant !== null &&
+  parsedMerchant.kind === 'billPayment' &&
+  parsedMerchant.billerId === '099400016550100';
+check('biller zero-padded to 15', paddedOk, true);
+
+const r1 = (await verifySlipBytes(fakeDb, await qrPng(payOk), billerId, booking, paymentRef1)).result;
 // paymentQr carries no transaction id, so even a full field match only
 // clears it for manual review — it can't prove a real payment happened.
 check('payment-ok status', r1.status, 'slip_verify');
 check('payment-ok biller', r1.match?.biller === true, true);
-check('payment-ok refs', r1.match?.refs === true, true);
+check('payment-ok ref1', r1.match?.ref1 === true, true);
+check('payment-ok ref2', r1.match?.ref2 === true, true);
 check('payment-ok amount', r1.match?.amount === true, true);
 
-const r2 = (await verifySlipBytes(fakeDb, await qrPng(payBadAmount), cfg, booking)).result;
+const r2 = (await verifySlipBytes(fakeDb, await qrPng(payBadAmount), billerId, booking, paymentRef1)).result;
 check('payment-bad-amount status', r2.status, 'mismatch');
 check('payment-bad-amount flag', (r2.mismatch ?? []).includes('amount'), true);
 
-const r3 = (await verifySlipBytes(fakeDb, await qrPng(payBadBiller), cfg, booking)).result;
+const r3 = (await verifySlipBytes(fakeDb, await qrPng(payBadBiller), billerId, booking, paymentRef1)).result;
 check('payment-bad-biller status', r3.status, 'mismatch');
 check('payment-bad-biller flag', (r3.mismatch ?? []).includes('biller'), true);
 
-const r4 = (await verifySlipBytes(fakeDb, await qrPng(slipVerify), cfg, booking)).result;
+const r3b = (await verifySlipBytes(fakeDb, await qrPng(payWrongRef1), billerId, booking, paymentRef1)).result;
+check('payment-wrong-ref1 status', r3b.status, 'mismatch');
+check('payment-wrong-ref1 flag', (r3b.mismatch ?? []).includes('ref1'), true);
+
+const r4 = (await verifySlipBytes(fakeDb, await qrPng(slipVerify), billerId, booking, paymentRef1)).result;
 check('slip-verify status', r4.status, 'slip_verify');
 check('slip-verify kind', r4.kind, 'slipVerify');
 check('slip-verify bank', (r4.detail?.sendingBank as string) === '002', true);
 check('slip-verify review flag', r4.detail?.reviewRequired === true, true);
 
-const r5 = (await verifySlipBytes(fakeDb, await qrPng(tmSlipVerify), cfg, booking)).result;
+const r5 = (await verifySlipBytes(fakeDb, await qrPng(tmSlipVerify), billerId, booking, paymentRef1)).result;
 check('tm-slip-verify status', r5.status, 'slip_verify');
 check('tm-slip-verify kind', r5.kind, 'trueMoneySlipVerify');
 
-const r6 = (await verifySlipBytes(fakeDb, await combine(await qrPng(payOk), await qrPng(slipVerify)), cfg, booking))
-  .result;
+const r6 = (
+  await verifySlipBytes(
+    fakeDb,
+    await combine(await qrPng(payOk), await qrPng(slipVerify)),
+    billerId,
+    booking,
+    paymentRef1
+  )
+).result;
 // Combined slip: the paymentQr envelope is preferred when both are present,
 // but (as above) a clean match still only clears it for manual review.
 check('two-qr status', r6.status, 'slip_verify');
 check('two-qr qrCount>=2', r6.qrCount >= 2, true);
-check('two-qr detail refs', (r6.detail?.reference1 as string) === cfg.ref1, true);
+check('two-qr detail ref1', (r6.detail?.reference1 as string) === paymentRef1, true);
 
-const r7 = (await verifySlipBytes(fakeDb, await toJpeg(await qrPng(payOk)), cfg, booking)).result;
+const r7 = (await verifySlipBytes(fakeDb, await toJpeg(await qrPng(payOk)), billerId, booking, paymentRef1)).result;
 check('jpeg path status', r7.status, 'slip_verify');
 
 const blank = new Uint8Array(UPNG.encode([new Uint8Array(128 * 128 * 4).fill(255)], 128, 128, 4));
-const r8 = (await verifySlipBytes(fakeDb, blank, cfg, booking)).result;
+const r8 = (await verifySlipBytes(fakeDb, blank, billerId, booking, paymentRef1)).result;
 check('blank image status', r8.status, 'unreadable');
 
 const dupeDb = {
@@ -140,7 +174,7 @@ const dupeDb = {
     bind: () => ({ first: async () => ({ ref: 'VIS-99999', slip_fingerprint: '', slip_image_hash: 'x' }) }),
   }),
 } as unknown as D1Database;
-const r9 = (await verifySlipBytes(dupeDb, await qrPng(payOk), cfg, booking)).result;
+const r9 = (await verifySlipBytes(dupeDb, await qrPng(payOk), billerId, booking, paymentRef1)).result;
 check('duplicate status', r9.status, 'duplicate');
 check('duplicate ref', r9.duplicateOfRef ?? '', 'VIS-99999');
 

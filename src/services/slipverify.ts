@@ -10,7 +10,8 @@ import {
   findReservationBySlipFingerprint,
 } from '../db/queries/reservations';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
-import { getPromptPayConfig, PromptPayConfig } from './promptpayConfig';
+import { getPromptPayConfig } from './promptpayConfig';
+import { ensureBookingPaymentRef } from './paymentRef';
 import { logEvent } from './logger';
 import { Env, Reservation } from '../types';
 
@@ -242,10 +243,15 @@ function parseEnvelope(payload: string): ParsedEnvelope | null {
   }
 }
 
+// Pillar 1: matching is now against the booking's own per-booking refs —
+// ref1 = the minted 'PP…' payment ref, ref2 = the booking ref without dashes,
+// biller = the resolved biller identity. The static sample refs are never
+// expected here anymore.
 function buildPaymentResult(
   payment: ParsedEnvelope,
-  cfg: PromptPayConfig,
+  expectedBillerId: string,
   booking: Reservation,
+  paymentRef1: string,
   qrCount: number
 ): SlipVerifyResult {
   const d = payment.detail;
@@ -253,14 +259,18 @@ function buildPaymentResult(
   const expectedAmountKnown = Number.isFinite(expectedAmount) && booking.total !== undefined && booking.total !== null;
   const foundAmount = typeof d.amount === 'number' ? d.amount : null;
 
-  const billerMatch = d.billerId === cfg.billerId;
-  const refsMatch = d.reference1 === cfg.ref1 && d.reference2 === cfg.ref2 && (d.reference3 ?? '') === cfg.ref3;
+  const expectedRef2 = String(booking.ref || '').replace(/-/g, '');
+
+  const billerMatch = d.billerId === expectedBillerId;
+  const ref1Match = d.reference1 === paymentRef1;
+  const ref2Match = d.reference2 === expectedRef2;
   const amountMatch =
     expectedAmountKnown && foundAmount !== null ? Math.abs(foundAmount - expectedAmount) < 0.005 : null;
 
   const mismatch: string[] = [];
   if (!billerMatch) mismatch.push('biller');
-  if (!refsMatch) mismatch.push('refs');
+  if (!ref1Match) mismatch.push('ref1');
+  if (!ref2Match) mismatch.push('ref2');
   if (amountMatch === false) mismatch.push('amount');
 
   // Our own generated payment QR carries no transaction id — matching
@@ -279,7 +289,8 @@ function buildPaymentResult(
     },
     match: {
       biller: billerMatch,
-      refs: refsMatch,
+      ref1: ref1Match,
+      ref2: ref2Match,
       amount: amountMatch,
       amountExpected: expectedAmountKnown ? expectedAmount : null,
       amountFound: foundAmount,
@@ -333,8 +344,9 @@ interface VerifyOutcome {
 export async function verifySlipBytes(
   db: D1Database,
   imageBytes: Uint8Array,
-  cfg: PromptPayConfig,
-  booking: Reservation
+  expectedBillerId: string,
+  booking: Reservation,
+  paymentRef1: string
 ): Promise<VerifyOutcome> {
   const imageHash = await sha256Hex(imageBytes);
   const img = decodeSlipImage(imageBytes);
@@ -376,7 +388,7 @@ export async function verifySlipBytes(
   const slip = envelopes.find((e) => e.kind === 'slipVerify' || e.kind === 'trueMoneySlipVerify') ?? null;
 
   const result = payment
-    ? buildPaymentResult(payment, cfg, booking, payloads.length)
+    ? buildPaymentResult(payment, expectedBillerId, booking, paymentRef1, payloads.length)
     : slip
       ? buildSlipVerifyOnlyResult(slip, payloads.length)
       : ({
@@ -441,7 +453,14 @@ export async function handleVerifySlip(env: Env, body: Record<string, unknown>):
   }
 
   const cfg = await getPromptPayConfig(env);
-  const { result, fingerprint, imageHash } = await verifySlipBytes(env.DB, imageBytes, cfg, booking);
+  const paymentRef1 = await ensureBookingPaymentRef(env, ref);
+  const { result, fingerprint, imageHash } = await verifySlipBytes(
+    env.DB,
+    imageBytes,
+    cfg.billerId,
+    booking,
+    paymentRef1
+  );
   await persistVerify(env, ref, result, fingerprint, imageHash);
   return { status: 'ok', result };
 }

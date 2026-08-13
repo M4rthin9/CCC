@@ -120,6 +120,7 @@ export const SAVE_RESERVATION_FIELDS = [
   'adultCount',
   'child5to8Count',
   'childUnder5Count',
+  'visitorAge',
   'status',
   'slipImage',
 ];
@@ -150,6 +151,7 @@ export const SAVE_STRING_CAPS: Record<string, number> = {
   extraVisitorNames: 5000,
   visitorName: 200,
   prisonerName: 200,
+  visitorAge: 8,
   status: 50,
   slipImage: 2000,
 };
@@ -172,6 +174,7 @@ export const UPDATE_BOOKING_FIELDS = [
   'adultCount',
   'child5to8Count',
   'childUnder5Count',
+  'visitorAge',
   'status',
   'extraVisitorNames',
   'extraVisitorReligions',
@@ -204,6 +207,7 @@ export const UPDATE_BOOKING_CAPS: Record<string, number> = {
   extraVisitorReligions: 5000,
   extraVisitorAllergies: 5000,
   extraVisitorApproved: 5000,
+  visitorAge: 8,
 };
 
 export const STANDARD_HEADERS = [
@@ -231,6 +235,7 @@ export const STANDARD_HEADERS = [
   'adultCount',
   'child5to8Count',
   'childUnder5Count',
+  'visitorAge',
   'status',
   'slipImage',
   'cancelReason',

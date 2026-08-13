@@ -31,6 +31,8 @@ const RESERVATION_COLUMNS = [
   'slip_verify_status',
   'slip_verify_json',
   'slip_verify_at',
+  'slip_fingerprint',
+  'slip_image_hash',
   'cancelReason',
   'createdAt',
   'updatedAt',
@@ -153,6 +155,45 @@ export function findDuplicateActiveBooking(
     .bind(...params)
     .first<{ ref: string }>()
     .then((r) => (r ? r.ref : null));
+}
+
+const PAID_STATUSES = ['ชำระแล้ว', 'เสร็จสิ้น'];
+
+/** Find another (already-paid) reservation reusing the same slip — either the
+ *  same bank/TrueMoney transaction id, or the exact same image bytes. Checks
+ *  both the active and archived tables so an archived paid booking's slip
+ *  can't be silently replayed against a new one. */
+export function findReservationBySlipFingerprint(
+  db: D1Database,
+  fingerprint: string,
+  imageHash: string,
+  excludeRef: string
+): Promise<{ ref: string; matchedBy: 'fingerprint' | 'image' } | null> {
+  if (!fingerprint && !imageHash) return Promise.resolve(null);
+  const matchClauses: string[] = [];
+  const matchParams: unknown[] = [];
+  if (fingerprint) {
+    matchClauses.push('slip_fingerprint = ?');
+    matchParams.push(fingerprint);
+  }
+  if (imageHash) {
+    matchClauses.push('slip_image_hash = ?');
+    matchParams.push(imageHash);
+  }
+  const paidPlaceholders = PAID_STATUSES.map(() => '?').join(', ');
+  const half = (table: string) =>
+    `SELECT ref, slip_fingerprint, slip_image_hash FROM ${table} WHERE (${matchClauses.join(' OR ')}) AND ref != ? AND status IN (${paidPlaceholders})`;
+  const sql = `${half(TABLES.reservations)} UNION ALL ${half(TABLES.archive)} LIMIT 1`;
+  const halfParams = [...matchParams, excludeRef, ...PAID_STATUSES];
+  return db
+    .prepare(sql)
+    .bind(...halfParams, ...halfParams)
+    .first<{ ref: string; slip_fingerprint: string; slip_image_hash: string }>()
+    .then((r) =>
+      r
+        ? { ref: r.ref, matchedBy: fingerprint && r.slip_fingerprint === fingerprint ? 'fingerprint' : 'image' }
+        : null
+    );
 }
 
 export function countReservationsByDate(db: D1Database): Promise<Record<string, number>> {

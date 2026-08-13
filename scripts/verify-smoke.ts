@@ -21,6 +21,12 @@ const cfg: PromptPayConfig = {
 
 const booking = { ref: 'VIS-00001', total: 500 } as Reservation;
 
+// No real D1 in this standalone script — stub a DB that always reports "no
+// existing reservation reuses this slip" so the duplicate check is a no-op.
+const fakeDb = {
+  prepare: () => ({ bind: () => ({ first: async () => null }) }),
+} as unknown as D1Database;
+
 async function qrPng(text: string): Promise<Uint8Array> {
   return toBuffer(text, { type: 'png', width: 512, margin: 2, errorCorrectionLevel: 'M' });
 }
@@ -88,41 +94,55 @@ const payBadBiller = buildPromptPayBillPayment({
 const slipVerify = buildSlipVerify({ sendingBank: '002', transRef: '0002123123121200011' });
 const tmSlipVerify = buildTrueMoneySlipVerify({ eventType: 'P2P', transactionId: 'TXN0001234567', date: '25012024' });
 
-const r1 = await verifySlipBytes(await qrPng(payOk), cfg, booking);
-check('payment-ok status', r1.status, 'ok');
+const r1 = (await verifySlipBytes(fakeDb, await qrPng(payOk), cfg, booking)).result;
+// paymentQr carries no transaction id, so even a full field match only
+// clears it for manual review — it can't prove a real payment happened.
+check('payment-ok status', r1.status, 'slip_verify');
 check('payment-ok biller', r1.match?.biller === true, true);
 check('payment-ok refs', r1.match?.refs === true, true);
 check('payment-ok amount', r1.match?.amount === true, true);
 
-const r2 = await verifySlipBytes(await qrPng(payBadAmount), cfg, booking);
+const r2 = (await verifySlipBytes(fakeDb, await qrPng(payBadAmount), cfg, booking)).result;
 check('payment-bad-amount status', r2.status, 'mismatch');
 check('payment-bad-amount flag', (r2.mismatch ?? []).includes('amount'), true);
 
-const r3 = await verifySlipBytes(await qrPng(payBadBiller), cfg, booking);
+const r3 = (await verifySlipBytes(fakeDb, await qrPng(payBadBiller), cfg, booking)).result;
 check('payment-bad-biller status', r3.status, 'mismatch');
 check('payment-bad-biller flag', (r3.mismatch ?? []).includes('biller'), true);
 
-const r4 = await verifySlipBytes(await qrPng(slipVerify), cfg, booking);
+const r4 = (await verifySlipBytes(fakeDb, await qrPng(slipVerify), cfg, booking)).result;
 check('slip-verify status', r4.status, 'slip_verify');
 check('slip-verify kind', r4.kind, 'slipVerify');
 check('slip-verify bank', (r4.detail?.sendingBank as string) === '002', true);
 check('slip-verify review flag', r4.detail?.reviewRequired === true, true);
 
-const r5 = await verifySlipBytes(await qrPng(tmSlipVerify), cfg, booking);
+const r5 = (await verifySlipBytes(fakeDb, await qrPng(tmSlipVerify), cfg, booking)).result;
 check('tm-slip-verify status', r5.status, 'slip_verify');
 check('tm-slip-verify kind', r5.kind, 'trueMoneySlipVerify');
 
-const r6 = await verifySlipBytes(await combine(await qrPng(payOk), await qrPng(slipVerify)), cfg, booking);
-check('two-qr status', r6.status, 'ok');
+const r6 = (await verifySlipBytes(fakeDb, await combine(await qrPng(payOk), await qrPng(slipVerify)), cfg, booking))
+  .result;
+// Combined slip: the paymentQr envelope is preferred when both are present,
+// but (as above) a clean match still only clears it for manual review.
+check('two-qr status', r6.status, 'slip_verify');
 check('two-qr qrCount>=2', r6.qrCount >= 2, true);
 check('two-qr detail refs', (r6.detail?.reference1 as string) === cfg.ref1, true);
 
-const r7 = await verifySlipBytes(await toJpeg(await qrPng(payOk)), cfg, booking);
-check('jpeg path status', r7.status, 'ok');
+const r7 = (await verifySlipBytes(fakeDb, await toJpeg(await qrPng(payOk)), cfg, booking)).result;
+check('jpeg path status', r7.status, 'slip_verify');
 
 const blank = new Uint8Array(UPNG.encode([new Uint8Array(128 * 128 * 4).fill(255)], 128, 128, 4));
-const r8 = await verifySlipBytes(blank, cfg, booking);
+const r8 = (await verifySlipBytes(fakeDb, blank, cfg, booking)).result;
 check('blank image status', r8.status, 'unreadable');
+
+const dupeDb = {
+  prepare: () => ({
+    bind: () => ({ first: async () => ({ ref: 'VIS-99999', slip_fingerprint: '', slip_image_hash: 'x' }) }),
+  }),
+} as unknown as D1Database;
+const r9 = (await verifySlipBytes(dupeDb, await qrPng(payOk), cfg, booking)).result;
+check('duplicate status', r9.status, 'duplicate');
+check('duplicate ref', r9.duplicateOfRef ?? '', 'VIS-99999');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

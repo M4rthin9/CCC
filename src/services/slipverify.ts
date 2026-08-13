@@ -3,13 +3,18 @@ import { decode as decodeJpeg } from 'jpeg-js';
 import UPNG from 'upng-js';
 import { parsePayload, parseSlipVerify, parseTrueMoneySlipVerify } from '@thai-qr-payment/payload';
 import { formatBangkok } from '../config';
-import { getReservationByRef, getStoredSlipByRef, updateReservationColumns } from '../db/queries/reservations';
+import {
+  getReservationByRef,
+  getStoredSlipByRef,
+  updateReservationColumns,
+  findReservationBySlipFingerprint,
+} from '../db/queries/reservations';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
 import { getPromptPayConfig, PromptPayConfig } from './promptpayConfig';
 import { logEvent } from './logger';
 import { Env, Reservation } from '../types';
 
-export type SlipVerifyStatus = 'ok' | 'mismatch' | 'slip_verify' | 'unreadable';
+export type SlipVerifyStatus = 'ok' | 'mismatch' | 'slip_verify' | 'unreadable' | 'duplicate';
 
 export interface SlipVerifyResult {
   status: SlipVerifyStatus;
@@ -19,6 +24,7 @@ export interface SlipVerifyResult {
   detail: Record<string, unknown> | null;
   match?: Record<string, unknown>;
   mismatch?: string[];
+  duplicateOfRef?: string;
 }
 
 type EnvelopeKind = 'paymentQr' | 'slipVerify' | 'trueMoneySlipVerify';
@@ -71,6 +77,21 @@ function base64ToBytes(b64: string): Uint8Array {
 
 function stripDataUri(uri: string): string {
   return String(uri).replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Fingerprint the *transaction*, not the image: only a bank/TrueMoney
+ *  Mini-QR carries a real transaction id, so reuse of the same slip against
+ *  a different booking can be detected. Our own paymentQr has no such id. */
+function fingerprintEnvelope(e: ParsedEnvelope | null): string {
+  if (!e) return '';
+  if (e.kind === 'slipVerify') return `bank:${e.detail.sendingBank}:${e.detail.transRef}`;
+  if (e.kind === 'trueMoneySlipVerify') return `truemoney:${e.detail.transactionId}`;
+  return '';
 }
 
 function pngDimensions(bytes: Uint8Array): { width: number; height: number } | null {
@@ -242,14 +263,19 @@ function buildPaymentResult(
   if (!refsMatch) mismatch.push('refs');
   if (amountMatch === false) mismatch.push('amount');
 
+  // Our own generated payment QR carries no transaction id — matching
+  // biller/refs/amount only proves the QR was rendered by us, not that it
+  // was actually paid (e.g. a screenshot of the unpaid QR would match too).
+  // Route it to manual review instead of auto-confirming.
   return {
-    status: mismatch.length === 0 ? 'ok' : 'mismatch',
+    status: mismatch.length === 0 ? 'slip_verify' : 'mismatch',
     kind: 'paymentQr',
     qrCount,
     at: formatBangkok(new Date()),
     detail: {
       ...d,
       payload: payment.payload,
+      ...(mismatch.length === 0 ? { reviewRequired: true, reviewReason: 'no_transaction_id' } : {}),
     },
     match: {
       biller: billerMatch,
@@ -277,12 +303,20 @@ function buildSlipVerifyOnlyResult(slip: ParsedEnvelope, qrCount: number): SlipV
   };
 }
 
-async function persistVerify(env: Env, ref: string, result: SlipVerifyResult): Promise<void> {
+async function persistVerify(
+  env: Env,
+  ref: string,
+  result: SlipVerifyResult,
+  fingerprint: string,
+  imageHash: string
+): Promise<void> {
   const json = JSON.stringify(result);
   const cols: Array<[string, unknown]> = [
     ['slip_verify_status', result.status],
     ['slip_verify_json', json],
     ['slip_verify_at', result.at],
+    ['slip_fingerprint', fingerprint],
+    ['slip_image_hash', imageHash],
   ];
   await updateReservationColumns(env.DB, ref, cols);
   await logEvent(env, 'public', 'slip_verify', ref, { status: result.status, kind: result.kind }, 'success');
@@ -290,19 +324,31 @@ async function persistVerify(env: Env, ref: string, result: SlipVerifyResult): P
   await invalidateLookupCache(env, ref);
 }
 
+interface VerifyOutcome {
+  result: SlipVerifyResult;
+  fingerprint: string;
+  imageHash: string;
+}
+
 export async function verifySlipBytes(
+  db: D1Database,
   imageBytes: Uint8Array,
   cfg: PromptPayConfig,
   booking: Reservation
-): Promise<SlipVerifyResult> {
+): Promise<VerifyOutcome> {
+  const imageHash = await sha256Hex(imageBytes);
   const img = decodeSlipImage(imageBytes);
   if (!img) {
     return {
-      status: 'unreadable',
-      kind: 'none',
-      qrCount: 0,
-      at: formatBangkok(new Date()),
-      detail: { reason: 'unsupported_or_corrupt_image' },
+      result: {
+        status: 'unreadable',
+        kind: 'none',
+        qrCount: 0,
+        at: formatBangkok(new Date()),
+        detail: { reason: 'unsupported_or_corrupt_image' },
+      },
+      fingerprint: '',
+      imageHash,
     };
   }
 
@@ -314,18 +360,22 @@ export async function verifySlipBytes(
   }
   if (envelopes.length === 0) {
     return {
-      status: 'unreadable',
-      kind: 'none',
-      qrCount: payloads.length,
-      at: formatBangkok(new Date()),
-      detail: { reason: payloads.length ? 'no_supported_qr' : 'no_qr_found' },
+      result: {
+        status: 'unreadable',
+        kind: 'none',
+        qrCount: payloads.length,
+        at: formatBangkok(new Date()),
+        detail: { reason: payloads.length ? 'no_supported_qr' : 'no_qr_found' },
+      },
+      fingerprint: '',
+      imageHash,
     };
   }
 
   const payment = envelopes.find((e) => e.kind === 'paymentQr') ?? null;
   const slip = envelopes.find((e) => e.kind === 'slipVerify' || e.kind === 'trueMoneySlipVerify') ?? null;
 
-  return payment
+  const result = payment
     ? buildPaymentResult(payment, cfg, booking, payloads.length)
     : slip
       ? buildSlipVerifyOnlyResult(slip, payloads.length)
@@ -336,6 +386,28 @@ export async function verifySlipBytes(
           at: formatBangkok(new Date()),
           detail: { reason: 'no_supported_qr' },
         } satisfies SlipVerifyResult);
+
+  const fingerprint = fingerprintEnvelope(slip);
+
+  // Same real transaction (or literally the same file) already used to pay a
+  // *different* booking — block regardless of what the QR match said above.
+  const dupe = await findReservationBySlipFingerprint(db, fingerprint, imageHash, booking.ref);
+  if (dupe) {
+    return {
+      result: {
+        status: 'duplicate',
+        kind: result.kind,
+        qrCount: result.qrCount,
+        at: formatBangkok(new Date()),
+        detail: { ...result.detail, reason: dupe.matchedBy === 'fingerprint' ? 'transaction_reused' : 'image_reused' },
+        duplicateOfRef: dupe.ref,
+      },
+      fingerprint,
+      imageHash,
+    };
+  }
+
+  return { result, fingerprint, imageHash };
 }
 
 export async function handleVerifySlip(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -369,7 +441,7 @@ export async function handleVerifySlip(env: Env, body: Record<string, unknown>):
   }
 
   const cfg = await getPromptPayConfig(env);
-  const result = await verifySlipBytes(imageBytes, cfg, booking);
-  await persistVerify(env, ref, result);
+  const { result, fingerprint, imageHash } = await verifySlipBytes(env.DB, imageBytes, cfg, booking);
+  await persistVerify(env, ref, result, fingerprint, imageHash);
   return { status: 'ok', result };
 }

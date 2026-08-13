@@ -52,16 +52,20 @@ export async function handleGeneratePromptPayQr(
   const ref2 = String(booking.ref || '').replace(/-/g, '');
   const amount = Number(booking.total);
 
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { status: 'error', message: 'Booking has no payable total — cannot mint a fixed-amount QR' };
+  }
+
   try {
     const payload = buildPromptPayBillPayment({
       billerId: cfg.billerId,
       ref1: paymentRef1,
       ref2,
       ref3: cfg.ref3,
-      amount: Number.isFinite(amount) && amount > 0 ? amount : undefined,
+      amount,
     });
     const { qrDataUrl } = await renderQr(payload);
-    const base = { status: 'ok', payload, qrDataUrl, amount: Number.isFinite(amount) ? amount : 0 };
+    const base = { status: 'ok', payload, qrDataUrl, amount };
     if (user) {
       return { ...base, billerId: cfg.billerId, ref1: paymentRef1, ref2, ref3: cfg.ref3 };
     }

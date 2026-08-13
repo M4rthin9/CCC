@@ -1,6 +1,7 @@
 import { ThaiQRPaymentBuilder } from '@thai-qr-payment/payload';
 import type { AdditionalDataFields, MerchantInfo } from '@thai-qr-payment/payload';
-import { encodeQR } from '../vendor/thai-qr-payment/qr.js';
+import QRCode from 'qrcode';
+import type { QRMatrix } from '../vendor/thai-qr-payment/qr';
 import { renderCard } from '../vendor/thai-qr-payment/render.js';
 
 // EMVCo BillPayment references are application-defined free text. The hard
@@ -230,6 +231,27 @@ export function buildPromptPayBillPayment({
 }
 
 /**
+ * Build a `QRMatrix` for the branded card renderer from the battle-tested
+ * `qrcode` library — the same library the dashboard's plain QR uses. The
+ * vendored `thai-qr-payment` encoder produces a matrix that differs from a
+ * spec-compliant symbol at identical version/EC/mask (observed: 41% of modules
+ * disagree with `qrcode`), so real Thai bank apps refuse it even though
+ * lenient decoders like jsQR recover the payload. Using `qrcode` guarantees
+ * the card scans in the same apps the dashboard QR already works in.
+ */
+function qrMatrixFromQrcodeLib(payload: string, ec: 'L' | 'M' | 'Q' | 'H' = 'H'): QRMatrix {
+  const { modules, version, maskPattern } = QRCode.create(payload, { errorCorrectionLevel: ec });
+  const { size } = modules;
+  const rows: boolean[][] = [];
+  for (let y = 0; y < size; y++) {
+    const row: boolean[] = [];
+    for (let x = 0; x < size; x++) row.push(modules.get(y, x) === 1);
+    rows.push(row);
+  }
+  return { size, modules: rows, version, errorCorrectionLevel: ec, mask: maskPattern ?? 0 };
+}
+
+/**
  * Branded PromptPay card (Thai QR Payment header + PromptPay sub-mark +
  * error-correction-H QR), rendered server-side as a self-contained SVG string.
  * Built on `thai-qr-payment/render`, which bundles the brand assets; the
@@ -239,7 +261,7 @@ export function buildPromptPayBillPayment({
  * here even though `toWireText` strips them from the payload.
  */
 export function renderPromptPayCardSvg(payload: string, options?: PromptPayCardOptions): string {
-  const matrix = encodeQR(payload, { errorCorrectionLevel: 'H' });
+  const matrix = qrMatrixFromQrcodeLib(payload, 'H');
   return renderCard(matrix, {
     theme: options?.theme,
     background: options?.background,

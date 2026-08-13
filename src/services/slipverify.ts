@@ -81,6 +81,34 @@ function pngDimensions(bytes: Uint8Array): { width: number; height: number } | n
   return { width, height };
 }
 
+// jsQR's cost scales with pixel count, so phone-camera slip photos (often
+// 8-12MP) are downscaled before scanning — otherwise verifySlipBytes can
+// burn enough CPU time to hit the Worker's CPU limit (observed: a 503 with
+// outcome "exceededCpu" on a single large-slip verify request).
+const MAX_SCAN_DIM = 1600;
+
+function downscaleImage(img: DecodedImage, maxDim: number): DecodedImage {
+  const { width, height, data } = img;
+  const scale = Math.min(1, maxDim / Math.max(width, height));
+  if (scale >= 1) return img;
+  const newWidth = Math.max(1, Math.round(width * scale));
+  const newHeight = Math.max(1, Math.round(height * scale));
+  const out = new Uint8ClampedArray(newWidth * newHeight * 4);
+  for (let y = 0; y < newHeight; y += 1) {
+    const sy = Math.min(height - 1, Math.floor(y / scale));
+    for (let x = 0; x < newWidth; x += 1) {
+      const sx = Math.min(width - 1, Math.floor(x / scale));
+      const si = (sy * width + sx) * 4;
+      const di = (y * newWidth + x) * 4;
+      out[di] = data[si] ?? 0;
+      out[di + 1] = data[si + 1] ?? 0;
+      out[di + 2] = data[si + 2] ?? 0;
+      out[di + 3] = data[si + 3] ?? 0;
+    }
+  }
+  return { width: newWidth, height: newHeight, data: out };
+}
+
 function decodeSlipImage(bytes: Uint8Array): DecodedImage | null {
   try {
     const isPng = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
@@ -93,7 +121,7 @@ function decodeSlipImage(bytes: Uint8Array): DecodedImage | null {
       const png = UPNG.decode(bytes);
       const frame = UPNG.toRGBA8(png)[0];
       if (!frame) return null;
-      return { width: png.width, height: png.height, data: new Uint8ClampedArray(frame) };
+      return downscaleImage({ width: png.width, height: png.height, data: new Uint8ClampedArray(frame) }, MAX_SCAN_DIM);
     }
 
     const jpeg = decodeJpeg(bytes, {
@@ -102,7 +130,7 @@ function decodeSlipImage(bytes: Uint8Array): DecodedImage | null {
       maxResolutionInMP: MAX_MEGAPIXELS,
       maxMemoryUsageInMB: 512,
     });
-    return { width: jpeg.width, height: jpeg.height, data: new Uint8ClampedArray(jpeg.data) };
+    return downscaleImage({ width: jpeg.width, height: jpeg.height, data: new Uint8ClampedArray(jpeg.data) }, MAX_SCAN_DIM);
   } catch {
     return null;
   }

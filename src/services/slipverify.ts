@@ -3,12 +3,7 @@ import { decode as decodeJpeg } from 'jpeg-js';
 import UPNG from 'upng-js';
 import { parsePayload, parseSlipVerify, parseTrueMoneySlipVerify } from '@thai-qr-payment/payload';
 import { formatBangkok } from '../config';
-import {
-  getReservationByRef,
-  getStoredSlipByRef,
-  updateReservationColumns,
-  findReservationBySlipFingerprint,
-} from '../db/queries/reservations';
+import { getReservationByRef, getStoredSlipByRef, updateReservationColumns } from '../db/queries/reservations';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
 import { getPromptPayConfig, PromptPayConfig } from './promptpayConfig';
 import { logEvent } from './logger';

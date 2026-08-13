@@ -61,7 +61,11 @@ export async function renderSlipVerifyMiniQr(input: SlipVerifyMiniQrInput): Prom
   const { svg, qrDataUrl } = await renderQr(payload);
   const detail =
     input.provider === 'truemoney'
-      ? { eventType: String(input.eventType || ''), transactionId: String(input.transactionId || ''), date: String(input.date || '') }
+      ? {
+          eventType: String(input.eventType || ''),
+          transactionId: String(input.transactionId || ''),
+          date: String(input.date || ''),
+        }
       : { sendingBank: String(input.sendingBank || ''), transRef: String(input.transRef || '') };
   return { provider: input.provider, payload, svg, qrDataUrl, detail };
 }

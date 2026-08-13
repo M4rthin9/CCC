@@ -122,8 +122,7 @@ export async function handleImportPrisoners(
     'success'
   );
 
-  let message =
-    'นำเข้าสำเร็จ: เพิ่ม ' + result.added + ' รายการ, อัปเดต ' + result.updated + ' รายการ';
+  let message = 'นำเข้าสำเร็จ: เพิ่ม ' + result.added + ' รายการ, อัปเดต ' + result.updated + ' รายการ';
   if (result.removed > 0) message += ', ลบผู้ต้องขังที่ไม่อยู่ในไฟล์ ' + result.removed + ' รายการ';
   if (result.wingChanged > 0) message += ', เปลี่ยนแดน ' + result.wingChanged + ' รายการ';
   if (reservationsWingSynced > 0) message += ', ซิงค์แดนการจอง ' + reservationsWingSynced + ' รายการ';

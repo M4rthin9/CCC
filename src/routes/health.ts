@@ -222,8 +222,8 @@ export async function handleHealthHtml(env: Env, request: Request): Promise<stri
   main { width: 100%; max-width: 720px; }
   header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
   h1 { font-size: 20px; margin: 0; }
-  .overall { font-weight: 700; font-size: 14px; padding: 4px 10px; border-radius: 999px; }
-  .meta { color: #64748b; font-size: 12px; margin: 6px 0 20px; line-height: 1.6; }
+  .overall { color: #04121a; font-weight: 700; font-size: 14px; padding: 4px 10px; border-radius: 999px; }
+  .meta { color: #94a3b8; font-size: 12px; margin: 6px 0 20px; line-height: 1.6; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #1e293b; vertical-align: top; }
   th { color: #94a3b8; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .05em; }
@@ -231,7 +231,7 @@ export async function handleHealthHtml(env: Env, request: Request): Promise<stri
   .num { text-align: right; }
   .label { color: #e2e8f0; font-weight: 600; }
   .card { background: #111a2e; border: 1px solid #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-  .footer { color: #475569; font-size: 11px; margin-top: 12px; }
+  .footer { color: #94a3b8; font-size: 11px; margin-top: 12px; }
   button {
     background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px;
     padding: 8px 14px; font-family: inherit; font-size: 12px; cursor: pointer;

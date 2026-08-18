@@ -72,10 +72,7 @@ const CAPTION_AMOUNT_Y = 818;
  * `qrcode` library (the same encoder behind the dashboard's plain QR, which
  * pays reliably). Returns a self-contained SVG string for `{@html }` display.
  */
-export async function renderPromptPayCardSvg(
-  payload: string,
-  options?: PromptPayCardOptions
-): Promise<string> {
+export async function renderPromptPayCardSvg(payload: string, options?: PromptPayCardOptions): Promise<string> {
   const qrSvg = await QRCode.toString(payload, {
     type: 'svg',
     errorCorrectionLevel: 'H',
@@ -116,9 +113,5 @@ export async function renderPromptPayCardSvg(
 }
 
 function xmlEscape(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

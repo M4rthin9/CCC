@@ -39,3 +39,11 @@ export function getNotesByRef(db: D1Database, ref: string): Promise<Note[]> {
       }))
     );
 }
+
+export function deleteNotesByRef(db: D1Database, ref: string): Promise<void> {
+  return db
+    .prepare(`DELETE FROM ${TABLES.notes} WHERE ref = ?`)
+    .bind(ref)
+    .run()
+    .then(() => undefined);
+}

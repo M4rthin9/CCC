@@ -3,6 +3,7 @@ import { getReservationsByRefs, getStoredSlipByRef, updateReservationColumns } f
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
 import { logEvent } from '../services/logger';
 import { notify } from '../services/notifications';
+import { readPaymentSwitch } from './settings';
 import { Env } from '../types';
 
 export { handleVerifySlip } from '../services/slipverify';
@@ -35,8 +36,21 @@ export async function handleUploadSlip(env: Env, body: Record<string, unknown>):
 export async function handleUpdateSlipAndStatus(
   env: Env,
   body: Record<string, unknown>,
-  user: { username: string }
+  user: { username: string },
+  isPublic = false
 ): Promise<Record<string, unknown>> {
+  // The payment window only applies to visitors paying themselves. Staff acting
+  // from the dashboard are authenticated and can always settle a booking.
+  if (isPublic) {
+    const payment = await readPaymentSwitch(env);
+    if (!payment.enabled) {
+      return {
+        status: 'error',
+        message: payment.closedMessage || 'ขณะนี้ปิดรับชำระเงินชั่วคราว กรุณากลับมาชำระเงินอีกครั้งภายหลัง',
+      };
+    }
+  }
+
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };

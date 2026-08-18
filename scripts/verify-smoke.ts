@@ -13,6 +13,9 @@ import { computeApprovalTotals } from '../src/services/pricing';
 import { buildSlipVerifyPayload, renderSlipVerifyMiniQr } from '../src/services/slipQr';
 import { importPrisonersBulk, type PrisonerImportRow } from '../src/db/queries/prisoners';
 import { PROMPTPAY_DEFAULTS } from '../src/services/promptpayConfig';
+import { handleGetPublicSettings, readPaymentSwitch } from '../src/routes/settings';
+import { handleUpdateSlipAndStatus } from '../src/routes/slip';
+import type { Env } from '../src/types';
 import type { Reservation } from '../src/types';
 
 const { toBuffer } = (await import('qrcode')) as unknown as {
@@ -428,6 +431,53 @@ const dupInserts = dupStmts.filter((s) => s.sql.includes('INSERT'));
 check('import dedup single insert', String(dupInserts.length), '1');
 check('import dedup last row name wins', String(dupInserts[0]!.params[1]), 'Name 2');
 check('import dedup last row wing wins', String(dupInserts[0]!.params[2]), '9');
+
+// -- Payment window switch --------------------------------------------------
+// The flag lives in the admin_settings JSON blob. It must fail OPEN: a missing
+// or malformed `payment` key can never be allowed to stop people paying.
+function envWithSettings(value: string | null): Env {
+  return {
+    DB: {
+      prepare: () => ({
+        bind: () => ({ first: async () => (value === null ? null : { value }) }),
+        first: async () => (value === null ? null : { value }),
+      }),
+    },
+  } as unknown as Env;
+}
+
+const payMissing = await readPaymentSwitch(envWithSettings(null));
+check('payment switch missing row defaults open', payMissing.enabled, true);
+
+const payNoKey = await readPaymentSwitch(envWithSettings(JSON.stringify({ promptpay: { billerId: 'x' } })));
+check('payment switch missing key defaults open', payNoKey.enabled, true);
+
+const payGarbage = await readPaymentSwitch(envWithSettings(JSON.stringify({ payment: 'nonsense' })));
+check('payment switch malformed key defaults open', payGarbage.enabled, true);
+
+const payOpenFlag = await readPaymentSwitch(envWithSettings(JSON.stringify({ payment: { enabled: true } })));
+check('payment switch explicit open', payOpenFlag.enabled, true);
+
+const payClosed = await readPaymentSwitch(
+  envWithSettings(JSON.stringify({ payment: { enabled: false, closedMessage: 'come back later' } }))
+);
+check('payment switch explicit closed', payClosed.enabled, false);
+check('payment switch closed message', payClosed.closedMessage, 'come back later');
+
+// The public endpoint must expose the payment fields and nothing else -- the
+// same blob also holds the PromptPay biller config.
+const publicSettings = await handleGetPublicSettings(
+  envWithSettings(JSON.stringify({ promptpay: { billerId: 'SECRET' }, payment: { enabled: false } }))
+);
+check('public settings exposes paymentEnabled', String(publicSettings.paymentEnabled), 'false');
+check('public settings hides promptpay', String('promptpay' in publicSettings), 'false');
+check('public settings key count', String(Object.keys(publicSettings).length), '3');
+
+// Closed payment must block an unauthenticated slip submission before any write.
+const closedEnv = envWithSettings(JSON.stringify({ payment: { enabled: false, closedMessage: 'closed now' } }));
+const blocked = await handleUpdateSlipAndStatus(closedEnv, { ref: 'VIS-00001' }, { username: 'public' }, true);
+check('closed payment blocks public slip submit', String(blocked.status), 'error');
+check('closed payment returns admin message', String(blocked.message), 'closed now');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

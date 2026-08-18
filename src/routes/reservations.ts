@@ -10,7 +10,10 @@ import {
   insertReservation,
   countReservationsByDate,
   getAllRefs,
+  deleteReservation,
 } from '../db/queries/reservations';
+import { deleteNotesByRef } from '../db/queries/notes';
+import { deleteNotificationDataByRef } from '../db/queries/notifications';
 import { hasPermission } from '../db/queries/roles';
 import {
   invalidateLookupCache,
@@ -223,6 +226,66 @@ export async function handleCancelBooking(
     reason: body.reason ? ' ด้วยเหตุผล: ' + sanitizeStr(body.reason, 2000) : '',
   }).catch(() => undefined);
   return { status: 'ok' };
+}
+
+/**
+ * Hard-delete a booking. Superadmin only, and irreversible: the row is removed
+ * from `reservations` along with every side row that points at its ref (nothing
+ * in the schema cascades). The only trace left is the event_log entry below,
+ * which carries a snapshot of what was deleted.
+ */
+export async function handleDeleteBooking(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string; role: string }
+): Promise<Record<string, unknown>> {
+  const ref = sanitizeStr(body.ref, 64);
+
+  if (user.role !== 'Superadmin') {
+    await logEvent(
+      env,
+      user.username,
+      'booking_delete_rejected',
+      ref,
+      { reason: 'role_not_allowed', role: user.role },
+      'denied'
+    );
+    return { status: 'error', message: 'เฉพาะ Superadmin เท่านั้นที่สามารถลบการจองได้' };
+  }
+
+  if (!ref) return { status: 'error', message: 'กรุณาระบุเลขอ้างอิง' };
+
+  const rows = await getReservationsByRefs(env.DB, ref);
+  if (rows.length === 0) return { status: 'error', message: 'ไม่พบการจองที่ระบุ' };
+
+  const row = rows[0]!;
+  // Snapshot for the audit trail. Never include slip_base64 — logEvent caps
+  // details at 5000 chars and the slip is multi-MB.
+  const snapshot = {
+    status: String(row.status ?? ''),
+    visitorName: String(row.visitorName ?? ''),
+    visitorId: String(row.visitorId ?? ''),
+    prisonerId: String(row.prisonerId ?? ''),
+    prisonerName: String(row.prisonerName ?? ''),
+    wing: String(row.wing ?? ''),
+    visitDateISO: String(row.visitDateISO ?? ''),
+    totalPersons: Number(row.totalPersons ?? 0),
+    total: Number(row.total ?? 0),
+    createdBy: String(row.createdBy ?? ''),
+    createdAt: String(row.createdAt ?? ''),
+    affectedRows: rows.length,
+  };
+
+  await deleteNotesByRef(env.DB, ref);
+  await deleteNotificationDataByRef(env.DB, ref);
+  await deleteReservation(env.DB, ref);
+
+  await logEvent(env, user.username, 'booking_deleted', ref, snapshot, 'success');
+  await invalidateReservationsCache(env);
+  await invalidateLookupCache(env, ref);
+  if (snapshot.prisonerId) await invalidatePrisonerLookupCache(env, snapshot.prisonerId);
+
+  return { status: 'ok', message: 'ลบการจองเรียบร้อย' };
 }
 
 export async function handlePublicCancelBooking(

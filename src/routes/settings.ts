@@ -26,6 +26,31 @@ export async function handleGetSettings(env: Env): Promise<Record<string, unknow
   return { status: 'ok', settings };
 }
 
+/**
+ * Payment window flag, resolved from the `payment` key of admin_settings.
+ * Defaults to OPEN: a missing or malformed key must never stop people paying.
+ */
+export async function readPaymentSwitch(env: Env): Promise<{ enabled: boolean; closedMessage: string }> {
+  const settings = await getSettings(env.DB);
+  const raw = (settings as Record<string, unknown>).payment;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { enabled: true, closedMessage: '' };
+  const p = raw as Record<string, unknown>;
+  return {
+    enabled: p.enabled !== false,
+    closedMessage: typeof p.closedMessage === 'string' ? p.closedMessage.slice(0, 500) : '',
+  };
+}
+
+/**
+ * Public, unauthenticated read of the handful of settings the booking site needs.
+ * Only the payment fields are exposed — admin_settings also holds the PromptPay
+ * biller config and default account hashes, which must never leak.
+ */
+export async function handleGetPublicSettings(env: Env): Promise<Record<string, unknown>> {
+  const payment = await readPaymentSwitch(env);
+  return { status: 'ok', paymentEnabled: payment.enabled, paymentClosedMessage: payment.closedMessage };
+}
+
 export async function handleGetDataVersion(env: Env): Promise<Record<string, unknown>> {
   const version = await getDataVersion(env.DB);
   return { status: 'ok', version };

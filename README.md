@@ -15,21 +15,22 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
 
 ## Tech stack
 
-| Piece              | Choice                                            |
-| ------------------ | ------------------------------------------------- |
-| Runtime            | Cloudflare Workers (TypeScript, `nodejs_compat`)  |
-| Web framework      | Hono (`hono`)                                     |
-| Database           | Cloudflare D1 (SQLite) — `DB` binding             |
-| Cache / rate limit | Cloudflare KV — `CACHE_KV` binding                |
-| Auth               | JWT (`jose`) — access + rotating refresh tokens   |
-| Bot protection     | Cloudflare Turnstile                              |
-| Deploy tooling     | Wrangler v4, GitHub Actions CI/CD                 |
+| Piece              | Choice                                           |
+| ------------------ | ------------------------------------------------ |
+| Runtime            | Cloudflare Workers (TypeScript, `nodejs_compat`) |
+| Web framework      | Hono (`hono`)                                    |
+| Database           | Cloudflare D1 (SQLite) — `DB` binding            |
+| Cache / rate limit | Cloudflare KV — `CACHE_KV` binding               |
+| Auth               | JWT (`jose`) — access + rotating refresh tokens  |
+| Bot protection     | Cloudflare Turnstile                             |
+| Deploy tooling     | Wrangler v4, GitHub Actions CI/CD                |
 
 ---
 
 ## What this backend does
 
 ### Public (no login required)
+
 - **Book a visit** — `saveReservation` with visitor / prisoner / extra-visitor details,
   visit date, counts and computed totals.
 - **Look up a booking by ref or prisoner ID** — `lookupByRef` (cached, TTL 15s).
@@ -40,6 +41,7 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
 - **Login** — `login` returns JWT access token + refresh token.
 
 ### Admin (JWT or legacy `username`+`pass` auth)
+
 - **Reservations** — list, list with archive, archived list, per-date counts,
   dedupe/find-duplicate scans, cancel, update status, update visitor approval,
   update/edit a booking, create a booking, update slip + status.
@@ -53,6 +55,7 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
   plus client-side event logging.
 
 ### Auth & security
+
 - Passwords hashed with `sha256$<salt>$<hash>`; legacy plaintext passwords are
   automatically re-hashed on first successful login.
 - Default accounts are flagged and **forced to change password** on first login.
@@ -62,6 +65,7 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
 - CORS restricted to `ALLOWED_ORIGINS` (comma-separated; `*` allowed in dev only).
 
 ### Rules & business logic
+
 - Thai pricing: main visitor 2,000 THB, each approved extra visitor 1,000 THB,
   children under 5 free, children ≤ 8 pay 500 THB (`pricing.ts`).
 - **Discipline status** (`ติดวินัย งดเยี่ยม`): prisoners with this status are blocked
@@ -70,12 +74,14 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
   (cron, 1st of every 3rd month).
 
 ### Scheduled tasks (cron, UTC)
-| Schedule        | Bangkok time        | Job                                                   |
-| --------------- | ------------------- | ----------------------------------------------------- |
-| `0 17 * * *`    | 00:00 daily         | Clear expired discipline status + delete expired refresh tokens |
-| `15 17 1 */3 *` | 00:15, 1st of quarter | Archive reservations older than 3 months            |
+
+| Schedule        | Bangkok time          | Job                                                             |
+| --------------- | --------------------- | --------------------------------------------------------------- |
+| `0 17 * * *`    | 00:00 daily           | Clear expired discipline status + delete expired refresh tokens |
+| `15 17 1 */3 *` | 00:15, 1st of quarter | Archive reservations older than 3 months                        |
 
 ### Observability
+
 - `/health` — human-readable HTML health page with D1, KV, and per-table row counts.
 - `/api/health` — same data as JSON.
 - Workers Observability is enabled in `wrangler.toml`.
@@ -211,18 +217,18 @@ wrangler secret put TURNSTILE_SECRET
 - Local-only copies live in `.dev.vars` (git-ignored). `.dev.vars.example` shows the keys.
 - For CI, add the following GitHub Actions secrets (repo Settings → Secrets and variables → Actions):
 
-| Secret                    | Purpose                                  |
-| ------------------------- | ---------------------------------------- |
-| `CF_API_TOKEN` or `CLOUDFLARE_API_TOKEN` | Cloudflare API token with Workers/D1 edit permission |
-| `CF_ACCOUNT_ID` or `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID                   |
+| Secret                                     | Purpose                                              |
+| ------------------------------------------ | ---------------------------------------------------- |
+| `CF_API_TOKEN` or `CLOUDFLARE_API_TOKEN`   | Cloudflare API token with Workers/D1 edit permission |
+| `CF_ACCOUNT_ID` or `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID                                |
 
 ### Configuration variables (`wrangler.toml` → `[vars]`)
 
-| Var                | Purpose                                                        |
-| ------------------ | -------------------------------------------------------------- |
-| `CACHE_VERSION`    | Bump (e.g. `v4`) to invalidate all KV caches after a deploy   |
-| `ALLOWED_ORIGINS`  | Comma-separated frontend origins allowed by CORS. `*` in dev only |
-| `PASSWORD_SALT`    | Salt used for password hashing (keep consistent across deploys) |
+| Var               | Purpose                                                           |
+| ----------------- | ----------------------------------------------------------------- |
+| `CACHE_VERSION`   | Bump (e.g. `v4`) to invalidate all KV caches after a deploy       |
+| `ALLOWED_ORIGINS` | Comma-separated frontend origins allowed by CORS. `*` in dev only |
+| `PASSWORD_SALT`   | Salt used for password hashing (keep consistent across deploys)   |
 
 ### Cron triggers
 

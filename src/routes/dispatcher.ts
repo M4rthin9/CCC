@@ -19,6 +19,7 @@ import {
   handleDedupeReservations,
   handleFindDuplicateBookings,
   handleCancelBooking,
+  handleDeleteBooking,
   handlePublicCancelBooking,
   handleUpdateStatus,
   handleUpdateVisitorApproval,
@@ -30,7 +31,7 @@ import { getUsersHandler, handleCreateUser, handleUpdateUser, handleDeleteUser }
 import { getRolesHandler, handleCreateRole } from './roles';
 import { handleGetEventLogs, handleLogClientEvent } from './eventlog';
 import { handleAddNote, handleGetNotes } from './notes';
-import { handleSaveSettings, handleGetSettings, handleGetDataVersion } from './settings';
+import { handleSaveSettings, handleGetSettings, handleGetPublicSettings, handleGetDataVersion } from './settings';
 import { handleUploadSlip, handleUpdateSlipAndStatus, handleGetSlipByRef, handleVerifySlip } from './slip';
 import { handleLogin, handleChangePassword, handleRefresh } from './auth';
 import { handleGeneratePromptPayQr } from './promptpay';
@@ -88,6 +89,7 @@ const GET_ROUTES: Record<string, Route> = {
   testConnection: { auth: false, handler: async (ctx) => handleTestConnection(ctx.env) },
   getSheetInfo: { auth: true, handler: async (ctx) => handleGetSheetInfo(ctx.env) },
   getSettings: { auth: true, handler: async (ctx) => handleGetSettings(ctx.env) },
+  getPublicSettings: { auth: false, handler: async (ctx) => handleGetPublicSettings(ctx.env) },
   recheckPrisoner: { auth: true, handler: async (ctx) => handleRecheckPrisoner(ctx.env, ctx.body) },
   generatePromptPayQr: {
     auth: false,
@@ -119,10 +121,12 @@ const POST_ROUTES: Record<string, Route> = {
   uploadSlip: { auth: false, handler: async (ctx) => handleUploadSlip(ctx.env, ctx.body) },
   updateSlipAndStatus: {
     auth: false,
-    handler: async (ctx) => handleUpdateSlipAndStatus(ctx.env, ctx.body, { username: ctx.user?.username || 'public' }),
+    handler: async (ctx) =>
+      handleUpdateSlipAndStatus(ctx.env, ctx.body, { username: ctx.user?.username || 'public' }, !ctx.user),
   },
   getNotes: { auth: false, handler: async (ctx) => handleGetNotes(ctx.env, ctx.body) },
   cancelBooking: { auth: true, handler: async (ctx) => handleCancelBooking(ctx.env, ctx.body, ctx.user!) },
+  deleteBooking: { auth: true, handler: async (ctx) => handleDeleteBooking(ctx.env, ctx.body, ctx.user!) },
   updateStatus: { auth: true, handler: async (ctx) => handleUpdateStatus(ctx.env, ctx.body, ctx.user!) },
   updateVisitorApproval: {
     auth: true,

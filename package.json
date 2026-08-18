@@ -10,6 +10,7 @@
     "migrate": "wrangler d1 migrations apply ccc-reservations --remote",
     "migrate:local": "wrangler d1 migrations apply ccc-reservations --local",
     "db:seed": "tsx scripts/migrate-sheets.ts",
+    "db:import": "tsx scripts/import-sheet-delta.ts",
     "db:execute": "wrangler d1 execute ccc-reservations --remote --file=./data/seed.sql",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/verify-smoke.ts",

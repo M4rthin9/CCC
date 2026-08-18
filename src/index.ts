@@ -63,6 +63,7 @@ app.get('/api/eventlog', async (c) =>
   runDispatch(c.req.raw, c.env, true, { action: 'getEventLogs', ...queryToBody(c.req.raw) })
 );
 app.get('/api/settings', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getSettings' }));
+app.get('/api/public-settings', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getPublicSettings' }));
 app.get('/api/version', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getDataVersion' }));
 app.get('/api/ping', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'ping' }));
 
@@ -78,6 +79,9 @@ app.post('/api/reservations', async (c) =>
 );
 app.post('/api/reservations/cancel', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'publicCancelBooking', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/reservations/delete', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'deleteBooking', ...(await bodyToObj(c.req.raw)) })
 );
 app.post('/api/reservations/slip', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'uploadSlip', ...(await bodyToObj(c.req.raw)) })

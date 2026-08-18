@@ -216,3 +216,15 @@ export function countLineMessagesForMonth(db: D1Database, month: string): Promis
     .first<{ c: number }>()
     .then((r) => r?.c ?? 0);
 }
+
+/** Clear every notification-side row that points at a booking ref. Used when a
+ *  reservation is hard-deleted — nothing in the schema cascades. */
+export function deleteNotificationDataByRef(db: D1Database, ref: string): Promise<void> {
+  return db
+    .batch([
+      db.prepare(`DELETE FROM notifications WHERE ref = ?`).bind(ref),
+      db.prepare(`DELETE FROM push_subscriptions WHERE ref = ?`).bind(ref),
+      db.prepare(`DELETE FROM line_friends WHERE ref = ?`).bind(ref),
+    ])
+    .then(() => undefined);
+}

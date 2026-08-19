@@ -38,6 +38,9 @@ async function runDispatch(
   const response = await dispatchAction(ctx, action, isGet);
   const headers = makeCorsHeaders(request, env);
   Object.entries(headers).forEach(([k, v]) => response.headers.set(k, v));
+  // The dashboard polls this to drive live updates; a cached copy anywhere
+  // between here and the browser would freeze the UI on an old version.
+  if (action === 'getDataVersion') response.headers.set('Cache-Control', 'no-store');
   return response;
 }
 

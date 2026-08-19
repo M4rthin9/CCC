@@ -17,7 +17,7 @@ export async function invalidateReservationsCache(env: Env): Promise<void> {
     cacheRemoveLarge(env.CACHE_KV, cacheKeyReservations(env)),
     cacheRemoveLarge(env.CACHE_KV, cacheKeyCounts(env)),
   ]);
-  await bumpDataVersion(env.DB);
+  await bumpDataVersion(env.DB, 'reservations');
 }
 
 export async function invalidateLookupCache(env: Env, ref: string): Promise<void> {
@@ -36,14 +36,17 @@ export async function invalidateUserCache(env: Env, username: string): Promise<v
 
 export async function invalidateAllUsersCache(env: Env): Promise<void> {
   await cacheRemoveLarge(env.CACHE_KV, cacheKeyUsers(env));
+  await bumpDataVersion(env.DB, 'users');
 }
 
 export async function invalidatePrisonersCache(env: Env): Promise<void> {
   await cacheRemoveLarge(env.CACHE_KV, cacheKeyPrisoners());
+  await bumpDataVersion(env.DB, 'prisoners');
 }
 
 export async function invalidateRolesCache(env: Env): Promise<void> {
   await cacheRemove(env.CACHE_KV, cacheKeyRoles(env));
+  await bumpDataVersion(env.DB, 'roles');
 }
 
 export async function invalidateArchivedCache(env: Env): Promise<void> {

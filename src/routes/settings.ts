@@ -1,4 +1,4 @@
-import { getSettings, saveSettings, getDataVersion } from '../db/queries/settings';
+import { getSettings, saveSettings, getAllDataVersions, bumpDataVersion } from '../db/queries/settings';
 import { hasPermission } from '../db/queries/roles';
 import { logEvent } from '../services/logger';
 import { Env } from '../types';
@@ -17,6 +17,7 @@ export async function handleSaveSettings(
   settings._savedBy = user.username;
   settings._savedAt = new Date().toISOString();
   await saveSettings(env.DB, settings, user.username, new Date().toISOString());
+  await bumpDataVersion(env.DB, 'settings');
   await logEvent(env, user.username, 'save_settings', '', settings, 'success');
   return { status: 'ok', message: 'บันทึกตั้งค่าสำเร็จ' };
 }
@@ -51,7 +52,10 @@ export async function handleGetPublicSettings(env: Env): Promise<Record<string, 
   return { status: 'ok', paymentEnabled: payment.enabled, paymentClosedMessage: payment.closedMessage };
 }
 
+// Polled by the dashboard on a short interval to drive live updates. One D1 read,
+// no KV, no cache — `version` moves on any write, and `scopes` tells the client
+// which slice changed so it can refetch just that one instead of the whole list.
 export async function handleGetDataVersion(env: Env): Promise<Record<string, unknown>> {
-  const version = await getDataVersion(env.DB);
-  return { status: 'ok', version };
+  const { version, scopes } = await getAllDataVersions(env.DB);
+  return { status: 'ok', version, scopes, serverTime: new Date().toISOString() };
 }

@@ -55,7 +55,21 @@ export async function handleUpdateSlipAndStatus(
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
 
-  const status = sanitizeStr(body.status, 50) || 'ชำระแล้ว';
+  const currentStatus = String(rows[0]?.status || '').trim();
+  let status = sanitizeStr(body.status, 50) || 'ชำระแล้ว';
+
+  if (isPublic) {
+    // A visitor may only settle a booking that is actually awaiting payment.
+    // Without this, a re-upload (or a retried request) writes 'ชำระแล้ว' over a
+    // status staff had already advanced to 'เสร็จสิ้น', so an approved booking
+    // silently walks backwards and has to be approved again.
+    status = 'ชำระแล้ว';
+    if (currentStatus !== 'รอชำระเงิน') {
+      if (currentStatus === 'ชำระแล้ว') return { status: 'ok', noop: true };
+      return { status: 'error', message: 'ไม่สามารถชำระเงินได้ในสถานะปัจจุบัน: ' + currentStatus };
+    }
+  }
+
   const cols: Array<[string, unknown]> = [['status', status]];
   if (body.slipImage) {
     const slipVal = String(body.slipImage);

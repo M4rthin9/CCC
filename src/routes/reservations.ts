@@ -2,6 +2,7 @@ import { PUBLIC_CACHE_TTL, VALID_STATUSES, ACTIVE_STATUSES } from '../constants'
 import { sanitizeStr, normalizeVisitDateISO, formatDateISO } from '../config';
 import { cacheKeyArchived, cacheKeyCounts, cacheKeyReservations } from '../cache/keys';
 import { cacheGetLarge, cachePutLarge, cacheRemove } from '../cache/kv';
+import { cacheGetVersioned, cachePutVersioned } from '../cache/versioned';
 import {
   getActiveReservations,
   getArchivedReservations,
@@ -37,17 +38,11 @@ const ACTIVE = ACTIVE_STATUSES;
 
 export async function getAllReservations(env: Env): Promise<Record<string, unknown>> {
   const key = cacheKeyReservations(env);
-  const cached = await cacheGetLarge(env.CACHE_KV, key);
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed)) return { status: 'ok', rows: parsed };
-    } catch {
-      await cacheRemove(env.CACHE_KV, key).catch(() => undefined);
-    }
-  }
+  const { hit, version } = await cacheGetVersioned<Reservation[]>(env, key, 'reservations');
+  if (Array.isArray(hit)) return { status: 'ok', rows: hit };
+
   const rows = await getActiveReservations(env.DB);
-  await cachePutLarge(env.CACHE_KV, key, JSON.stringify(rows), PUBLIC_CACHE_TTL);
+  await cachePutVersioned(env, key, version, rows, PUBLIC_CACHE_TTL);
   return { status: 'ok', rows };
 }
 
@@ -113,16 +108,11 @@ export async function getArchivedReservationsHandler(
 
 export async function getCountsByDate(env: Env): Promise<Record<string, unknown>> {
   const countsKey = cacheKeyCounts(env);
-  const cached = await cacheGetLarge(env.CACHE_KV, countsKey);
-  if (cached) {
-    try {
-      return { status: 'ok', counts: JSON.parse(cached) };
-    } catch {
-      // fall through to recompute
-    }
-  }
+  const { hit, version } = await cacheGetVersioned<Record<string, number>>(env, countsKey, 'reservations');
+  if (hit) return { status: 'ok', counts: hit };
+
   const counts = await countReservationsByDate(env.DB);
-  await cachePutLarge(env.CACHE_KV, countsKey, JSON.stringify(counts), PUBLIC_CACHE_TTL);
+  await cachePutVersioned(env, countsKey, version, counts, PUBLIC_CACHE_TTL);
   return { status: 'ok', counts };
 }
 
@@ -407,6 +397,11 @@ export async function handleUpdateStatus(
   }
 
   if (allAlreadyAtTarget) {
+    // The usual reason a staff member re-applies a status they already set is
+    // that the dashboard showed them a stale row. Drop the caches on the way out
+    // so the retry actually repairs the view instead of returning a silent no-op.
+    await invalidateReservationsCache(env);
+    await invalidateLookupCache(env, ref);
     await logEvent(env, user.username, 'status_change_noop', ref, { status, reason: 'already_at_target' }, 'success');
     return { status: 'ok', noop: true };
   }

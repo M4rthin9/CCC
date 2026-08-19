@@ -46,23 +46,70 @@ export function saveSettings(db: D1Database, value: unknown, savedBy: string, sa
     .then(() => undefined);
 }
 
-export function getDataVersion(db: D1Database): Promise<number> {
-  return db
-    .prepare(`SELECT value FROM ${TABLES.settings} WHERE key = 'data_version'`)
-    .first<{ value: string }>()
-    .then((r) => (r ? parseInt(r.value, 10) || 0 : 0));
-}
+// ── Change counters ────────────────────────────────────────────────
+// 'data_version' is the global "something changed" counter the dashboard polls.
+// Each scope also keeps its own counter under 'data_version:<scope>' so a client
+// can refetch only the slice that moved instead of the whole reservation blob,
+// and so the reservation cache guard is not invalidated by unrelated writes.
 
-export function bumpDataVersion(db: D1Database): Promise<void> {
-  const current = Math.floor(Date.now() / 1000);
+export const DATA_SCOPES = ['reservations', 'prisoners', 'users', 'roles', 'settings'] as const;
+export type DataScope = (typeof DATA_SCOPES)[number];
+
+const GLOBAL_VERSION_KEY = 'data_version';
+const scopeKey = (scope: DataScope): string => GLOBAL_VERSION_KEY + ':' + scope;
+
+function bumpStatement(db: D1Database, key: string): D1PreparedStatement {
+  // Seed at a unix timestamp so a counter that is reset (or a fresh DB) can
+  // never hand out a version number an old cached payload already carries.
   return db
     .prepare(
-      `INSERT INTO ${TABLES.settings} (key, value, savedBy, savedAt) VALUES ('data_version', ?, 'system', ?)
-     ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)`
+      `INSERT INTO ${TABLES.settings} (key, value, savedBy, savedAt) VALUES (?, ?, 'system', ?)
+     ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT), savedAt = excluded.savedAt`
     )
-    .bind(String(current), new Date().toISOString())
-    .run()
-    .then(() => undefined);
+    .bind(key, String(Math.floor(Date.now() / 1000)), new Date().toISOString());
+}
+
+function parseVersion(value: unknown): number {
+  return parseInt(String(value ?? ''), 10) || 0;
+}
+
+export function getDataVersion(db: D1Database): Promise<number> {
+  return db
+    .prepare(`SELECT value FROM ${TABLES.settings} WHERE key = ?`)
+    .bind(GLOBAL_VERSION_KEY)
+    .first<{ value: string }>()
+    .then((r) => parseVersion(r?.value));
+}
+
+export function getScopeVersion(db: D1Database, scope: DataScope): Promise<number> {
+  return db
+    .prepare(`SELECT value FROM ${TABLES.settings} WHERE key = ?`)
+    .bind(scopeKey(scope))
+    .first<{ value: string }>()
+    .then((r) => parseVersion(r?.value));
+}
+
+/** Global counter plus every scope counter, in a single D1 read (polled often). */
+export function getAllDataVersions(db: D1Database): Promise<{ version: number; scopes: Record<string, number> }> {
+  return db
+    .prepare(`SELECT key, value FROM ${TABLES.settings} WHERE key = ? OR key LIKE ?`)
+    .bind(GLOBAL_VERSION_KEY, GLOBAL_VERSION_KEY + ':%')
+    .all<{ key: string; value: string }>()
+    .then((res) => {
+      const scopes: Record<string, number> = {};
+      DATA_SCOPES.forEach((s) => (scopes[s] = 0));
+      let version = 0;
+      (res.results ?? []).forEach((row) => {
+        if (row.key === GLOBAL_VERSION_KEY) version = parseVersion(row.value);
+        else scopes[row.key.slice(GLOBAL_VERSION_KEY.length + 1)] = parseVersion(row.value);
+      });
+      return { version, scopes };
+    });
+}
+
+/** Bump the scope counter and the global counter together. */
+export function bumpDataVersion(db: D1Database, scope: DataScope): Promise<void> {
+  return db.batch([bumpStatement(db, scopeKey(scope)), bumpStatement(db, GLOBAL_VERSION_KEY)]).then(() => undefined);
 }
 
 // default_accounts maps lowercase username -> hashed default password. When a

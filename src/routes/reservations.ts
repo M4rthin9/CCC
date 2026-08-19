@@ -286,7 +286,20 @@ export async function handlePublicCancelBooking(
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
 
+  // Same guard the staff path applies: a visit that has already happened cannot
+  // be cancelled retroactively. Its absence here was an asymmetry, not a rule.
+  const today = formatDateISO(new Date());
+  const allExpired = rows.every((row) => {
+    const d = String(row.visitDateISO || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) && d < today;
+  });
+  if (allExpired) {
+    return { status: 'error', message: 'เกินวันเข้างานแล้ว ไม่สามารถยกเลิกได้' };
+  }
+
   const prevStatus = String(rows[0]!.status || '');
+  if (prevStatus === 'ยกเลิก') return { status: 'ok', noop: true };
+
   await updateReservationColumns(env.DB, ref, [['status', 'ยกเลิก']]);
 
   await logEvent(

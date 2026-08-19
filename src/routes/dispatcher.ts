@@ -1,6 +1,8 @@
 import { Env } from '../types';
 import { AuthenticatedUser } from '../auth/middleware';
 import { jsonResponse } from '../middleware/http';
+import { checkRateLimit } from '../cache/kv';
+import { rateLimitKey } from '../cache/keys';
 import { logEvent } from '../services/logger';
 import {
   handlePing,
@@ -61,7 +63,22 @@ export type LegacyHandler = (ctx: RouteCtx) => Promise<Record<string, unknown>>;
 interface Route {
   auth: boolean;
   handler: LegacyHandler;
+  /**
+   * Per-IP budget for actions that are reachable without a session.
+   *
+   * A booking ref is only `VIS-` plus five digits, so the unauthenticated
+   * actions that take one are guessable by brute force. These budgets are far
+   * above what a real visitor does (look up a booking, pay, maybe cancel) but
+   * far below what enumerating a ~90k keyspace needs. Staff sessions are
+   * exempt — a busy dashboard would otherwise trip them.
+   */
+  rateLimit?: { ns: string; max: number; ttl: number };
 }
+
+// Public ref-taking actions: generous for humans, useless for enumeration.
+const PUBLIC_REF_LIMIT = { max: 30, ttl: 60 };
+// Slip handling decodes and scans images, so it is the expensive one.
+const PUBLIC_SLIP_LIMIT = { max: 12, ttl: 60 };
 
 function meta(ctx: RouteCtx) {
   return { ip: ctx.ip, userAgent: ctx.userAgent };
@@ -73,7 +90,11 @@ const GET_ROUTES: Record<string, Route> = {
   getAll: { auth: true, handler: async (ctx) => getAllReservations(ctx.env) },
   getAllWithArchive: { auth: true, handler: async (ctx) => getAllReservationsWithArchive(ctx.env, ctx.body) },
   getCountsByDate: { auth: false, handler: async (ctx) => getCountsByDate(ctx.env) },
-  lookupByRef: { auth: false, handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body) },
+  lookupByRef: {
+    auth: false,
+    handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body),
+    rateLimit: { ns: 'lookup', ...PUBLIC_REF_LIMIT },
+  },
   getSlipByRef: { auth: true, handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body) },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
   getDataVersion: { auth: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
@@ -96,14 +117,21 @@ const GET_ROUTES: Record<string, Route> = {
     handler: async (ctx) => handleGeneratePromptPayQr(ctx.env, ctx.body, ctx.user, ctx.ip),
   },
   generateSlipVerifyQr: { auth: true, handler: async (ctx) => handleGenerateSlipVerifyQr(ctx.body) },
-  verifySlip: { auth: false, handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body) },
+  verifySlip: {
+    auth: false,
+    handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body),
+    rateLimit: { ns: 'slipverify', ...PUBLIC_SLIP_LIMIT },
+  },
 };
 
 const POST_ROUTES: Record<string, Route> = {
   ping: { auth: false, handler: async () => handlePing() },
   login: { auth: false, handler: async (ctx) => handleLogin(ctx.env, ctx.body, meta(ctx)) },
   refresh: { auth: false, handler: async (ctx) => handleRefresh(ctx.env, ctx.body) },
-  changePassword: { auth: false, handler: async (ctx) => handleChangePassword(ctx.env, ctx.body) },
+  changePassword: {
+    auth: false,
+    handler: async (ctx) => handleChangePassword(ctx.env, ctx.body, ctx.user, meta(ctx)),
+  },
   saveReservation: { auth: false, handler: async (ctx) => handleSaveReservation(ctx.env, ctx.body, meta(ctx)) },
   dedupeReservations: { auth: true, handler: async (ctx) => handleDedupeReservations(ctx.env, ctx.body, ctx.user!) },
   findDuplicateBookings: {
@@ -113,18 +141,35 @@ const POST_ROUTES: Record<string, Route> = {
   getAll: { auth: true, handler: async (ctx) => getAllReservations(ctx.env) },
   getAllWithArchive: { auth: true, handler: async (ctx) => getAllReservationsWithArchive(ctx.env, ctx.body) },
   getCountsByDate: { auth: false, handler: async (ctx) => getCountsByDate(ctx.env) },
-  lookupByRef: { auth: false, handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body) },
+  lookupByRef: {
+    auth: false,
+    handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body),
+    rateLimit: { ns: 'lookup', ...PUBLIC_REF_LIMIT },
+  },
   getSlipByRef: { auth: true, handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body) },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
   getDataVersion: { auth: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
-  publicCancelBooking: { auth: false, handler: async (ctx) => handlePublicCancelBooking(ctx.env, ctx.body) },
-  uploadSlip: { auth: false, handler: async (ctx) => handleUploadSlip(ctx.env, ctx.body) },
+  publicCancelBooking: {
+    auth: false,
+    handler: async (ctx) => handlePublicCancelBooking(ctx.env, ctx.body),
+    rateLimit: { ns: 'cancel', ...PUBLIC_REF_LIMIT },
+  },
+  uploadSlip: {
+    auth: false,
+    handler: async (ctx) => handleUploadSlip(ctx.env, ctx.body),
+    rateLimit: { ns: 'slipupload', ...PUBLIC_SLIP_LIMIT },
+  },
   updateSlipAndStatus: {
     auth: false,
     handler: async (ctx) =>
       handleUpdateSlipAndStatus(ctx.env, ctx.body, { username: ctx.user?.username || 'public' }, !ctx.user),
+    rateLimit: { ns: 'slipstatus', ...PUBLIC_SLIP_LIMIT },
   },
-  getNotes: { auth: false, handler: async (ctx) => handleGetNotes(ctx.env, ctx.body) },
+  getNotes: {
+    auth: false,
+    handler: async (ctx) => handleGetNotes(ctx.env, ctx.body),
+    rateLimit: { ns: 'notes', ...PUBLIC_REF_LIMIT },
+  },
   cancelBooking: { auth: true, handler: async (ctx) => handleCancelBooking(ctx.env, ctx.body, ctx.user!) },
   deleteBooking: { auth: true, handler: async (ctx) => handleDeleteBooking(ctx.env, ctx.body, ctx.user!) },
   updateStatus: { auth: true, handler: async (ctx) => handleUpdateStatus(ctx.env, ctx.body, ctx.user!) },
@@ -153,7 +198,11 @@ const POST_ROUTES: Record<string, Route> = {
     handler: async (ctx) => handleGeneratePromptPayQr(ctx.env, ctx.body, ctx.user, ctx.ip),
   },
   generateSlipVerifyQr: { auth: true, handler: async (ctx) => handleGenerateSlipVerifyQr(ctx.body) },
-  verifySlip: { auth: false, handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body) },
+  verifySlip: {
+    auth: false,
+    handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body),
+    rateLimit: { ns: 'slipverify', ...PUBLIC_SLIP_LIMIT },
+  },
   subscribe: { auth: false, handler: async (ctx) => handleSubscribe(ctx.env, ctx.body) },
   unsubscribe: { auth: false, handler: async (ctx) => handleUnsubscribe(ctx.env, ctx.body) },
   linkLine: { auth: false, handler: async (ctx) => handleLinkLine(ctx.env, ctx.body) },
@@ -301,6 +350,25 @@ export async function dispatchAction(ctx: RouteCtx, action: string, isGet: boole
   const routes = isGet ? GET_ROUTES : POST_ROUTES;
   const route = routes[action];
   if (!route) return jsonResponse({ status: 'error', message: 'Unknown action' });
+
+  // Authenticated staff bypass the public budgets; everyone else is metered
+  // per IP before the handler runs, so a rejected call costs no D1 work.
+  if (route.rateLimit && !ctx.user) {
+    const { ns, max, ttl } = route.rateLimit;
+    const allowed = await checkRateLimit(ctx.env.CACHE_KV, rateLimitKey(ns, ctx.ip), max, ttl);
+    if (!allowed) {
+      await logEvent(
+        ctx.env,
+        'public',
+        action,
+        (ctx.body.ref as string) || '',
+        { reason: 'rate_limited', ip: ctx.ip },
+        'denied',
+        meta(ctx)
+      );
+      return jsonResponse({ status: 'error', message: 'มีการเรียกใช้งานถี่เกินไป กรุณารอสักครู่' });
+    }
+  }
 
   if (route.auth && !ctx.user) {
     await logEvent(

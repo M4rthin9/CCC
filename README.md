@@ -168,10 +168,81 @@ npm run build         # typecheck + wrangler deploy --dry-run
 ### Deploying
 
 ```bash
-npm run deploy        # wrangler deploy → https://ccc-backend.<your-subdomain>.workers.dev
+npm run deploy        # production  → https://ccc-backend.<your-subdomain>.workers.dev
+npm run deploy:dev    # development → https://ccc-backend-dev.<your-subdomain>.workers.dev
 ```
 
-Deploys are also triggered automatically by CI on every push to `main`.
+CI (`.github/workflows/deploy.yml`) deploys automatically and picks its target from the
+branch that was pushed — see [Environments](#environments) below.
+
+### Environments
+
+Two isolated stacks. `[env.development]` in `wrangler.toml` redeclares every binding,
+because wrangler does **not** inherit top-level `[vars]`, `[[d1_databases]]`,
+`[[kv_namespaces]]` or `[triggers]` into an environment block.
+
+|                 | Production (`main`)        | Development (`dev`)                |
+| --------------- | -------------------------- | ---------------------------------- |
+| Worker          | `ccc-backend`              | `ccc-backend-dev`                  |
+| D1              | `ccc-reservations`         | `ccc-reservations-dev`             |
+| KV              | `ccc-cache`                | `ccc-cache-dev`                    |
+| `CACHE_VERSION` | `v4`                       | `dev-v1`                           |
+| Cron            | daily + quarterly          | none (`crons = []`)                |
+| Turnstile       | real widget                | Cloudflare test keys (always pass) |
+| Notifications   | configurable               | forced off                         |
+| Frontend        | `cida.dpdns.org`           | `dev.ccc-frontend.pages.dev`       |
+| Dashboard       | `dashboard.cida.dpdns.org` | `dev.ccc-dashboard.pages.dev`      |
+
+Dev commands all carry `--env development` (or target the `-dev` database by name):
+
+```bash
+npm run dev:dev            # wrangler dev against the development env
+npm run deploy:dev
+npm run migrate:dev
+npm run db:sanitize:dev    # scrub PII after re-seeding
+```
+
+Secrets are stored per environment, so the dev worker needs its own — use
+**different** JWT secrets so a dev-issued token is worthless against production:
+
+```bash
+npx wrangler secret put JWT_SECRET --env development
+npx wrangler secret put JWT_REFRESH_SECRET --env development
+npx wrangler secret put TURNSTILE_SECRET --env development
+```
+
+Dev uses Cloudflare's official Turnstile **test** keys, which always pass and never
+render a challenge — secret `1x0000000000000000000000000000000AA`, site key
+`1x00000000000000000000AA`. That removes the need for a separate dev widget; never use
+them in production.
+
+`ALLOWED_ORIGINS` is matched as an **exact full-origin string** (`makeCorsHeaders` in
+`src/middleware/http.ts`) — no wildcards, no subdomain matching, so every dev origin is
+listed literally. `TURNSTILE_ALLOWED_HOSTNAMES` _does_ match subdomains.
+
+Cron is deliberately disabled on dev: the daily discipline cleanup and the quarterly
+archive job would otherwise mutate dev data in the background. Exercise them on demand
+with `npx wrangler dev --env development --test-scheduled`.
+
+#### Refreshing the dev database from production
+
+The dev D1 is seeded from a production export so it behaves realistically, then scrubbed.
+Payment slips are stored as base64 in `reservations.slip_base64` and some rows exceed
+D1's per-statement limit, so the raw dump cannot be imported directly —
+`scripts/prepare-dev-dump.ts` blanks those oversized literals, which removes the slip
+images and the size problem in one pass.
+
+```bash
+npx wrangler d1 export ccc-reservations --remote --output ./data/prod-dump.sql
+npx tsx scripts/prepare-dev-dump.ts        # → ./data/dev-dump.sql
+npx wrangler d1 execute ccc-reservations-dev --remote --file=./data/dev-dump.sql
+npm run db:sanitize:dev                    # scrub names, IDs, phones, IPs, notes
+```
+
+`scripts/sanitize-dev-db.sql` is idempotent and re-runnable. It leaves `users`, `roles`,
+`settings` and `prisoners` intact so logins, permissions and pricing behave like
+production. **Never run it against `ccc-reservations`** — prefer the npm script, which
+pins the dev database name.
 
 ### Database migrations
 

@@ -1,0 +1,16 @@
+# Copy to .dev.vars.development for: wrangler dev --env development
+# NEVER commit .dev.vars* — they are git-ignored.
+# Use DIFFERENT JWT secrets from production so dev tokens are worthless against prod.
+JWT_SECRET=
+JWT_REFRESH_SECRET=
+TURNSTILE_SECRET=
+
+# ── Notifications (optional) ───────────────────────────────────────
+# Web Push VAPID keys: npx web-push generate-vapid-keys
+# LINE OA credentials from the LINE Developers Console (Messaging API).
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:admin@example.com
+LINE_OA_ID=
+LINE_CHANNEL_ACCESS_TOKEN=
+LINE_CHANNEL_SECRET=

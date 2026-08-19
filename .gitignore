@@ -1,6 +1,8 @@
 node_modules/
 dist/
-.dev.vars
+.dev.vars*
+!.dev.vars.example
+!.dev.vars.development.example
 .wrangler/
 data/seed.sql
 data/*.tmp

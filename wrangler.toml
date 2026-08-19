@@ -49,3 +49,52 @@ crons = ["0 17 * * *", "15 17 1 */3 *"]
 # ── Observability ──────────────────────────────────────────────────
 [observability]
 enabled = true
+
+# ═══════════════════════════════════════════════════════════════════
+# Development environment  —  npm run deploy:dev
+#   Worker : https://ccc-backend-dev.pongsinbas.workers.dev
+#   D1     : ccc-reservations-dev   (sanitised copy of production)
+#   KV     : ccc-cache-dev
+#
+# NOTE: wrangler does NOT inherit top-level [vars], [[d1_databases]],
+# [[kv_namespaces]] or [triggers] into an [env.*] block — everything
+# below must be declared explicitly. main / compatibility_date /
+# compatibility_flags / account_id ARE inherited.
+# ═══════════════════════════════════════════════════════════════════
+[env.development]
+name = "ccc-backend-dev"
+
+[env.development.vars]
+# Distinct from prod so dev and prod KV keys can never collide.
+CACHE_VERSION = "dev-v1"
+# MUST match production — the seeded users table carries prod password
+# hashes, and scripts/migrate-sheets.ts hardcodes this same salt.
+PASSWORD_SALT = "cc-cafe-reservation-v1"
+# Exact full-origin match only (see makeCorsHeaders in middleware/http.ts) —
+# no wildcards, no subdomain matching. List every dev origin literally.
+ALLOWED_ORIGINS = "https://dev.ccc-frontend.pages.dev,https://dev.ccc-dashboard.pages.dev,http://localhost:5173,http://localhost:5174"
+# Unlike CORS, this one DOES match subdomains (endsWith '.' + allowed).
+TURNSTILE_ALLOWED_HOSTNAMES = "dev.ccc-frontend.pages.dev,dev.ccc-dashboard.pages.dev,localhost"
+# Kept off so dev can never push a notification or LINE message to a real visitor.
+NOTIFY_PUSH_ENABLED = "false"
+NOTIFY_LINE_ENABLED = "false"
+LINE_MONTHLY_CAP = "200"
+
+[[env.development.d1_databases]]
+binding = "DB"
+database_name = "ccc-reservations-dev"
+database_id = "eefa631b-e7e8-4a38-af31-efebb52fa3af"
+migrations_dir = "src/db/migrations"
+
+[[env.development.kv_namespaces]]
+binding = "CACHE_KV"
+id = "f667fc0048e14ef48a489ec298cfbbaa"
+
+# No cron in dev — the daily discipline cleanup and the quarterly archive
+# job would silently mutate dev data in the background. Run them on demand:
+#   npx wrangler dev --env development --test-scheduled
+[env.development.triggers]
+crons = []
+
+[env.development.observability]
+enabled = true

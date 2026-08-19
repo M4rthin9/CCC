@@ -6,19 +6,24 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:dev": "wrangler dev --env development",
     "deploy": "wrangler deploy",
+    "deploy:dev": "wrangler deploy --env development",
     "migrate": "wrangler d1 migrations apply ccc-reservations --remote",
     "migrate:local": "wrangler d1 migrations apply ccc-reservations --local",
+    "migrate:dev": "wrangler d1 migrations apply ccc-reservations-dev --remote --env development",
     "db:seed": "tsx scripts/migrate-sheets.ts",
     "db:import": "tsx scripts/import-sheet-delta.ts",
     "db:execute": "wrangler d1 execute ccc-reservations --remote --file=./data/seed.sql",
+    "db:sanitize:dev": "wrangler d1 execute ccc-reservations-dev --remote --file=./scripts/sanitize-dev-db.sql",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/verify-smoke.ts",
     "lint": "eslint src scripts",
     "lint:fix": "eslint src scripts --fix",
     "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\" \"*.{json,mjs}\" \"**/*.{md,yml,yaml}\" \"!data/**\" \"!node_modules/**\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\" \"*.{json,mjs}\" \"!data/**\" \"!node_modules/**\"",
-    "build": "tsc --noEmit && wrangler deploy --dry-run"
+    "build": "tsc --noEmit && wrangler deploy --dry-run",
+    "build:dev": "tsc --noEmit && wrangler deploy --env development --dry-run"
   },
   "dependencies": {
     "@thai-qr-payment/payload": "^1.2.0",

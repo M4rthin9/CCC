@@ -2,7 +2,7 @@ name: Deploy Worker
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
@@ -32,6 +32,21 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      - name: Select target environment
+        id: target
+        run: |
+          if [ "${{ github.ref_name }}" = "dev" ]; then
+            echo "wrangler_env=--env development" >> "$GITHUB_OUTPUT"
+            echo "d1_name=ccc-reservations-dev"   >> "$GITHUB_OUTPUT"
+            echo "label=development"              >> "$GITHUB_OUTPUT"
+            echo "Target: development (ccc-backend-dev / ccc-reservations-dev)"
+          else
+            echo "wrangler_env="                  >> "$GITHUB_OUTPUT"
+            echo "d1_name=ccc-reservations"       >> "$GITHUB_OUTPUT"
+            echo "label=production"               >> "$GITHUB_OUTPUT"
+            echo "Target: production (ccc-backend / ccc-reservations)"
+          fi
+
       - name: Check Cloudflare credentials
         id: creds
         env:
@@ -51,14 +66,14 @@ jobs:
           fi
           echo "ACCOUNT_ID set: YES"
 
-      - name: Deploy to Cloudflare Workers
-        run: npx wrangler deploy
+      - name: Deploy to Cloudflare Workers (${{ steps.target.outputs.label }})
+        run: npx wrangler deploy ${{ steps.target.outputs.wrangler_env }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Apply D1 migrations
-        run: npx wrangler d1 migrations apply ccc-reservations --remote
+      - name: Apply D1 migrations (${{ steps.target.outputs.d1_name }})
+        run: npx wrangler d1 migrations apply ${{ steps.target.outputs.d1_name }} --remote ${{ steps.target.outputs.wrangler_env }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}

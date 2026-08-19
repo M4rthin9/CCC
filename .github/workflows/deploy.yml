@@ -40,11 +40,14 @@ jobs:
             echo "d1_name=ccc-reservations-dev"   >> "$GITHUB_OUTPUT"
             echo "label=development"              >> "$GITHUB_OUTPUT"
             echo "Target: development (ccc-backend-dev / ccc-reservations-dev)"
-          else
+          elif [ "${{ github.ref_name }}" = "main" ]; then
             echo "wrangler_env="                  >> "$GITHUB_OUTPUT"
             echo "d1_name=ccc-reservations"       >> "$GITHUB_OUTPUT"
             echo "label=production"               >> "$GITHUB_OUTPUT"
             echo "Target: production (ccc-backend / ccc-reservations)"
+          else
+            echo "::error::Refusing to deploy from ref '${{ github.ref_name }}' - only main (production) and dev (development) may deploy."
+            exit 1
           fi
 
       - name: Check Cloudflare credentials

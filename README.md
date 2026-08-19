@@ -105,6 +105,44 @@ Two calling conventions are supported:
 See `src/routes/dispatcher.ts` for the full action → handler map and which actions
 require authentication.
 
+### Bulk actions
+
+Every action is batchable through the single `bulk` action — `POST /api/bulk`, or
+`{ action: 'bulk', … }` on the legacy endpoints. There is no per-action bulk handler:
+a new action is bulk-capable the moment it lands in the dispatcher.
+
+```jsonc
+POST /api/bulk
+{
+  "status": "อนุมัติ",           // outer fields are defaults for every item
+  "stopOnError": false,          // optional; default false = run them all
+  "items": [
+    { "action": "updateStatus", "ref": "VIS-0001" },
+    { "action": "updateStatus", "ref": "VIS-0002", "status": "ปฏิเสธ" }, // item wins
+    { "action": "addNote", "params": { "ref": "VIS-0003", "text": "…" } } // or nest under params
+  ]
+}
+```
+
+The response reports each item separately, so one bad row never sinks the batch:
+
+```jsonc
+{
+  "status": "partial",           // "success" | "partial" | "error"
+  "requested": 3, "processed": 3, "succeeded": 2, "failed": 1,
+  "results": [
+    { "index": 0, "action": "updateStatus", "status": "success", "result": { … } },
+    { "index": 1, "action": "updateStatus", "status": "error", "message": "Unauthorized" }
+  ]
+}
+```
+
+Rules: at most 50 items per request; items run sequentially (handlers read-modify-write
+the same rows and D1 has no transaction across them); auth is checked per item against
+the caller, so a public bulk reaches only public actions; a `bulk` item inside a bulk is
+rejected; and a bulk sent over `GET` can only reach `GET` actions — batching is not a
+way to perform writes over `GET`.
+
 ---
 
 ## Project structure
@@ -191,7 +229,7 @@ because wrangler does **not** inherit top-level `[vars]`, `[[d1_databases]]`,
 | Turnstile       | real widget                | Cloudflare test keys (always pass) |
 | Notifications   | configurable               | forced off                         |
 | Frontend        | `cida.dpdns.org`           | `dev.ccc-frontend.pages.dev`       |
-| Dashboard       | `dashboard.cida.dpdns.org` | `dev.ccc-dashboard-6jh.pages.dev`      |
+| Dashboard       | `dashboard.cida.dpdns.org` | `dev.ccc-dashboard-6jh.pages.dev`  |
 
 Dev commands all carry `--env development` (or target the `-dev` database by name):
 

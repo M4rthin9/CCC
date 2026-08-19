@@ -68,6 +68,10 @@ app.get('/api/version', async (c) => runDispatch(c.req.raw, c.env, true, { actio
 app.get('/api/ping', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'ping' }));
 
 // POST aliases
+// Batch fan-out over any action — see handleBulk in routes/dispatcher.ts.
+app.post('/api/bulk', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { ...(await bodyToObj(c.req.raw)), action: 'bulk' })
+);
 app.post('/api/login', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'login', ...(await bodyToObj(c.req.raw)) })
 );

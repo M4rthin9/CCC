@@ -16,7 +16,7 @@
  *
  * Usage:
  *   npx wrangler d1 export ccc-reservations --remote --output ./data/prod-dump.sql
- *   npm run db:prepare:dev
+ *   npx tsx scripts/prepare-dev-dump.ts
  *   npx wrangler d1 execute ccc-reservations-dev --remote --file=./data/dev-dump.sql
  *
  * Row-level scrubbing of names/phones/IDs is a separate step —

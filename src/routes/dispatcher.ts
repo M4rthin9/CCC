@@ -170,6 +170,133 @@ const POST_ROUTES: Record<string, Route> = {
   },
 };
 
+// ── Bulk fan-out ───────────────────────────────────────────────────
+// Every action above is bulk-capable through the single `bulk` action, so a
+// new capability gets batching for free — there is no per-action bulk handler
+// to write or keep in sync.
+
+/** Hard cap per request: keeps one Worker invocation inside its CPU budget
+ *  and bounds the D1 write burst. */
+const MAX_BULK_ITEMS = 50;
+
+interface BulkItemResult {
+  index: number;
+  action: string;
+  status: 'success' | 'error';
+  message?: string;
+  result?: Record<string, unknown>;
+}
+
+/** Items may arrive as an array or, on GET, as a JSON-encoded string. */
+function parseBulkItems(raw: unknown): Record<string, unknown>[] | null {
+  let list: unknown = raw;
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(list)) return null;
+  const out: Record<string, unknown>[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    out.push(item as Record<string, unknown>);
+  }
+  return out;
+}
+
+/**
+ * Run any number of ordinary actions in one request.
+ *
+ *   POST / { action: 'bulk', status: 'อนุมัติ', items: [
+ *     { action: 'updateStatus', ref: 'VIS-0001' },
+ *     { action: 'updateStatus', ref: 'VIS-0002' },
+ *   ] }
+ *
+ * Fields on the outer body are defaults for every item (`status` above); a
+ * field on the item wins. Items may also nest their params under `params`.
+ *
+ * Items run sequentially: several handlers read-modify-write the same rows
+ * (counts, dedupe, status history) and D1 gives us no transaction across
+ * them, so parallel execution would race. Per-item failures are collected
+ * rather than thrown — the caller gets a row-by-row report and an overall
+ * `success` / `partial` / `error` status. Pass `stopOnError: true` to halt at
+ * the first failure instead.
+ *
+ * Auth is enforced per item against the already-resolved caller, so a public
+ * bulk can only reach public actions. Nested bulk is rejected.
+ */
+async function handleBulk(ctx: RouteCtx, isGet: boolean): Promise<Record<string, unknown>> {
+  const items = parseBulkItems(ctx.body.items);
+  if (!items) return { status: 'error', message: 'bulk requires an "items" array of objects' };
+  if (items.length === 0) return { status: 'error', message: 'bulk requires at least one item' };
+  if (items.length > MAX_BULK_ITEMS) {
+    return { status: 'error', message: `bulk accepts at most ${MAX_BULK_ITEMS} items (got ${items.length})` };
+  }
+
+  // A GET bulk may only reach GET routes — batching must not become a way to
+  // perform writes over GET.
+  const routes = isGet ? GET_ROUTES : POST_ROUTES;
+  const stopOnError = ctx.body.stopOnError === true || ctx.body.stopOnError === 'true';
+  const { action: _action, items: _items, stopOnError: _stopOnError, ...defaults } = ctx.body;
+
+  const results: BulkItemResult[] = [];
+  let succeeded = 0;
+
+  for (const [i, item] of items.entries()) {
+    const name = String(item.action || '');
+    const nested = item.params;
+    const params =
+      nested && typeof nested === 'object' && !Array.isArray(nested) ? (nested as Record<string, unknown>) : item;
+
+    const reject = (message: string) => results.push({ index: i, action: name, status: 'error', message });
+
+    if (name === 'bulk') reject('Nested bulk is not allowed');
+    else if (!routes[name]) reject('Unknown action');
+    else if (routes[name].auth && !ctx.user) reject('Unauthorized');
+    else {
+      try {
+        const result = await routes[name].handler({ ...ctx, body: { ...defaults, ...params, action: name } });
+        if (result.status === 'error') {
+          results.push({
+            index: i,
+            action: name,
+            status: 'error',
+            message: String(result.message || 'Failed'),
+            result,
+          });
+        } else {
+          succeeded++;
+          results.push({ index: i, action: name, status: 'success', result });
+        }
+      } catch (e) {
+        console.error('[Bulk:' + name + ']', String(e));
+        reject('Server error');
+      }
+    }
+
+    if (stopOnError && results[results.length - 1]?.status === 'error') break;
+  }
+
+  const failed = results.length - succeeded;
+  const status = failed === 0 ? 'success' : succeeded > 0 ? 'partial' : 'error';
+  await logEvent(
+    ctx.env,
+    ctx.user?.username || 'public',
+    'bulk',
+    '',
+    { requested: items.length, processed: results.length, succeeded, failed },
+    status,
+    meta(ctx)
+  );
+
+  return { status, requested: items.length, processed: results.length, succeeded, failed, results };
+}
+
+GET_ROUTES.bulk = { auth: false, handler: async (ctx) => handleBulk(ctx, true) };
+POST_ROUTES.bulk = { auth: false, handler: async (ctx) => handleBulk(ctx, false) };
+
 export async function dispatchAction(ctx: RouteCtx, action: string, isGet: boolean): Promise<Response> {
   const routes = isGet ? GET_ROUTES : POST_ROUTES;
   const route = routes[action];

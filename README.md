@@ -191,7 +191,7 @@ because wrangler does **not** inherit top-level `[vars]`, `[[d1_databases]]`,
 | Turnstile       | real widget                | Cloudflare test keys (always pass) |
 | Notifications   | configurable               | forced off                         |
 | Frontend        | `cida.dpdns.org`           | `dev.ccc-frontend.pages.dev`       |
-| Dashboard       | `dashboard.cida.dpdns.org` | `dev.ccc-dashboard.pages.dev`      |
+| Dashboard       | `dashboard.cida.dpdns.org` | `dev.ccc-dashboard-6jh.pages.dev`      |
 
 Dev commands all carry `--env development` (or target the `-dev` database by name):
 

@@ -72,9 +72,9 @@ CACHE_VERSION = "dev-v1"
 PASSWORD_SALT = "cc-cafe-reservation-v1"
 # Exact full-origin match only (see makeCorsHeaders in middleware/http.ts) —
 # no wildcards, no subdomain matching. List every dev origin literally.
-ALLOWED_ORIGINS = "https://dev.ccc-frontend.pages.dev,https://dev.ccc-dashboard.pages.dev,http://localhost:5173,http://localhost:5174"
+ALLOWED_ORIGINS = "https://dev.ccc-frontend.pages.dev,https://dev.ccc-dashboard-6jh.pages.dev,http://localhost:5173,http://localhost:5174"
 # Unlike CORS, this one DOES match subdomains (endsWith '.' + allowed).
-TURNSTILE_ALLOWED_HOSTNAMES = "dev.ccc-frontend.pages.dev,dev.ccc-dashboard.pages.dev,localhost"
+TURNSTILE_ALLOWED_HOSTNAMES = "dev.ccc-frontend.pages.dev,dev.ccc-dashboard-6jh.pages.dev,localhost"
 # Kept off so dev can never push a notification or LINE message to a real visitor.
 NOTIFY_PUSH_ENABLED = "false"
 NOTIFY_LINE_ENABLED = "false"

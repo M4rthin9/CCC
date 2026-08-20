@@ -75,8 +75,8 @@ math when displaying or bucketing by visit date.
 by `wrangler d1 migrations apply` (see `migrate`/`migrate:local` scripts). Keep numbering
 sequential when adding a new one.
 
-**Env bindings** (`src/types.ts` `Env` interface): `DB` (D1), `CACHE_KV` (KV), plus vars from
-`wrangler.toml` `[vars]` (`CACHE_VERSION`, `PASSWORD_SALT`, `ALLOWED_ORIGINS`,
+**Env bindings** (`src/types.ts` `Env` interface): `DB` (D1), `CACHE_KV` (KV), `AI` (Workers AI),
+plus vars from `wrangler.toml` `[vars]` (`CACHE_VERSION`, `PASSWORD_SALT`, `ALLOWED_ORIGINS`,
 `TURNSTILE_ALLOWED_HOSTNAMES`, `NOTIFY_PUSH_ENABLED`, `NOTIFY_LINE_ENABLED`,
 `LINE_MONTHLY_CAP`) and secrets set via `wrangler secret put` (`JWT_SECRET`,
 `JWT_REFRESH_SECRET`, `TURNSTILE_SECRET`).

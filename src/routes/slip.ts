@@ -84,7 +84,35 @@ async function verifyAndMaybeApprove(
   }
 }
 
-export async function handleUploadSlip(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+/**
+ * Run verification *after* the response is sent when the runtime gives us a
+ * `waitUntil`. Decoding a slip is the only heavy thing in this request, and
+ * when it dies hard (a large photo exhausting the isolate's memory) it takes
+ * the whole request down with it — no response, no log, and the visitor's page
+ * resets as if it reloaded. Backgrounding it means the upload is already
+ * acknowledged and stored by the time verification runs, so the worst case is
+ * a slip that lands in manual review instead of a visitor stuck re-uploading.
+ */
+function runVerify(
+  env: Env,
+  booking: Reservation,
+  dataUri: string,
+  actor: string,
+  waitUntil?: WaitUntil
+): Promise<{ result: SlipVerifyResult; autoApproved: boolean } | null> {
+  const task = verifyAndMaybeApprove(env, booking, dataUri, actor);
+  if (!waitUntil) return task;
+  waitUntil(task.catch(() => undefined));
+  return Promise.resolve(null);
+}
+
+export type WaitUntil = (promise: Promise<unknown>) => void;
+
+export async function handleUploadSlip(
+  env: Env,
+  body: Record<string, unknown>,
+  waitUntil?: WaitUntil
+): Promise<Record<string, unknown>> {
   const ref = sanitizeStr(body.ref, 64);
   if (!body.base64Data) return { status: 'error', message: 'Missing base64Data' };
   if (!ref) return { status: 'error', message: 'Missing ref' };
@@ -102,7 +130,7 @@ export async function handleUploadSlip(env: Env, body: Record<string, unknown>):
     await invalidateLookupCache(env, ref);
     // Verification used to wait for a separate verifySlip call, which meant a
     // slip sat unchecked until someone asked. Run it here instead.
-    const verified = await verifyAndMaybeApprove(env, rows[0] as Reservation, dataUri, actor);
+    const verified = await runVerify(env, rows[0] as Reservation, dataUri, actor, waitUntil);
     return {
       status: 'ok',
       url: dataUri,
@@ -118,7 +146,8 @@ export async function handleUpdateSlipAndStatus(
   env: Env,
   body: Record<string, unknown>,
   user: { username: string },
-  isPublic = false
+  isPublic = false,
+  waitUntil?: WaitUntil
 ): Promise<Record<string, unknown>> {
   // The payment window only applies to visitors paying themselves. Staff acting
   // from the dashboard are authenticated and can always settle a booking.
@@ -182,11 +211,12 @@ export async function handleUpdateSlipAndStatus(
   // (or flagged as reused) for whoever reviews it afterwards.
   let verify: SlipVerifyResult | null = null;
   if (isPublic && uploadedDataUri) {
-    const outcome = await verifyAndMaybeApprove(
+    const outcome = await runVerify(
       env,
       { ...rows[0], status } as Reservation,
       uploadedDataUri,
-      user.username
+      user.username,
+      waitUntil
     );
     verify = outcome ? outcome.result : null;
   }

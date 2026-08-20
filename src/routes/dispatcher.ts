@@ -63,6 +63,8 @@ export interface RouteCtx {
   user: AuthenticatedUser | null;
   ip: string;
   userAgent: string;
+  /** Lets a handler finish slow work after the response is sent. */
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export type LegacyHandler = (ctx: RouteCtx) => Promise<Record<string, unknown>>;
@@ -168,13 +170,19 @@ const POST_ROUTES: Record<string, Route> = {
   },
   uploadSlip: {
     auth: false,
-    handler: async (ctx) => handleUploadSlip(ctx.env, ctx.body),
+    handler: async (ctx) => handleUploadSlip(ctx.env, ctx.body, ctx.waitUntil),
     rateLimit: { ns: 'slipupload', ...PUBLIC_SLIP_LIMIT },
   },
   updateSlipAndStatus: {
     auth: false,
     handler: async (ctx) =>
-      handleUpdateSlipAndStatus(ctx.env, ctx.body, { username: ctx.user?.username || 'public' }, !ctx.user),
+      handleUpdateSlipAndStatus(
+        ctx.env,
+        ctx.body,
+        { username: ctx.user?.username || 'public' },
+        !ctx.user,
+        ctx.waitUntil
+      ),
     rateLimit: { ns: 'slipstatus', ...PUBLIC_SLIP_LIMIT },
   },
   getNotes: {

@@ -501,11 +501,13 @@ export async function handleUpdateVisitorApproval(
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
 
-  const mainApproved =
-    String(body.visitorApproved || '')
-      .toString()
-      .trim()
-      .toLowerCase() === 'yes';
+  // Same fallback as extraVisitorApproved below: a caller deciding only the
+  // extra visitors omits visitorApproved, and reading that absence as "not
+  // approved" dropped the already-approved main visitor out of visitorCount
+  // and total.
+  const mainApprovedRaw =
+    body.visitorApproved !== undefined ? String(body.visitorApproved) : String(rows[0]!.visitorApproved || '');
+  const mainApproved = mainApprovedRaw.trim().toLowerCase() === 'yes';
   // Fall back to the persisted approvals when only the main visitor is being
   // approved, so previously-approved extra visitors keep their fees (and their
   // child discounts) instead of being wiped out of the total.

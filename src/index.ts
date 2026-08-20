@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { Env } from './types';
 import { makeCorsHeaders, jsonResponse, getClientIp, getUserAgent } from './middleware/http';
 import { resolveAuthUser } from './auth/middleware';
@@ -26,13 +27,14 @@ async function runDispatch(
   request: Request,
   env: Env,
   isGet: boolean,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  waitUntil?: (promise: Promise<unknown>) => void
 ): Promise<Response> {
   const ip = sanitizeStr(body.ip, 64) || getClientIp(request);
   const userAgent = sanitizeStr(body.userAgent, 500) || getUserAgent(request);
 
   const user = await resolveAuthUser(env, request, body);
-  const ctx: RouteCtx = { env, request, body, user, ip, userAgent };
+  const ctx: RouteCtx = { env, request, body, user, ip, userAgent, waitUntil };
 
   const action = isGet ? String(body.action || '') : String(body.action || 'saveReservation');
   const response = await dispatchAction(ctx, action, isGet);
@@ -91,7 +93,7 @@ app.post('/api/reservations/delete', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'deleteBooking', ...(await bodyToObj(c.req.raw)) })
 );
 app.post('/api/reservations/slip', async (c) =>
-  runDispatch(c.req.raw, c.env, false, { action: 'uploadSlip', ...(await bodyToObj(c.req.raw)) })
+  runDispatch(c.req.raw, c.env, false, { action: 'uploadSlip', ...(await bodyToObj(c.req.raw)) }, waitUntilOf(c))
 );
 app.post('/api/notes', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'addNote', ...(await bodyToObj(c.req.raw)) })
@@ -150,8 +152,19 @@ app.post('/api/line/webhook', async (c) => {
 });
 
 // ── Generic action-dispatch endpoints (POST / or /api with {action}) ──
-app.post('/', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw)));
-app.post('/api', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw)));
+app.post('/', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw), waitUntilOf(c)));
+app.post('/api', async (c) => runDispatch(c.req.raw, c.env, false, await bodyToObj(c.req.raw), waitUntilOf(c)));
+
+// `executionCtx` throws when there is none (e.g. a direct app.request() call in
+// a test), so handlers fall back to awaiting their own background work.
+function waitUntilOf(c: Context<{ Bindings: Env }>): ((p: Promise<unknown>) => void) | undefined {
+  try {
+    const ec = c.executionCtx;
+    return (p) => ec.waitUntil(p);
+  } catch {
+    return undefined;
+  }
+}
 
 // ── Health check ───────────────────────────────────────────────────
 app.get('/health', async (c) => {

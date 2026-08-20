@@ -49,7 +49,15 @@ interface DecodedImage {
   data: Uint8ClampedArray;
 }
 
-const MAX_MEGAPIXELS = 25;
+// A Worker isolate has ~128MB. jpeg-js needs roughly 7 bytes per pixel while
+// decoding (3 component planes + the RGBA output), and UPNG needs 4, so a 25MP
+// image blew the isolate away *before* any catch block could run: the request
+// died with no response and no log, the visitor's page reset, and they
+// re-uploaded the same photo over and over (observed: VIS-58434, 20 uploads of
+// one 726KB JPEG, zero slip_verify rows). Cap well under the limit instead —
+// an oversized slip comes back 'unreadable' and goes to manual review.
+const MAX_MEGAPIXELS = 8;
+const MAX_DECODE_MEMORY_MB = 64;
 const BANK_NAMES: Record<string, string> = {
   '002': 'Bangkok Bank (BBL)',
   '004': 'Kasikorn (KBank)',
@@ -110,6 +118,32 @@ function pngDimensions(bytes: Uint8Array): { width: number; height: number } | n
   return { width, height };
 }
 
+/** SOFn carries the real dimensions — read them before jpeg-js allocates. */
+function jpegDimensions(bytes: Uint8Array): { width: number; height: number } | null {
+  let i = 2;
+  while (i + 9 < bytes.length) {
+    if (bytes[i] !== 0xff) {
+      i += 1;
+      continue;
+    }
+    const marker = bytes[i + 1] ?? 0;
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      i += 2;
+      continue;
+    }
+    const len = ((bytes[i + 2] ?? 0) << 8) | (bytes[i + 3] ?? 0);
+    const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSof) {
+      const height = ((bytes[i + 5] ?? 0) << 8) | (bytes[i + 6] ?? 0);
+      const width = ((bytes[i + 7] ?? 0) << 8) | (bytes[i + 8] ?? 0);
+      return width && height ? { width, height } : null;
+    }
+    if (len <= 0) return null;
+    i += 2 + len;
+  }
+  return null;
+}
+
 // jsQR's cost scales with pixel count, so phone-camera slip photos (often
 // 8-12MP) are downscaled before scanning — otherwise verifySlipBytes can
 // burn enough CPU time to hit the Worker's CPU limit (observed: a 503 with
@@ -138,6 +172,15 @@ function downscaleImage(img: DecodedImage, maxDim: number): DecodedImage {
   return { width: newWidth, height: newHeight, data: out };
 }
 
+/** Dimension-only pre-check, so an over-cap slip is reported as such rather
+ *  than lumped in with genuinely corrupt files. */
+function oversizeReason(bytes: Uint8Array): string | null {
+  const isPng = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  const dims = isPng ? pngDimensions(bytes) : jpegDimensions(bytes);
+  if (!dims) return null;
+  return dims.width * dims.height > MAX_MEGAPIXELS * 1_000_000 ? 'image_too_large' : null;
+}
+
 function decodeSlipImage(bytes: Uint8Array): DecodedImage | null {
   try {
     const isPng = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
@@ -153,11 +196,14 @@ function decodeSlipImage(bytes: Uint8Array): DecodedImage | null {
       return downscaleImage({ width: png.width, height: png.height, data: new Uint8ClampedArray(frame) }, MAX_SCAN_DIM);
     }
 
+    const jpegDims = jpegDimensions(bytes);
+    if (jpegDims && jpegDims.width * jpegDims.height > MAX_MEGAPIXELS * 1_000_000) return null;
+
     const jpeg = decodeJpeg(bytes, {
       useTArray: true,
       formatAsRGBA: true,
       maxResolutionInMP: MAX_MEGAPIXELS,
-      maxMemoryUsageInMB: 512,
+      maxMemoryUsageInMB: MAX_DECODE_MEMORY_MB,
     });
     return downscaleImage(
       { width: jpeg.width, height: jpeg.height, data: new Uint8ClampedArray(jpeg.data) },
@@ -344,7 +390,7 @@ export async function verifySlipBytes(
         kind: 'none',
         qrCount: 0,
         at: formatBangkok(new Date()),
-        detail: { reason: 'unsupported_or_corrupt_image' },
+        detail: { reason: oversizeReason(imageBytes) || 'unsupported_or_corrupt_image' },
       },
       fingerprint: '',
       imageHash,

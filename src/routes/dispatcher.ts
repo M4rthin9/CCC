@@ -27,6 +27,7 @@ import {
   handleUpdateVisitorApproval,
   handleUpdateBooking,
   handleCreateBooking,
+  handleBulkBookingAction,
 } from './reservations';
 import { handleGetPrisoners, handleImportPrisoners, handleSyncPrisonerWings, handleRecheckPrisoner } from './prisoners';
 import { getUsersHandler, handleCreateUser, handleUpdateUser, handleDeleteUser } from './users';
@@ -192,6 +193,7 @@ const POST_ROUTES: Record<string, Route> = {
   },
   cancelBooking: { auth: true, handler: async (ctx) => handleCancelBooking(ctx.env, ctx.body, ctx.user!) },
   deleteBooking: { auth: true, handler: async (ctx) => handleDeleteBooking(ctx.env, ctx.body, ctx.user!) },
+  bulkBookingAction: { auth: true, handler: async (ctx) => handleBulkBookingAction(ctx.env, ctx.body, ctx.user!) },
   updateStatus: { auth: true, handler: async (ctx) => handleUpdateStatus(ctx.env, ctx.body, ctx.user!) },
   updateVisitorApproval: {
     auth: true,

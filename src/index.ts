@@ -89,6 +89,9 @@ app.post('/api/reservations', async (c) =>
 app.post('/api/reservations/cancel', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'publicCancelBooking', ...(await bodyToObj(c.req.raw)) })
 );
+app.post('/api/reservations/bulk', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'bulkBookingAction', ...(await bodyToObj(c.req.raw)) })
+);
 app.post('/api/reservations/delete', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'deleteBooking', ...(await bodyToObj(c.req.raw)) })
 );

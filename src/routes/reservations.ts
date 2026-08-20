@@ -770,3 +770,152 @@ export async function handleCreateBooking(
   );
   return { status: 'ok', ref };
 }
+
+// ── Bulk booking actions ───────────────────────────────────────────
+// The generic `bulk` fan-out in dispatcher.ts can already batch any action,
+// but the dashboard's multi-select needs one call per *operation* rather than
+// per row — and "approve" is not a fixed status: each row advances from
+// wherever it currently sits. This handler resolves that per ref and then
+// delegates to the single-row handlers so role checks, transition rules,
+// notifications and event logging stay identical to the one-at-a-time path.
+
+/** Same cap as MAX_BULK_ITEMS in dispatcher.ts: bounds the D1 write burst. */
+const MAX_BULK_REFS = 50;
+
+/** The single forward step out of each status (mirrors allowedTransitions). */
+const NEXT_STATUS: Record<string, string> = {
+  รอตรวจสอบผู้เข้าร่วม: 'รอตรวจสอบวินัย',
+  รอตรวจสอบวินัย: 'รอชำระเงิน',
+  รอชำระเงิน: 'ชำระแล้ว',
+  ชำระแล้ว: 'เสร็จสิ้น',
+};
+
+const BULK_OPERATIONS = ['approve', 'decline', 'cancel', 'delete'] as const;
+type BulkOperation = (typeof BULK_OPERATIONS)[number];
+
+/** Refs may arrive as an array, a JSON-encoded array, or a comma-separated list. */
+function parseRefs(raw: unknown): string[] {
+  let list: unknown = raw;
+  if (typeof list === 'string') {
+    const text = list.trim();
+    if (text.startsWith('[')) {
+      try {
+        list = JSON.parse(text);
+      } catch {
+        return [];
+      }
+    } else {
+      list = text.split(',');
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  for (const item of list) {
+    const ref = sanitizeStr(item, 64);
+    if (ref) seen.add(ref);
+  }
+  return [...seen];
+}
+
+/**
+ * Apply one operation to many bookings.
+ *
+ *   POST / { action: 'bulkBookingAction', operation: 'approve',
+ *            refs: ['VIS-0001', 'VIS-0002'], reason: '...' }
+ *
+ * `approve` advances each ref one step along the workflow (a fixed target can
+ * be forced with `status`); `decline` sets ไม่อนุมัติ, `cancel` sets ยกเลิก,
+ * `delete` hard-deletes (Superadmin only, enforced by handleDeleteBooking).
+ *
+ * Refs run sequentially — the underlying handlers read-modify-write the same
+ * rows and D1 has no cross-statement transaction here. A failing ref never
+ * aborts the rest unless `stopOnError` is set; the caller gets a per-ref report
+ * plus an overall success / partial / error status.
+ */
+export async function handleBulkBookingAction(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string; role: string }
+): Promise<Record<string, unknown>> {
+  const operation = sanitizeStr(body.operation, 20).toLowerCase() as BulkOperation;
+  if (!BULK_OPERATIONS.includes(operation)) {
+    return { status: 'error', message: 'operation ต้องเป็น ' + BULK_OPERATIONS.join(' / ') };
+  }
+
+  const refs = parseRefs(body.refs ?? body.ref);
+  if (refs.length === 0) return { status: 'error', message: 'กรุณาระบุเลขอ้างอิงอย่างน้อย 1 รายการ' };
+  if (refs.length > MAX_BULK_REFS) {
+    return { status: 'error', message: `รับได้สูงสุด ${MAX_BULK_REFS} รายการต่อครั้ง (ส่งมา ${refs.length})` };
+  }
+
+  // An explicit target only makes sense for approve; decline/cancel/delete
+  // have exactly one meaning.
+  const forcedStatus = operation === 'approve' ? sanitizeStr(body.status, 50) : '';
+  if (forcedStatus && !VALID_STATUSES.includes(forcedStatus as never)) {
+    return { status: 'error', message: 'Invalid status: ' + forcedStatus };
+  }
+
+  const stopOnError = body.stopOnError === true || body.stopOnError === 'true';
+  const results: Array<{ ref: string; status: 'success' | 'error'; message?: string; newStatus?: string }> = [];
+  let succeeded = 0;
+
+  for (const ref of refs) {
+    try {
+      let result: Record<string, unknown>;
+      let newStatus = '';
+
+      if (operation === 'delete') {
+        result = await handleDeleteBooking(env, { ref }, user);
+      } else {
+        if (operation === 'approve') {
+          if (forcedStatus) {
+            newStatus = forcedStatus;
+          } else {
+            const rows = await getReservationsByRefs(env.DB, ref);
+            if (rows.length === 0) {
+              results.push({ ref, status: 'error', message: 'ไม่พบการจองที่ระบุ' });
+              if (stopOnError) break;
+              continue;
+            }
+            const current = String(rows[0]!.status || '').trim();
+            const next = NEXT_STATUS[current];
+            if (!next) {
+              results.push({ ref, status: 'error', message: 'สถานะ "' + current + '" ไม่สามารถอนุมัติต่อได้' });
+              if (stopOnError) break;
+              continue;
+            }
+            newStatus = next;
+          }
+        } else {
+          newStatus = operation === 'decline' ? 'ไม่อนุมัติ' : 'ยกเลิก';
+        }
+        result = await handleUpdateStatus(env, { ref, status: newStatus, reason: body.reason }, user);
+      }
+
+      if (result.status === 'error') {
+        results.push({ ref, status: 'error', message: String(result.message || 'Failed') });
+      } else {
+        succeeded++;
+        results.push({ ref, status: 'success', ...(newStatus ? { newStatus } : {}) });
+      }
+    } catch (e) {
+      console.error('[BulkBookingAction:' + operation + ':' + ref + ']', String(e));
+      results.push({ ref, status: 'error', message: 'Server error' });
+    }
+
+    if (stopOnError && results[results.length - 1]?.status === 'error') break;
+  }
+
+  const failed = results.length - succeeded;
+  const status = failed === 0 ? 'success' : succeeded > 0 ? 'partial' : 'error';
+  await logEvent(
+    env,
+    user.username,
+    'bulk_booking_' + operation,
+    '',
+    { requested: refs.length, processed: results.length, succeeded, failed, refs },
+    status
+  );
+
+  return { status, operation, requested: refs.length, processed: results.length, succeeded, failed, results };
+}

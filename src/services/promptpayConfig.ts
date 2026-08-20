@@ -37,6 +37,26 @@ export interface PromptPayConfig {
   /** When set, mint a plain PromptPay credit transfer (tag 29) instead of a
    *  BillPayment QR — payable without a registered biller agreement. */
   recipient?: PromptPayRecipient;
+  /** Receiving account holder names as printed on a payer's slip. Used only to
+   *  match slip OCR against the real payee (`promptpay.receiverNames`). */
+  receiverNames: string[];
+  /** Trailing visible digits of the receiving account, e.g. "1234" for
+   *  "xxx-x-x1234-x" (`promptpay.receiverAccountTail`). */
+  receiverAccountTail: string;
+}
+
+/** Slips mask all but the last few digits of the receiving account. */
+function readReceiverAccountTail(raw: Record<string, unknown>, recipient?: PromptPayRecipient): string {
+  const explicit = typeof raw.receiverAccountTail === 'string' ? raw.receiverAccountTail : '';
+  const fromRecipient = recipient && recipient.kind === 'bankAccount' ? recipient.accountNo : '';
+  const digits = (explicit || fromRecipient).replace(/\D/g, '');
+  return digits.length >= 4 ? digits.slice(-4) : '';
+}
+
+function readReceiverNames(raw: Record<string, unknown>): string[] {
+  const value = raw.receiverNames ?? raw.accountName;
+  const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+  return list.map((v) => String(v).trim()).filter(Boolean);
 }
 
 /** Read the optional tag-29 recipient out of the settings blob. Anything
@@ -86,5 +106,7 @@ export async function getPromptPayConfig(env: Env): Promise<PromptPayConfig> {
         ? raw.merchantCategoryCode
         : undefined,
     recipient: readRecipient(raw),
+    receiverNames: readReceiverNames(raw),
+    receiverAccountTail: readReceiverAccountTail(raw, readRecipient(raw)),
   };
 }

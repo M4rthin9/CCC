@@ -34,7 +34,13 @@ import { getRolesHandler, handleCreateRole } from './roles';
 import { handleGetEventLogs, handleLogClientEvent } from './eventlog';
 import { handleAddNote, handleGetNotes } from './notes';
 import { handleSaveSettings, handleGetSettings, handleGetPublicSettings, handleGetDataVersion } from './settings';
-import { handleUploadSlip, handleUpdateSlipAndStatus, handleGetSlipByRef, handleVerifySlip } from './slip';
+import {
+  handleUploadSlip,
+  handleUpdateSlipAndStatus,
+  handleGetSlipByRef,
+  handleVerifySlip,
+  handleReverifySlip,
+} from './slip';
 import { handleLogin, handleChangePassword, handleRefresh } from './auth';
 import { handleGeneratePromptPayQr } from './promptpay';
 import { handleGenerateSlipVerifyQr } from './slipQr';
@@ -44,6 +50,7 @@ import {
   handleSubscribe,
   handleUnsubscribe,
   getNotificationSettingsHandler,
+  getPushPublicKeyHandler,
   setLineMonthlyCapHandler,
   getNotificationLogsHandler,
   processPendingHandler,
@@ -111,6 +118,7 @@ const GET_ROUTES: Record<string, Route> = {
   getSheetInfo: { auth: true, handler: async (ctx) => handleGetSheetInfo(ctx.env) },
   getSettings: { auth: true, handler: async (ctx) => handleGetSettings(ctx.env) },
   getPublicSettings: { auth: false, handler: async (ctx) => handleGetPublicSettings(ctx.env) },
+  getPushPublicKey: { auth: false, handler: async (ctx) => getPushPublicKeyHandler(ctx.env) },
   recheckPrisoner: { auth: true, handler: async (ctx) => handleRecheckPrisoner(ctx.env, ctx.body) },
   generatePromptPayQr: {
     auth: false,
@@ -121,6 +129,10 @@ const GET_ROUTES: Record<string, Route> = {
     auth: false,
     handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body),
     rateLimit: { ns: 'slipverify', ...PUBLIC_SLIP_LIMIT },
+  },
+  reverifySlip: {
+    auth: true,
+    handler: async (ctx) => handleReverifySlip(ctx.env, ctx.body, ctx.user?.username || ''),
   },
 };
 
@@ -203,10 +215,15 @@ const POST_ROUTES: Record<string, Route> = {
     handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body),
     rateLimit: { ns: 'slipverify', ...PUBLIC_SLIP_LIMIT },
   },
+  reverifySlip: {
+    auth: true,
+    handler: async (ctx) => handleReverifySlip(ctx.env, ctx.body, ctx.user?.username || ''),
+  },
   subscribe: { auth: false, handler: async (ctx) => handleSubscribe(ctx.env, ctx.body) },
   unsubscribe: { auth: false, handler: async (ctx) => handleUnsubscribe(ctx.env, ctx.body) },
   linkLine: { auth: false, handler: async (ctx) => handleLinkLine(ctx.env, ctx.body) },
   notify: { auth: true, handler: async (ctx) => handleNotify(ctx.env, ctx.body) },
+  getPushPublicKey: { auth: false, handler: async (ctx) => getPushPublicKeyHandler(ctx.env) },
   getNotificationSettings: { auth: true, handler: async (ctx) => getNotificationSettingsHandler(ctx.env) },
   setLineMonthlyCap: {
     auth: true,

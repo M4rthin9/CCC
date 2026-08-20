@@ -115,6 +115,20 @@ export async function handleLineWebhook(env: Env, request: Request): Promise<Res
   return jsonResponse({ status: 'ok' });
 }
 
+/**
+ * The VAPID public key the browser needs for `pushManager.subscribe`. Public by
+ * design (it is the key half of a keypair) — exposed so the separate frontend
+ * does not have to hardcode a copy that can drift from the deployed secret.
+ */
+export function getPushPublicKeyHandler(env: Env): Record<string, unknown> {
+  const key = String(env.VAPID_PUBLIC_KEY || '');
+  return {
+    status: 'ok',
+    publicKey: key,
+    pushEnabled: env.NOTIFY_PUSH_ENABLED === 'true' && key !== '',
+  };
+}
+
 export async function getNotificationSettingsHandler(env: Env): Promise<Record<string, unknown>> {
   const cap = await getLineMonthlyCap(env.DB).catch(() => 0);
   return {

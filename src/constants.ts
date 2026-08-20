@@ -275,6 +275,7 @@ export const NOTIFICATION_EVENTS = [
   'booking_submitted',
   'booking_cancelled',
   'status_changed',
+  'payment_due',
   'payment_confirmed',
   'visitor_approved',
   'visitor_rejected',
@@ -295,6 +296,10 @@ export const NOTIFY_TEMPLATES: Record<NotificationEvent, { subject: string; body
   status_changed: {
     subject: 'แจ้งเตือน: สถานะการจองเปลี่ยน',
     body: 'การจองเลขที่ {ref}\nสถานะเปลี่ยนเป็น: {status}\nผู้ต้องขัง: {prisonerName}\nวันที่เข้าเยี่ยม: {visitDate}',
+  },
+  payment_due: {
+    subject: 'แจ้งเตือน: ถึงคิวชำระเงิน',
+    body: 'การจองเลขที่ {ref} ได้รับการอนุมัติแล้ว กรุณาชำระเงิน\nผู้ต้องขัง: {prisonerName}\nวันที่เข้าเยี่ยม: {visitDate}\nยอดที่ต้องชำระ: {total} บาท',
   },
   payment_confirmed: {
     subject: 'แจ้งเตือน: ยืนยันการชำระเงิน',

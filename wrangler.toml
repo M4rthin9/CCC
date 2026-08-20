@@ -23,6 +23,24 @@ NOTIFY_PUSH_ENABLED = "false"
 NOTIFY_LINE_ENABLED = "false"
 # Fallback LINE monthly push-message cap (an admin-overridable setting wins).
 LINE_MONTHLY_CAP = "200"
+# Only these events may spend quota. notify() drops everything else before a
+# row is queued — widen the list to send more.
+NOTIFY_EVENT_ALLOWLIST = "payment_due"
+# Web Push is free and unlimited; LINE is capped. When "true", a booking that
+# already has a browser subscription never costs a LINE message.
+NOTIFY_LINE_FALLBACK_ONLY = "true"
+
+# ── Slip auto-verification (Workers AI OCR) ────────────────────────
+# OCR reads the amount / Ref1 / payee / time off the slip so a genuine
+# Mini-QR can be matched against the booking without a bank Open API.
+SLIP_OCR_ENABLED = "true"
+SLIP_OCR_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
+# Daily inference budget — Workers AI gives 10,000 free Neurons/day.
+SLIP_OCR_DAILY_MAX = "300"
+# Writes the paid status by itself. Keep "false" until the scores look right.
+SLIP_AUTO_APPROVE_ENABLED = "false"
+# Slips older than this (by their own printed timestamp) never auto-approve.
+SLIP_MAX_AGE_HOURS = "72"
 
 # ── D1 database ────────────────────────────────────────────────────
 # Create with:  wrangler d1 create ccc-reservations
@@ -39,6 +57,10 @@ migrations_dir = "src/db/migrations"
 [[kv_namespaces]]
 binding = "CACHE_KV"
 id = "e53d8e0df3d04533b140bb49b99d7df3"
+
+# ── Workers AI (slip OCR) ──────────────────────────────────────────
+[ai]
+binding = "AI"
 
 # ── Scheduled tasks (cron, UTC) ────────────────────────────────────
 # 0 17 * * *   = 00:00 Bangkok  — daily expired-discipline cleanup
@@ -79,6 +101,14 @@ TURNSTILE_ALLOWED_HOSTNAMES = "dev.ccc-frontend.pages.dev,dev.ccc-dashboard-6jh.
 NOTIFY_PUSH_ENABLED = "false"
 NOTIFY_LINE_ENABLED = "false"
 LINE_MONTHLY_CAP = "200"
+NOTIFY_EVENT_ALLOWLIST = "payment_due"
+NOTIFY_LINE_FALLBACK_ONLY = "true"
+# OCR runs on dev (it only reads), but nothing may settle a booking by itself.
+SLIP_OCR_ENABLED = "true"
+SLIP_OCR_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
+SLIP_OCR_DAILY_MAX = "50"
+SLIP_AUTO_APPROVE_ENABLED = "false"
+SLIP_MAX_AGE_HOURS = "72"
 
 [[env.development.d1_databases]]
 binding = "DB"
@@ -89,6 +119,9 @@ migrations_dir = "src/db/migrations"
 [[env.development.kv_namespaces]]
 binding = "CACHE_KV"
 id = "f667fc0048e14ef48a489ec298cfbbaa"
+
+[env.development.ai]
+binding = "AI"
 
 # No cron in dev — the daily discipline cleanup and the quarterly archive
 # job would silently mutate dev data in the background. Run them on demand:

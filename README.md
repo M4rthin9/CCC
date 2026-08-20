@@ -73,6 +73,63 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
 - **Archiving**: reservations older than 3 months are moved to the archive table
   (cron, 1st of every 3rd month).
 
+### Slip verification & auto-approval (no bank API)
+
+Thailand's banks print a **Mini-QR** on every transfer slip carrying the sending bank code and
+a transaction reference. `services/slipverify.ts` scans the uploaded image (`upng-js` /
+`jpeg-js` → `jsqr`, two passes because a slip usually carries both the Mini-QR and our own
+payment QR), parses it with `@thai-qr-payment/payload`, and refuses a slip whose transaction —
+or whose exact image bytes — already paid another booking (`slip_fingerprint` /
+`slip_image_hash`).
+
+That proves a slip is genuine and unused, but the Mini-QR carries no amount and no payee. Those
+are printed as text, so a Workers AI vision model transcribes them (`services/slipOcr.ts`) and
+`services/slipMatch.ts` matches them against the booking:
+
+| Check          | Rule                                                                       |
+| -------------- | -------------------------------------------------------------------------- |
+| `authentic`    | a genuine bank / TrueMoney Mini-QR was found                               |
+| `notDuplicate` | the transaction and image have not paid another booking                    |
+| `amount`       | within 0.50 THB of the booking total                                       |
+| `ref1`         | the slip's Reference 1 equals the configured biller `ref1`                 |
+| `payee`        | receiving account tail or account name matches the configured payee        |
+| `time`         | the printed timestamp is after the booking and within `SLIP_MAX_AGE_HOURS` |
+
+All of `authentic`, `notDuplicate`, `amount` and `time` must pass, plus **either** `ref1` or
+`payee` (a plain credit transfer prints no Ref1, so that check reads "not applicable"). Only
+then, and only with `SLIP_AUTO_APPROVE_ENABLED="true"`, does an upload move the booking from
+`รอชำระเงิน` to `ชำระแล้ว` on its own — everything else lands in the existing manual queue with
+`slip_decision_json.blockedBy` naming what failed.
+
+**Ref1/Ref2 are fixed by the biller agreement** — the bank assigns them, and a QR carrying
+anything else is refused, so they are identical on every booking and identify the _payee_, never
+the booking. Nothing printed on a slip names the booking it belongs to; what separates two
+bookings of the same price is the amount, the printed time, and the transaction-reuse check —
+a genuine transaction can settle exactly one booking, ever.
+
+Cost: OCR runs **only** for slips that already passed the Mini-QR and duplicate checks, behind a
+per-UTC-day budget (`SLIP_OCR_DAILY_MAX`) that fails closed. Workers AI includes 10,000 free
+Neurons per day.
+
+### Notifications
+
+Web Push (RFC 8291, hand-rolled in `services/push.ts` — no `web-push` dependency) and the LINE
+Messaging API (`services/line.ts`) both deliver through `services/notifications.ts`, which
+writes an outbox row per recipient and retries pending rows from the daily cron.
+
+Two knobs keep this inside the free tiers:
+
+- `NOTIFY_EVENT_ALLOWLIST` — defaults to `payment_due` alone, the one moment a visitor has to
+  act. Every other call site stays in the code and costs nothing.
+- `NOTIFY_LINE_FALLBACK_ONLY` — LINE is only used for a booking that push did not reach, so the
+  200-message monthly LINE allowance is spent only where it is the only option.
+
+The frontend needs three calls: `GET /api/notify/publicKey` for the VAPID key, then
+`POST /api/notify/subscribe` with `{ ref, endpoint, p256dh, auth }` from
+`pushManager.subscribe`, and `POST /api/notify/unsubscribe` with `{ endpoint }`. LINE users
+instead add the Official Account and reply with their booking ref, which
+`POST /api/line/webhook` binds to their LINE user id.
+
 ### Scheduled tasks (cron, UTC)
 
 | Schedule        | Bangkok time          | Job                                                             |
@@ -321,7 +378,25 @@ Set secrets with `wrangler secret` so they never appear in the repo or bundle:
 wrangler secret put JWT_SECRET
 wrangler secret put JWT_REFRESH_SECRET
 wrangler secret put TURNSTILE_SECRET
+
+# Notifications — only needed once NOTIFY_PUSH_ENABLED / NOTIFY_LINE_ENABLED are "true"
+wrangler secret put VAPID_PUBLIC_KEY        # Web Push keypair (see below)
+wrangler secret put VAPID_PRIVATE_KEY
+wrangler secret put VAPID_SUBJECT           # e.g. mailto:admin@example.com
+wrangler secret put LINE_CHANNEL_ACCESS_TOKEN
+wrangler secret put LINE_CHANNEL_SECRET
+wrangler secret put LINE_OA_ID
 ```
+
+Generate the VAPID keypair once (base64url, uncompressed P-256):
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+The public half is served to the frontend by `GET /api/notify/publicKey`, so the browser
+never hardcodes it. The private half stays a secret and signs the VAPID JWT in
+`src/services/push.ts`.
 
 - Local-only copies live in `.dev.vars` (git-ignored). `.dev.vars.example` shows the keys.
 - For CI, add the following GitHub Actions secrets (repo Settings → Secrets and variables → Actions):
@@ -338,6 +413,21 @@ wrangler secret put TURNSTILE_SECRET
 | `CACHE_VERSION`   | Bump (e.g. `v4`) to invalidate all KV caches after a deploy       |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins allowed by CORS. `*` in dev only |
 | `PASSWORD_SALT`   | Salt used for password hashing (keep consistent across deploys)   |
+
+Notification and slip-verification vars:
+
+| Var                         | Purpose                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| `NOTIFY_PUSH_ENABLED`       | `"true"` to deliver Web Push. Free and unlimited                             |
+| `NOTIFY_LINE_ENABLED`       | `"true"` to deliver LINE messages (free tier: 200/month)                     |
+| `NOTIFY_EVENT_ALLOWLIST`    | Comma-separated events allowed to send. Default `payment_due` only           |
+| `NOTIFY_LINE_FALLBACK_ONLY` | `"true"` = LINE only when push did not reach the visitor, to protect the cap |
+| `LINE_MONTHLY_CAP`          | Fallback monthly LINE cap (an admin setting wins)                            |
+| `SLIP_OCR_ENABLED`          | `"true"` to read amount/Ref1/payee/time off slips with Workers AI            |
+| `SLIP_OCR_MODEL`            | Vision model id, default `@cf/meta/llama-4-scout-17b-16e-instruct`           |
+| `SLIP_OCR_DAILY_MAX`        | Inference budget per UTC day (Workers AI gives 10,000 free Neurons/day)      |
+| `SLIP_AUTO_APPROVE_ENABLED` | `"true"` lets a fully matched slip set `ชำระแล้ว` by itself                  |
+| `SLIP_MAX_AGE_HOURS`        | Slips older than this (by their printed time) never auto-approve             |
 
 ### Cron triggers
 

@@ -126,8 +126,10 @@ app.get('/api/notify/settings', async (c) =>
   runDispatch(c.req.raw, c.env, true, { action: 'getNotificationSettings' })
 );
 app.post('/api/notify/settings', async (c) =>
-  runDispatch(c.req.raw, c.env, false, { action: 'getNotificationSettings', ...(await bodyToObj(c.req.raw)) })
+  runDispatch(c.req.raw, c.env, false, { action: 'setLineMonthlyCap', ...(await bodyToObj(c.req.raw)) })
 );
+// The browser needs this before it can call pushManager.subscribe.
+app.get('/api/notify/publicKey', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getPushPublicKey' }));
 app.post('/api/notify/cap', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'setLineMonthlyCap', ...(await bodyToObj(c.req.raw)) })
 );

@@ -11,6 +11,9 @@ import {
 } from '../db/queries/reservations';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
 import { logEvent } from './logger';
+import { extractSlipFields, SlipOcrOutcome } from './slipOcr';
+import { decideSlip, SlipDecision } from './slipMatch';
+import { getPromptPayConfig } from './promptpayConfig';
 import { Env, Reservation } from '../types';
 
 // slipverify only judges authenticity: 'slip_verify' = genuine bank/TrueMoney
@@ -26,6 +29,10 @@ export interface SlipVerifyResult {
   at: string;
   detail: Record<string, unknown> | null;
   duplicateOfRef?: string;
+  /** Transcribed slip text, present only when the OCR stage ran. */
+  ocr?: SlipOcrOutcome;
+  /** Whether the slip may settle the booking on its own. */
+  decision?: SlipDecision;
 }
 
 type EnvelopeKind = 'paymentQr' | 'slipVerify' | 'trueMoneySlipVerify';
@@ -286,7 +293,7 @@ function buildPaymentQrOnlyResult(payment: ParsedEnvelope, qrCount: number): Sli
   };
 }
 
-async function persistVerify(
+export async function persistVerify(
   env: Env,
   ref: string,
   result: SlipVerifyResult,
@@ -300,9 +307,19 @@ async function persistVerify(
     ['slip_verify_at', result.at],
     ['slip_fingerprint', fingerprint],
     ['slip_image_hash', imageHash],
+    ['slip_ocr_json', result.ocr ? JSON.stringify(result.ocr) : ''],
+    ['slip_decision', result.decision ? result.decision.decision : ''],
+    ['slip_decision_json', result.decision ? JSON.stringify(result.decision) : ''],
   ];
   await updateReservationColumns(env.DB, ref, cols);
-  await logEvent(env, 'public', 'slip_verify', ref, { status: result.status, kind: result.kind }, 'success');
+  await logEvent(
+    env,
+    'public',
+    'slip_verify',
+    ref,
+    { status: result.status, kind: result.kind, decision: result.decision?.decision || '' },
+    'success'
+  );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
 }
@@ -392,6 +409,44 @@ export async function verifySlipBytes(
   return { result, fingerprint, imageHash };
 }
 
+function maxAgeHours(env: Env): number {
+  const n = parseInt(String(env.SLIP_MAX_AGE_HOURS || ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : 72;
+}
+
+/**
+ * Full pipeline: QR authenticity + reuse (verifySlipBytes), then — only for a
+ * slip that is genuine *and* unused — OCR and matching against the booking.
+ * Gating the OCR call this way is what keeps inference inside the Workers AI
+ * free allocation: forged and replayed slips never reach the model.
+ */
+export async function verifyAndDecideSlip(
+  env: Env,
+  booking: Reservation,
+  imageBytes: Uint8Array,
+  dataUri: string
+): Promise<VerifyOutcome> {
+  const outcome = await verifySlipBytes(env.DB, imageBytes, booking);
+  const authentic = outcome.result.status === 'slip_verify';
+  const notDuplicate = outcome.result.status !== 'duplicate';
+  if (!authentic || !notDuplicate) return outcome;
+
+  const ocr = await extractSlipFields(env, dataUri);
+  const cfg = await getPromptPayConfig(env);
+  outcome.result.ocr = ocr;
+  outcome.result.decision = decideSlip({
+    authentic,
+    notDuplicate,
+    booking,
+    ocr: ocr.fields,
+    cfg,
+    receiverNames: cfg.receiverNames,
+    receiverAccountTail: cfg.receiverAccountTail,
+    maxAgeHours: maxAgeHours(env),
+  });
+  return outcome;
+}
+
 export async function handleVerifySlip(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const ref = String(body.ref || '').trim();
   if (!ref) return { status: 'error', message: 'Missing ref' };
@@ -422,7 +477,8 @@ export async function handleVerifySlip(env: Env, body: Record<string, unknown>):
     return { status: 'error', message: 'No slip image available' };
   }
 
-  const { result, fingerprint, imageHash } = await verifySlipBytes(env.DB, imageBytes, booking);
+  const dataUri = inline || (await getStoredSlipByRef(env.DB, ref));
+  const { result, fingerprint, imageHash } = await verifyAndDecideSlip(env, booking, imageBytes, dataUri);
   await persistVerify(env, ref, result, fingerprint, imageHash);
   return { status: 'ok', result };
 }

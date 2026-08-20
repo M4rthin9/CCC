@@ -18,6 +18,17 @@ export interface Env {
   VAPID_SUBJECT?: string;
   NOTIFY_PUSH_ENABLED?: string;
   NOTIFY_LINE_ENABLED?: string;
+  /** Comma-separated notification events allowed to spend quota. */
+  NOTIFY_EVENT_ALLOWLIST?: string;
+  /** "true" = only LINE-push a booking that has no browser subscription. */
+  NOTIFY_LINE_FALLBACK_ONLY?: string;
+  // Slip auto-verification (Workers AI OCR).
+  AI?: Ai;
+  SLIP_OCR_ENABLED?: string;
+  SLIP_OCR_MODEL?: string;
+  SLIP_OCR_DAILY_MAX?: string;
+  SLIP_AUTO_APPROVE_ENABLED?: string;
+  SLIP_MAX_AGE_HOURS?: string;
 }
 
 export interface User {
@@ -73,6 +84,9 @@ export interface Reservation {
   childUnder5Count?: number;
   visitorAge?: string;
   payment_ref1?: string;
+  slip_ocr_json?: string;
+  slip_decision?: string;
+  slip_decision_json?: string;
   status?: string;
   slipImage?: string;
   cancelReason?: string;

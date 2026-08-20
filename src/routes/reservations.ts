@@ -469,6 +469,16 @@ export async function handleUpdateStatus(
       prisonerName: rows[0]?.prisonerName,
       reason: reasonText,
     }).catch(() => undefined);
+  } else if (status === 'รอชำระเงิน') {
+    // The one moment the visitor has to act — this is the event the
+    // NOTIFY_EVENT_ALLOWLIST is set to by default.
+    await notify(env, {
+      ref,
+      type: 'payment_due',
+      prisonerName: rows[0]?.prisonerName,
+      visitDate: rows[0]?.visitDate,
+      total: rows[0]?.total,
+    }).catch(() => undefined);
   } else {
     await notify(env, {
       ref,

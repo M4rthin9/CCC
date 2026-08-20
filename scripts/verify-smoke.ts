@@ -15,6 +15,10 @@ import { importPrisonersBulk, type PrisonerImportRow } from '../src/db/queries/p
 import { PROMPTPAY_DEFAULTS } from '../src/services/promptpayConfig';
 import { handleGetPublicSettings, readPaymentSwitch } from '../src/routes/settings';
 import { handleUpdateSlipAndStatus } from '../src/routes/slip';
+import { decideSlip, parseSlipDateTime } from '../src/services/slipMatch';
+import type { SlipMatchInput } from '../src/services/slipMatch';
+import type { PromptPayConfig } from '../src/services/promptpayConfig';
+import type { SlipOcrFields } from '../src/services/slipOcr';
 import type { Env } from '../src/types';
 import type { Reservation } from '../src/types';
 
@@ -478,6 +482,121 @@ const closedEnv = envWithSettings(JSON.stringify({ payment: { enabled: false, cl
 const blocked = await handleUpdateSlipAndStatus(closedEnv, { ref: 'VIS-00001' }, { username: 'public' }, true);
 check('closed payment blocks public slip submit', String(blocked.status), 'error');
 check('closed payment returns admin message', String(blocked.message), 'closed now');
+
+// ── Slip matching: what may settle a booking without a bank API ─────────
+// The Mini-QR proves a slip is real; these rules decide whether the *right
+// money* reached the *right payee*, off the OCR'd slip text.
+
+check(
+  'slip time parses BE numeric',
+  parseSlipDateTime('15/08/2568 14:32')?.toISOString() ?? '',
+  '2025-08-15T07:32:00.000Z'
+);
+check(
+  'slip time parses Thai month',
+  parseSlipDateTime('15 ส.ค. 2568 14:32')?.toISOString() ?? '',
+  '2025-08-15T07:32:00.000Z'
+);
+check(
+  'slip time parses CE + Latin month',
+  parseSlipDateTime('15 Aug 2025 - 14:32')?.toISOString() ?? '',
+  '2025-08-15T07:32:00.000Z'
+);
+check(
+  'slip time parses Thai digits',
+  parseSlipDateTime('๑๕/๐๘/๒๕๖๘ ๑๔:๓๒')?.toISOString() ?? '',
+  '2025-08-15T07:32:00.000Z'
+);
+check(
+  'slip time parses ISO without day-first confusion',
+  parseSlipDateTime('2025-08-15 14:32')?.toISOString() ?? '',
+  '2025-08-15T07:32:00.000Z'
+);
+check('slip time rejects junk', parseSlipDateTime('ไม่มีวันที่') === null, true);
+check('slip time rejects null', parseSlipDateTime(null) === null, true);
+
+// ref1 comes from the biller agreement — fixed by the bank, identical on every
+// booking's QR, so it identifies the payee and not the booking.
+const matchCfg = { merchantNameEn: 'CIDA PRISON SHOP', ref1: PROMPTPAY_DEFAULTS.ref1 } as PromptPayConfig;
+const paidBooking = {
+  ref: 'VIS-00001',
+  total: 500,
+  createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  status: 'รอชำระเงิน',
+} as Reservation;
+// Slips print Bangkok local time, so a "just now" fixture is UTC + 7h.
+const bangkokNow = new Date(Date.now() + 7 * 60 * 60 * 1000 - 5 * 60 * 1000)
+  .toISOString()
+  .replace('T', ' ')
+  .slice(0, 16);
+const goodOcr: SlipOcrFields = {
+  amount: 500,
+  dateTimeText: bangkokNow,
+  ref1: PROMPTPAY_DEFAULTS.ref1,
+  receiverName: 'ร้านสงเคราะห์ผู้ต้องขัง',
+  receiverAccountTail: null,
+  senderName: 'สมชาย ใจดี',
+};
+const matchInput = (over: Partial<SlipMatchInput> = {}, ocr: Partial<SlipOcrFields> = {}): SlipMatchInput => ({
+  authentic: true,
+  notDuplicate: true,
+  booking: paidBooking,
+  ocr: { ...goodOcr, ...ocr },
+  cfg: matchCfg,
+  receiverNames: [],
+  receiverAccountTail: '',
+  maxAgeHours: 72,
+  ...over,
+});
+
+check('slip auto-approves on full match', decideSlip(matchInput()).decision, 'auto_approved');
+check('slip review on wrong amount', decideSlip(matchInput({}, { amount: 400 })).decision, 'review');
+check('wrong amount blames amount', decideSlip(matchInput({}, { amount: 400 })).blockedBy.includes('amount'), true);
+check('slip review when not authentic', decideSlip(matchInput({ authentic: false })).decision, 'review');
+check('slip review when duplicate', decideSlip(matchInput({ notDuplicate: false })).decision, 'review');
+check('slip review without OCR', decideSlip(matchInput({ ocr: null })).decision, 'review');
+check(
+  'slip review when nothing identifies the payee',
+  decideSlip(matchInput({}, { ref1: null, receiverName: 'ใครก็ไม่รู้' })).blockedBy.includes('payeeIdentity'),
+  true
+);
+check(
+  'account tail alone identifies the payee',
+  decideSlip(
+    matchInput(
+      { receiverAccountTail: 'xxx-x-x1234-x' },
+      { ref1: null, receiverName: 'ใครก็ไม่รู้', receiverAccountTail: '1234' }
+    )
+  ).decision,
+  'auto_approved'
+);
+check(
+  'wrong account tail blocks the payee check',
+  decideSlip(
+    matchInput(
+      { receiverAccountTail: 'xxx-x-x1234-x' },
+      { ref1: null, receiverName: 'ใครก็ไม่รู้', receiverAccountTail: '9999' }
+    )
+  ).blockedBy.includes('payeeIdentity'),
+  true
+);
+check(
+  'slip older than the window is rejected',
+  decideSlip(matchInput({ maxAgeHours: 1 }, { dateTimeText: '01/01/2568 09:00' })).blockedBy.includes('time'),
+  true
+);
+check(
+  'slip predating the booking is rejected',
+  decideSlip(
+    matchInput(
+      { booking: { ...paidBooking, createdAt: new Date().toISOString() } as Reservation },
+      {
+        dateTimeText: '01/01/2568 09:00',
+      }
+    )
+  ).blockedBy.includes('time'),
+  true
+);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

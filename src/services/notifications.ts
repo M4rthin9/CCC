@@ -33,6 +33,21 @@ function lineEnabled(env: Env): boolean {
   return env.NOTIFY_LINE_ENABLED === 'true';
 }
 
+/**
+ * Events allowed to spend delivery quota. Every call site stays in the code;
+ * anything outside the list is dropped before a row is queued, so widening the
+ * list is the single knob for sending more. Unset = no restriction.
+ */
+function eventAllowed(env: Env, type: string): boolean {
+  const raw = String(env.NOTIFY_EVENT_ALLOWLIST || '').trim();
+  if (!raw) return true;
+  return raw
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .includes(type);
+}
+
 function fillTemplate(template: string, vars: Record<string, unknown>): string {
   return template.replace(/\{(\w+)\}/g, (_m, key: string) => {
     const v = vars[key];
@@ -145,6 +160,7 @@ export async function notify(env: Env, input: Record<string, unknown>): Promise<
   if (!NOTIFICATION_EVENTS.includes(type as never)) {
     return { ...base, status: 'error', skipReason: 'unknown_type' };
   }
+  if (!eventAllowed(env, type)) return { ...base, skipReason: 'event_not_allowed' };
 
   const template = NOTIFY_TEMPLATES[type as NotificationEvent];
   const subject = sanitizeStr(input.subject, 200) || fillTemplate(template.subject, input);
@@ -181,7 +197,11 @@ export async function notify(env: Env, input: Record<string, unknown>): Promise<
     }
   }
 
-  if (lineEnabled(env)) {
+  // Web Push is free and unlimited; LINE's free tier is 200 messages a month.
+  // Once the visitor has actually been reached by push, spending a LINE message
+  // on the same event buys nothing. A push that failed still falls through.
+  const lineFallbackOnly = String(env.NOTIFY_LINE_FALLBACK_ONLY || '') === 'true';
+  if (lineEnabled(env) && !(lineFallbackOnly && base.sent.push > 0)) {
     try {
       const friends = await lineFriendsByRef(env.DB, ref);
       for (const f of friends) {

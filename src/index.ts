@@ -40,9 +40,30 @@ async function runDispatch(
   const response = await dispatchAction(ctx, action, isGet);
   const headers = makeCorsHeaders(request, env);
   Object.entries(headers).forEach(([k, v]) => response.headers.set(k, v));
-  // The dashboard polls this to drive live updates; a cached copy anywhere
-  // between here and the browser would freeze the UI on an old version.
-  if (action === 'getDataVersion') response.headers.set('Cache-Control', 'no-store');
+  // The dashboard polls this every few seconds to drive live updates. An ETag
+  // on the version counter lets the browser revalidate: unchanged polls get an
+  // empty 304 instead of a JSON body, while `no-cache` keeps freshness exact
+  // (a cached copy is never shown without checking the server first).
+  // Error payloads (e.g. unauthorized) pass through untouched — they must not
+  // be answerable with a 304.
+  if (action === 'getDataVersion') {
+    const data = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as {
+      status?: string;
+      version?: number;
+    } | null;
+    if (data && data.status === 'ok' && typeof data.version === 'number') {
+      const etag = `"v${data.version}"`;
+      response.headers.set('ETag', etag);
+      response.headers.set('Cache-Control', 'no-cache');
+      if (request.headers.get('If-None-Match')?.includes(etag)) {
+        return new Response(null, { status: 304, headers: response.headers });
+      }
+      return new Response(JSON.stringify(data), { status: 200, headers: response.headers });
+    }
+  }
   return response;
 }
 

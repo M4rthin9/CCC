@@ -83,6 +83,12 @@ interface Route {
    * exempt — a busy dashboard would otherwise trip them.
    */
   rateLimit?: { ns: string; max: number; ttl: number };
+  /**
+   * High-frequency pollers: an expired tab keeps calling these every few
+   * seconds, so a denied attempt must not write an event-log row (that turned
+   * one stale dashboard into hundreds of `unauthorized` entries).
+   */
+  quiet?: boolean;
 }
 
 // Public ref-taking actions: generous for humans, useless for enumeration.
@@ -107,7 +113,7 @@ const GET_ROUTES: Record<string, Route> = {
   },
   getSlipByRef: { auth: true, handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body) },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
-  getDataVersion: { auth: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
+  getDataVersion: { auth: true, quiet: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
   getEventLogs: {
     auth: true,
     handler: async (ctx) =>
@@ -163,7 +169,7 @@ const POST_ROUTES: Record<string, Route> = {
   },
   getSlipByRef: { auth: true, handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body) },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
-  getDataVersion: { auth: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
+  getDataVersion: { auth: true, quiet: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
   publicCancelBooking: {
     auth: false,
     handler: async (ctx) => handlePublicCancelBooking(ctx.env, ctx.body),
@@ -398,15 +404,17 @@ export async function dispatchAction(ctx: RouteCtx, action: string, isGet: boole
   }
 
   if (route.auth && !ctx.user) {
-    await logEvent(
-      ctx.env,
-      (ctx.body.username as string) || 'unknown',
-      action,
-      (ctx.body.ref as string) || '',
-      { reason: 'unauthorized' },
-      'denied',
-      meta(ctx)
-    );
+    if (!route.quiet) {
+      await logEvent(
+        ctx.env,
+        (ctx.body.username as string) || 'unknown',
+        action,
+        (ctx.body.ref as string) || '',
+        { reason: 'unauthorized' },
+        'denied',
+        meta(ctx)
+      );
+    }
     return jsonResponse({ status: 'error', message: 'Unauthorized' });
   }
 

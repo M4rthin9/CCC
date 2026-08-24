@@ -116,6 +116,9 @@ app.post('/api/reservations/bulk', async (c) =>
 app.post('/api/reservations/delete', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'deleteBooking', ...(await bodyToObj(c.req.raw)) })
 );
+app.post('/api/reservations/revert-payment', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'revertBookingPayment', ...(await bodyToObj(c.req.raw)) })
+);
 app.post('/api/reservations/slip', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'uploadSlip', ...(await bodyToObj(c.req.raw)) }, waitUntilOf(c))
 );

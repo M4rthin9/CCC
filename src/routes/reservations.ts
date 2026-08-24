@@ -278,6 +278,106 @@ export async function handleDeleteBooking(
   return { status: 'ok', message: 'ลบการจองเรียบร้อย' };
 }
 
+/** Slip columns wiped when a mistaken upload is reverted: the stored image
+ *  itself plus every verification artifact, so getSlipByRef stops serving the
+ *  wrong slip and its recorded fingerprints cannot collide with the
+ *  duplicate-slip guard when the replacement upload is verified. */
+const SLIP_CLEAR_COLUMNS: Array<[string, string]> = [
+  ['slip_base64', ''],
+  ['slipImage', ''],
+  ['slip_verify_status', ''],
+  ['slip_verify_json', ''],
+  ['slip_verify_at', ''],
+  ['slip_fingerprint', ''],
+  ['slip_image_hash', ''],
+  ['slip_ocr_json', ''],
+  ['slip_decision', ''],
+  ['slip_decision_json', ''],
+];
+
+/**
+ * Rewind a booking to รอชำระเงิน because the visitor uploaded the wrong slip.
+ * Superadmin only. The forward-only transition rules in handleUpdateStatus
+ * cannot express this move — that restriction protects ordinary staff flows,
+ * while an explicit, audited escape hatch covers genuine mistakes.
+ *
+ * Clearing the slip alongside the status is what makes the retry work: the
+ * public payment path refuses any booking that is not already รอชำระเงิน, and
+ * a lingering wrong slip would still be served by getSlipByRef.
+ */
+export async function handleRevertBookingPayment(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string; role: string }
+): Promise<Record<string, unknown>> {
+  const ref = sanitizeStr(body.ref, 64);
+
+  if (user.role !== 'Superadmin') {
+    await logEvent(
+      env,
+      user.username,
+      'booking_payment_revert_rejected',
+      ref,
+      { reason: 'role_not_allowed', role: user.role },
+      'denied'
+    );
+    return { status: 'error', message: 'เฉพาะ Superadmin เท่านั้นที่สามารถย้อนสถานะการชำระเงินได้' };
+  }
+
+  if (!ref) return { status: 'error', message: 'กรุณาระบุเลขอ้างอิง' };
+
+  const rows = await getReservationsByRefs(env.DB, ref);
+  if (rows.length === 0) return { status: 'error', message: 'ไม่พบการจองที่ระบุ' };
+  const row = rows[0]!;
+
+  const prevStatus = String(row.status || '').trim();
+  if (prevStatus !== 'รอชำระเงิน' && prevStatus !== 'ชำระแล้ว') {
+    return { status: 'error', message: 'สถานะ "' + prevStatus + '" ไม่สามารถย้อนกลับไปรอชำระเงินได้' };
+  }
+
+  // Same guard as cancel/reject: never ask a visitor to pay for a visit that
+  // has already happened.
+  const d = String(row.visitDateISO || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d < formatDateISO(new Date())) {
+    return { status: 'error', message: 'เกินวันเข้างานแล้ว ไม่สามารถย้อนสถานะการชำระเงินได้' };
+  }
+
+  await updateReservationColumns(env.DB, ref, [
+    ['status', 'รอชำระเงิน'],
+    ...SLIP_CLEAR_COLUMNS,
+    ['updatedAt', new Date().toISOString()],
+    ['version', Number(row.version || 1) + 1],
+  ]);
+
+  // Snapshot without slip_base64 — logEvent caps details at 5000 chars.
+  await logEvent(
+    env,
+    user.username,
+    'booking_payment_reverted',
+    ref,
+    {
+      previousStatus: prevStatus,
+      hadSlip: Boolean(row.slip_base64 || row.slipImage),
+      slipVerifyStatus: String(row.slip_verify_status || ''),
+      slipDecision: String(row.slip_decision || ''),
+    },
+    'success'
+  );
+  await invalidateReservationsCache(env);
+  await invalidateLookupCache(env, ref);
+
+  if (body.notify !== false && body.notify !== 'false') {
+    await notify(env, {
+      ref,
+      type: 'payment_due',
+      prisonerName: row.prisonerName,
+      visitDate: row.visitDate,
+      total: row.total,
+    }).catch(() => undefined);
+  }
+  return { status: 'ok', message: 'ย้อนสถานะกลับเป็นรอชำระเงินแล้ว', previousStatus: prevStatus };
+}
+
 export async function handlePublicCancelBooking(
   env: Env,
   body: Record<string, unknown>

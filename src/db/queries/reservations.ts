@@ -90,6 +90,19 @@ export function getArchivedReservations(db: D1Database): Promise<Reservation[]> 
     });
 }
 
+export function getArchivedReservationByRef(db: D1Database, ref: string): Promise<Reservation | null> {
+  return db
+    .prepare(`SELECT ${RESERVATION_COLUMNS.join(', ')}, archivedAt FROM ${TABLES.archive} WHERE ref = ?`)
+    .bind(ref)
+    .first<Record<string, unknown>>()
+    .then((r) => {
+      if (!r) return null;
+      const obj = reservationRowToObject(r);
+      if (r['archivedAt'] !== null && r['archivedAt'] !== undefined) obj.archivedAt = String(r['archivedAt']);
+      return obj;
+    });
+}
+
 export function getReservationByRef(db: D1Database, ref: string): Promise<Reservation | null> {
   return db
     .prepare(`SELECT ${RESERVATION_COLUMNS.join(', ')} FROM ${TABLES.reservations} WHERE ref = ?`)
@@ -237,7 +250,7 @@ export function insertReservation(db: D1Database, data: Record<string, unknown>)
     .then(() => undefined);
 }
 
-export function updateReservationColumns(db: D1Database, ref: string, cols: Array<[string, unknown]>): Promise<void> {
+function updateColumnsIn(db: D1Database, table: string, ref: string, cols: Array<[string, unknown]>): Promise<void> {
   if (cols.length === 0) return Promise.resolve();
   const allowed = new Set(RESERVATION_WRITABLE_COLUMNS);
   const filtered = cols.filter(([c]) => allowed.has(c));
@@ -245,10 +258,22 @@ export function updateReservationColumns(db: D1Database, ref: string, cols: Arra
   const setSql = filtered.map(([c]) => `${c} = ?`).join(', ');
   const params = filtered.map(([, v]) => v);
   return db
-    .prepare(`UPDATE ${TABLES.reservations} SET ${setSql} WHERE ref = ?`)
+    .prepare(`UPDATE ${table} SET ${setSql} WHERE ref = ?`)
     .bind(...params, ref)
     .run()
     .then(() => undefined);
+}
+
+export function updateReservationColumns(db: D1Database, ref: string, cols: Array<[string, unknown]>): Promise<void> {
+  return updateColumnsIn(db, TABLES.reservations, ref, cols);
+}
+
+export function updateArchivedReservationColumns(
+  db: D1Database,
+  ref: string,
+  cols: Array<[string, unknown]>
+): Promise<void> {
+  return updateColumnsIn(db, TABLES.archive, ref, cols);
 }
 
 export function insertArchivedReservation(db: D1Database, data: Record<string, unknown>): Promise<void> {
@@ -267,6 +292,14 @@ export function insertArchivedReservation(db: D1Database, data: Record<string, u
 export function deleteReservation(db: D1Database, ref: string): Promise<void> {
   return db
     .prepare(`DELETE FROM ${TABLES.reservations} WHERE ref = ?`)
+    .bind(ref)
+    .run()
+    .then(() => undefined);
+}
+
+export function deleteArchivedReservation(db: D1Database, ref: string): Promise<void> {
+  return db
+    .prepare(`DELETE FROM ${TABLES.archive} WHERE ref = ?`)
     .bind(ref)
     .run()
     .then(() => undefined);

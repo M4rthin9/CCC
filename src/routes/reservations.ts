@@ -6,17 +6,21 @@ import { cacheGetVersioned, cachePutVersioned } from '../cache/versioned';
 import {
   getActiveReservations,
   getArchivedReservations,
+  getArchivedReservationByRef,
   getReservationsByRefs,
   updateReservationColumns,
+  updateArchivedReservationColumns,
   insertReservation,
   countReservationsByDate,
   getAllRefs,
   deleteReservation,
+  deleteArchivedReservation,
 } from '../db/queries/reservations';
 import { deleteNotesByRef } from '../db/queries/notes';
 import { deleteNotificationDataByRef } from '../db/queries/notifications';
 import { hasPermission } from '../db/queries/roles';
 import {
+  invalidateArchivedCache,
   invalidateLookupCache,
   invalidatePrisonerLookupCache,
   invalidateReservationsCache,
@@ -175,6 +179,19 @@ function isActive(status: unknown): boolean {
   return ACTIVE.includes(String(status || '').trim());
 }
 
+/**
+ * Resolve a ref against the active table first, falling back to the archive.
+ * Used by the Superadmin force-paths so an archived booking stays editable,
+ * deletable and re-statusable like any other booking. Returns the row plus
+ * which table it lives in, since writes must target the right one.
+ */
+async function resolveRefAnyTable(env: Env, ref: string): Promise<{ row: Reservation | null; archived: boolean }> {
+  const rows = await getReservationsByRefs(env.DB, ref);
+  if (rows.length > 0) return { row: rows[0]!, archived: false };
+  const archivedRow = await getArchivedReservationByRef(env.DB, ref);
+  return { row: archivedRow, archived: true };
+}
+
 export async function handleCancelBooking(
   env: Env,
   body: Record<string, unknown>,
@@ -220,9 +237,10 @@ export async function handleCancelBooking(
 
 /**
  * Hard-delete a booking. Superadmin only, and irreversible: the row is removed
- * from `reservations` along with every side row that points at its ref (nothing
- * in the schema cascades). The only trace left is the event_log entry below,
- * which carries a snapshot of what was deleted.
+ * (from `reservations`, or from `reservations_archive` for archived bookings)
+ * along with every side row that points at its ref (nothing in the schema
+ * cascades). The only trace left is the event_log entry below, which carries a
+ * snapshot of what was deleted.
  */
 export async function handleDeleteBooking(
   env: Env,
@@ -245,10 +263,9 @@ export async function handleDeleteBooking(
 
   if (!ref) return { status: 'error', message: 'กรุณาระบุเลขอ้างอิง' };
 
-  const rows = await getReservationsByRefs(env.DB, ref);
-  if (rows.length === 0) return { status: 'error', message: 'ไม่พบการจองที่ระบุ' };
+  const { row, archived: wasArchived } = await resolveRefAnyTable(env, ref);
+  if (!row) return { status: 'error', message: 'ไม่พบการจองที่ระบุ' };
 
-  const row = rows[0]!;
   // Snapshot for the audit trail. Never include slip_base64 — logEvent caps
   // details at 5000 chars and the slip is multi-MB.
   const snapshot = {
@@ -263,19 +280,31 @@ export async function handleDeleteBooking(
     total: Number(row.total ?? 0),
     createdBy: String(row.createdBy ?? ''),
     createdAt: String(row.createdAt ?? ''),
-    affectedRows: rows.length,
+    archived: wasArchived,
   };
 
   await deleteNotesByRef(env.DB, ref);
   await deleteNotificationDataByRef(env.DB, ref);
-  await deleteReservation(env.DB, ref);
+  if (wasArchived) {
+    await deleteArchivedReservation(env.DB, ref);
+  } else {
+    await deleteReservation(env.DB, ref);
+  }
 
-  await logEvent(env, user.username, 'booking_deleted', ref, snapshot, 'success');
+  await logEvent(
+    env,
+    user.username,
+    wasArchived ? 'archived_booking_deleted' : 'booking_deleted',
+    ref,
+    snapshot,
+    'success'
+  );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
+  if (wasArchived) await invalidateArchivedCache(env);
   if (snapshot.prisonerId) await invalidatePrisonerLookupCache(env, snapshot.prisonerId);
 
-  return { status: 'ok', message: 'ลบการจองเรียบร้อย' };
+  return { status: 'ok', message: 'ลบการจองเรียบร้อย', archived: wasArchived };
 }
 
 /** Slip columns wiped when a mistaken upload is reverted: the stored image
@@ -480,10 +509,23 @@ export async function handleUpdateStatus(
     return { status: 'error', message: 'Role "' + callerRole + '" is not allowed to set status "' + status + '"' };
   }
 
-  const rows = await getReservationsByRefs(env.DB, ref);
-  if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  // Superadmin force path: any status → any status on any booking regardless
+  // of its current status, including archived rows. Ordinary staff keep the
+  // forward-only workflow and the expired-visit guard untouched.
+  const isSuperForce = callerRole === 'Superadmin';
+  let rows: Reservation[];
+  let fromArchive = false;
+  if (isSuperForce) {
+    const target = await resolveRefAnyTable(env, ref);
+    if (!target.row) return { status: 'error', message: 'Ref not found' };
+    rows = [target.row];
+    fromArchive = target.archived;
+  } else {
+    rows = await getReservationsByRefs(env.DB, ref);
+    if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  }
 
-  if (status === 'ไม่อนุมัติ' || status === 'ยกเลิก') {
+  if (!isSuperForce && (status === 'ไม่อนุมัติ' || status === 'ยกเลิก')) {
     const today = formatDateISO(new Date());
     const allExpired = rows.every((row) => {
       const d = String(row.visitDateISO || '').trim();
@@ -500,6 +542,7 @@ export async function handleUpdateStatus(
     const oldStatus = String(row.status || '').trim();
     if (oldStatus === status) continue;
     allAlreadyAtTarget = false;
+    if (isSuperForce) continue;
     let allowed = allowedTransitions[oldStatus];
     if (canFreeRejectCancel && (status === 'ไม่อนุมัติ' || status === 'ยกเลิก')) {
       allowed = ['ไม่อนุมัติ', 'ยกเลิก'];
@@ -534,18 +577,26 @@ export async function handleUpdateStatus(
   if (body.reason && (status === 'ไม่อนุมัติ' || status === 'ยกเลิก')) {
     cols.push(['cancelReason', sanitizeStr(body.reason, 2000)]);
   }
-  await updateReservationColumns(env.DB, ref, cols);
+  if (fromArchive) {
+    await updateArchivedReservationColumns(env.DB, ref, cols);
+  } else {
+    await updateReservationColumns(env.DB, ref, cols);
+  }
 
   await logEvent(
     env,
     user.username,
-    'status_changed',
+    fromArchive ? 'archived_status_changed' : 'status_changed',
     ref,
-    { newStatus: status, affectedRows: rows.length },
+    { newStatus: status, affectedRows: rows.length, ...(fromArchive ? { archived: true } : {}) },
     'success'
   );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
+  if (fromArchive) await invalidateArchivedCache(env);
+
+  // Archived bookings are historical records — never ping visitors about them.
+  if (fromArchive) return { status: 'ok', archived: true };
 
   const reasonText = body.reason ? ' ด้วยเหตุผล: ' + sanitizeStr(body.reason, 2000) : '';
   if (status === 'ชำระแล้ว') {
@@ -704,15 +755,19 @@ export async function handleUpdateBooking(
   const ref = sanitizeStr(body.ref, 64);
   if (!ref) return { status: 'error', message: 'กรุณาระบุเลขอ้างอิง' };
 
-  const rows = await getReservationsByRefs(env.DB, ref);
-  if (rows.length === 0) return { status: 'error', message: 'ไม่พบการจองที่ระบุ' };
+  const lookup = await resolveRefAnyTable(env, ref);
+  const current = lookup.row;
+  if (!current) return { status: 'error', message: 'ไม่พบการจองที่ระบุ' };
+  const fromArchive = lookup.archived;
 
   const { cols, changes, errors } = parseUpdateBookingFields(body);
   if (errors.length > 0) return { status: 'error', message: errors.join('; ') };
 
-  const touchesKeyFields = changes.prisonerId !== undefined || changes.visitDateISO !== undefined;
+  // Discipline and duplicate-booking checks guard future visits. An archived
+  // row is a historical record, so moving its prisoner/date cannot create a
+  // new double-booking and the prisoner's current standing is irrelevant.
+  const touchesKeyFields = !fromArchive && (changes.prisonerId !== undefined || changes.visitDateISO !== undefined);
   if (touchesKeyFields) {
-    const current = rows[0]!;
     const effPrisonerId =
       changes.prisonerId !== undefined
         ? String(changes.prisonerId || '').trim()
@@ -746,7 +801,7 @@ export async function handleUpdateBooking(
   const touchedPricingInput = pricingInputs.some((f) => changes[f] !== undefined);
   const suppliedNumeric = pricingNumerics.some((f) => changes[f] !== undefined);
   if (touchedPricingInput || suppliedNumeric) {
-    const merged: Record<string, unknown> = { ...rows[0]!, ...changes };
+    const merged: Record<string, unknown> = { ...current, ...changes };
     const clientTotal =
       merged.total !== undefined && merged.total !== null && merged.total !== '' ? Number(merged.total) : undefined;
     const pricing = applyServerPricing(merged);
@@ -769,14 +824,26 @@ export async function handleUpdateBooking(
 
   if (cols.length > 0) {
     cols.push(['updatedAt', new Date().toISOString()]);
-    cols.push(['version', Number(rows[0]!.version || 1) + 1]);
-    await updateReservationColumns(env.DB, ref, cols);
+    cols.push(['version', Number(current.version || 1) + 1]);
+    if (fromArchive) {
+      await updateArchivedReservationColumns(env.DB, ref, cols);
+    } else {
+      await updateReservationColumns(env.DB, ref, cols);
+    }
   }
 
-  await logEvent(env, user.username, 'update_booking', ref, changes, 'success');
+  await logEvent(
+    env,
+    user.username,
+    'update_booking',
+    ref,
+    { ...changes, ...(fromArchive ? { archived: true } : {}) },
+    'success'
+  );
   await invalidateReservationsCache(env);
   await invalidateLookupCache(env, ref);
-  return { status: 'ok', message: 'แก้ไขการจองสำเร็จ' };
+  if (fromArchive) await invalidateArchivedCache(env);
+  return { status: 'ok', message: 'แก้ไขการจองสำเร็จ', archived: fromArchive };
 }
 
 export async function handleCreateBooking(

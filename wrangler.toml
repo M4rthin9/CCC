@@ -118,7 +118,7 @@ migrations_dir = "src/db/migrations"
 
 [[env.development.kv_namespaces]]
 binding = "CACHE_KV"
-id = "f667fc0048e14ef48a489ec298cfbbaa"
+id = "7daf963bf3da42bc95961d2e74b23387"
 
 [env.development.ai]
 binding = "AI"

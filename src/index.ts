@@ -10,6 +10,7 @@ import { archiveOldReservations } from './services/archiveService';
 import { deleteExpiredRefreshTokens } from './db/queries/refreshTokens';
 import { handleHealthHtml, handleHealthJson } from './routes/health';
 import { handleLineWebhook } from './routes/notifications';
+import { handleGetSlipImage } from './routes/slip';
 import { processPendingNotifications } from './services/notifications';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -119,6 +120,15 @@ app.post('/api/reservations/delete', async (c) =>
 app.post('/api/reservations/revert-payment', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'revertBookingPayment', ...(await bodyToObj(c.req.raw)) })
 );
+// Slip images are binary, so they bypass the JSON dispatcher. Staff are
+// authorised the usual way; the visitor who uploaded the slip gets in with the
+// signed `token` the upload response handed them.
+app.get('/api/slip/image', async (c) => {
+  const user = await resolveAuthUser(c.env, c.req.raw, queryToBody(c.req.raw));
+  const res = await handleGetSlipImage(c.env, new URL(c.req.url), Boolean(user));
+  Object.entries(makeCorsHeaders(c.req.raw, c.env)).forEach(([k, v]) => res.headers.set(k, v));
+  return res;
+});
 app.post('/api/reservations/slip', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'uploadSlip', ...(await bodyToObj(c.req.raw)) }, waitUntilOf(c))
 );

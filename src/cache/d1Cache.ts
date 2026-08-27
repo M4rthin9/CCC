@@ -70,11 +70,7 @@ export interface VersionedRead<T> {
   version: number;
 }
 
-export async function d1CacheGetVersioned<T>(
-  db: D1Database,
-  key: string,
-  version: number
-): Promise<VersionedRead<T>> {
+export async function d1CacheGetVersioned<T>(db: D1Database, key: string, version: number): Promise<VersionedRead<T>> {
   if (version === NO_VERSION) return { hit: null, version: NO_VERSION };
   const raw = await d1CacheGet<string>(db, key);
   if (!raw) return { hit: null, version };

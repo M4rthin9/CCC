@@ -27,6 +27,7 @@ import {
 } from '../cache/invalidation';
 import { computeApprovalTotals, applyServerPricing } from '../services/pricing';
 import { logEvent } from '../services/logger';
+import { deleteSlipsForRef } from '../services/slipStorage';
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
 import {
@@ -305,6 +306,7 @@ export async function handleDeleteBooking(
 
   await deleteNotesByRef(env.DB, ref);
   await deleteNotificationDataByRef(env.DB, ref);
+  await deleteSlipsForRef(env, ref).catch(() => undefined);
   if (wasArchived) {
     await deleteArchivedReservation(env.DB, ref);
   } else {
@@ -333,6 +335,7 @@ export async function handleDeleteBooking(
  *  duplicate-slip guard when the replacement upload is verified. */
 const SLIP_CLEAR_COLUMNS: Array<[string, string]> = [
   ['slip_base64', ''],
+  ['slip_key', ''],
   ['slipImage', ''],
   ['slip_verify_status', ''],
   ['slip_verify_json', ''],
@@ -391,6 +394,9 @@ export async function handleRevertBookingPayment(
     return { status: 'error', message: 'เกินวันเข้างานแล้ว ไม่สามารถย้อนสถานะการชำระเงินได้' };
   }
 
+  // The stored image lives in R2, so clearing slip_key is not enough — drop
+  // the objects too, or every reverted booking leaks a slip into the bucket.
+  await deleteSlipsForRef(env, ref).catch(() => undefined);
   await updateReservationColumns(env.DB, ref, [
     ['status', 'รอชำระเงิน'],
     ...SLIP_CLEAR_COLUMNS,
@@ -406,7 +412,7 @@ export async function handleRevertBookingPayment(
     ref,
     {
       previousStatus: prevStatus,
-      hadSlip: Boolean(row.slip_base64 || row.slipImage),
+      hadSlip: Boolean(row.slip_base64 || row.slip_key || row.slipImage),
       slipVerifyStatus: String(row.slip_verify_status || ''),
       slipDecision: String(row.slip_decision || ''),
     },

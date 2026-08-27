@@ -1,8 +1,12 @@
 import { sanitizeStr } from '../config';
+import { TABLES } from '../constants';
 import {
+  countBase64Slips,
   getReservationByRef,
   getReservationsByRefs,
-  getStoredSlipByRef,
+  getSlipRecordByRef,
+  listBase64Slips,
+  updateArchivedReservationColumns,
   updateReservationColumns,
 } from '../db/queries/reservations';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
@@ -11,20 +15,63 @@ import { notify } from '../services/notifications';
 import { persistVerify, verifyAndDecideSlip } from '../services/slipverify';
 import type { SlipVerifyResult } from '../services/slipverify';
 import { readPaymentSwitch } from './settings';
+import {
+  base64ToBytes,
+  getSlip,
+  parseDataUri,
+  putSlip,
+  signSlipToken,
+  slipImageUrl,
+  slipsBucket,
+  toDataUri,
+  verifySlipToken,
+  type DecodedSlip,
+} from '../services/slipStorage';
 import { Env, Reservation } from '../types';
 
 export { handleVerifySlip } from '../services/slipverify';
 
-// D1 cells cap at ~2MB per value, so the legacy 20MB limit is reduced here.
+// D1 cells cap at ~2MB per value. That ceiling only binds on the fallback path
+// now that slips go to R2, where a full-resolution phone photo fits.
 const D1_SLIP_MAX_BYTES = 2 * 1024 * 1024;
+const R2_SLIP_MAX_BYTES = 10 * 1024 * 1024;
 const AWAITING_PAYMENT = 'รอชำระเงิน';
 const PAID = 'ชำระแล้ว';
 
-function base64ToBytes(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
+function slipMaxBytes(env: Env): number {
+  return slipsBucket(env) ? R2_SLIP_MAX_BYTES : D1_SLIP_MAX_BYTES;
+}
+
+/**
+ * Persist an uploaded slip: R2 when the binding exists, base64-in-D1 otherwise.
+ * Returns the columns to write so the caller can batch them with whatever else
+ * the request changes (a status, usually) in a single D1 write.
+ */
+async function slipColumns(env: Env, ref: string, dataUri: string): Promise<Array<[string, unknown]>> {
+  const decoded = parseDataUri(dataUri);
+  if (!decoded) return [['slip_base64', dataUri]];
+  const key = await putSlip(env, ref, decoded);
+  // slip_base64 is blanked on the R2 path so a stale legacy image can never be
+  // served in place of the new upload.
+  return key
+    ? [
+        ['slip_key', key],
+        ['slip_base64', ''],
+      ]
+    : [
+        ['slip_base64', dataUri],
+        ['slip_key', ''],
+      ];
+}
+
+/** The stored slip as a data URI — what OCR and the legacy clients want. */
+async function loadSlipDataUri(env: Env, ref: string): Promise<string> {
+  const rec = await getSlipRecordByRef(env.DB, ref);
+  if (!rec) return '';
+  if (rec.dataUri) return rec.dataUri;
+  if (!rec.key) return '';
+  const obj = await getSlip(env, rec.key);
+  return obj ? toDataUri(obj.bytes, obj.contentType) : '';
 }
 
 function autoApproveEnabled(env: Env): boolean {
@@ -48,7 +95,8 @@ async function verifyAndMaybeApprove(
 ): Promise<{ result: SlipVerifyResult; autoApproved: boolean } | null> {
   try {
     const ref = String(booking.ref || '');
-    const bytes = base64ToBytes(dataUri.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, ''));
+    const decoded: DecodedSlip | null = parseDataUri(dataUri);
+    const bytes = decoded ? decoded.bytes : base64ToBytes(dataUri);
     if (bytes.length === 0) return null;
 
     const { result, fingerprint, imageHash } = await verifyAndDecideSlip(env, booking, bytes, dataUri);
@@ -111,12 +159,13 @@ export type WaitUntil = (promise: Promise<unknown>) => void;
 export async function handleUploadSlip(
   env: Env,
   body: Record<string, unknown>,
-  waitUntil?: WaitUntil
+  waitUntil?: WaitUntil,
+  origin = ''
 ): Promise<Record<string, unknown>> {
   const ref = sanitizeStr(body.ref, 64);
   if (!body.base64Data) return { status: 'error', message: 'Missing base64Data' };
   if (!ref) return { status: 'error', message: 'Missing ref' };
-  if (String(body.base64Data).length > D1_SLIP_MAX_BYTES) return { status: 'error', message: 'ไฟล์มีขนาดใหญ่เกินไป' };
+  if (String(body.base64Data).length > slipMaxBytes(env)) return { status: 'error', message: 'ไฟล์มีขนาดใหญ่เกินไป' };
 
   const dataUri = String(body.base64Data);
   const rows = await getReservationsByRefs(env.DB, ref);
@@ -124,7 +173,7 @@ export async function handleUploadSlip(
 
   const actor = String(body.username || 'public');
   try {
-    await updateReservationColumns(env.DB, ref, [['slip_base64', dataUri]]);
+    await updateReservationColumns(env.DB, ref, await slipColumns(env, ref, dataUri));
     await logEvent(env, actor, 'slip_uploaded', ref, {}, 'success');
     await invalidateReservationsCache(env);
     await invalidateLookupCache(env, ref);
@@ -133,7 +182,9 @@ export async function handleUploadSlip(
     const verified = await runVerify(env, rows[0] as Reservation, dataUri, actor, waitUntil);
     return {
       status: 'ok',
-      url: dataUri,
+      // The visitor's page shows the slip it just uploaded; hand back a signed
+      // URL instead of echoing megabytes of base64 back through the response.
+      url: slipsBucket(env) ? slipImageUrl(origin, ref, await signSlipToken(env, ref)) : dataUri,
       ...(verified ? { verify: verified.result, autoApproved: verified.autoApproved } : {}),
     };
   } catch (e) {
@@ -185,8 +236,8 @@ export async function handleUpdateSlipAndStatus(
   if (body.slipImage) {
     const slipVal = String(body.slipImage);
     if (slipVal.indexOf('data:image') === 0) {
-      if (slipVal.length > D1_SLIP_MAX_BYTES) return { status: 'error', message: 'ไฟล์มีขนาดใหญ่เกินไป' };
-      cols.push(['slip_base64', slipVal]);
+      if (slipVal.length > slipMaxBytes(env)) return { status: 'error', message: 'ไฟล์มีขนาดใหญ่เกินไป' };
+      cols.push(...(await slipColumns(env, ref, slipVal)));
       uploadedDataUri = slipVal;
     } else {
       cols.push(['slipImage', slipVal]);
@@ -223,12 +274,61 @@ export async function handleUpdateSlipAndStatus(
   return { status: 'ok', ...(verify ? { verify } : {}) };
 }
 
-export async function handleGetSlipByRef(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+/**
+ * `slipImage` stays the field the clients read, but for an R2-backed booking it
+ * now carries a signed URL rather than a data URI. Both render in an <img>, so
+ * a client that has not been updated keeps working.
+ */
+export async function handleGetSlipByRef(
+  env: Env,
+  body: Record<string, unknown>,
+  origin = ''
+): Promise<Record<string, unknown>> {
   const ref = sanitizeStr(body.ref, 64);
   if (!ref) return { status: 'error', message: 'Missing ref' };
 
-  const slipImage = await getStoredSlipByRef(env.DB, ref);
-  return { status: 'ok', ref, slipImage };
+  const rec = await getSlipRecordByRef(env.DB, ref);
+  if (!rec) return { status: 'ok', ref, slipImage: '' };
+  if (rec.key) {
+    const url = slipImageUrl(origin, ref, await signSlipToken(env, ref));
+    return { status: 'ok', ref, slipImage: url, slipUrl: url, storage: 'r2' };
+  }
+  return { status: 'ok', ref, slipImage: rec.dataUri || rec.url, storage: rec.dataUri ? 'd1' : 'legacy' };
+}
+
+/**
+ * Raw image bytes for `<img src>`. It returns binary rather than JSON, so it
+ * sits outside the dispatcher and `index.ts` routes it directly. Access is
+ * either normal staff auth (resolved by the caller) or the short-lived signed
+ * token handed to the visitor who uploaded the slip.
+ */
+export async function handleGetSlipImage(env: Env, url: URL, authorized: boolean): Promise<Response> {
+  const ref = sanitizeStr(url.searchParams.get('ref'), 64);
+  if (!ref) return new Response('Missing ref', { status: 400 });
+
+  const token = url.searchParams.get('token') || '';
+  if (!authorized && !(await verifySlipToken(env, ref, token))) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const rec = await getSlipRecordByRef(env.DB, ref);
+  if (!rec) return new Response('Not found', { status: 404 });
+
+  if (rec.key) {
+    const obj = await getSlip(env, rec.key);
+    if (!obj) return new Response('Not found', { status: 404 });
+    return new Response(obj.bytes as unknown as ArrayBuffer, {
+      // Private + short: the URL expires and the response is per-viewer.
+      headers: { 'Content-Type': obj.contentType, 'Cache-Control': 'private, max-age=300' },
+    });
+  }
+
+  // Pre-migration booking: rebuild the image from the base64 still in D1.
+  const decoded = rec.dataUri ? parseDataUri(rec.dataUri) : null;
+  if (!decoded) return new Response('Not found', { status: 404 });
+  return new Response(decoded.bytes as unknown as ArrayBuffer, {
+    headers: { 'Content-Type': decoded.contentType, 'Cache-Control': 'private, max-age=300' },
+  });
 }
 
 /** Admin/manual re-run against the slip already stored for a booking. */
@@ -237,11 +337,69 @@ export async function handleReverifySlip(env: Env, body: Record<string, unknown>
   if (!ref) return { status: 'error', message: 'Missing ref' };
   const booking = await getReservationByRef(env.DB, ref);
   if (!booking) return { status: 'error', message: 'Ref not found' };
-  const dataUri = await getStoredSlipByRef(env.DB, ref);
+  const dataUri = await loadSlipDataUri(env, ref);
   if (!dataUri || dataUri.indexOf('data:image') !== 0) {
     return { status: 'error', message: 'No slip image available' };
   }
   const outcome = await verifyAndMaybeApprove(env, booking, dataUri, actor);
   if (!outcome) return { status: 'error', message: 'Verification failed' };
   return { status: 'ok', result: outcome.result, autoApproved: outcome.autoApproved };
+}
+
+/**
+ * One-shot backfill: move slips that predate the R2 switch out of `slip_base64`
+ * and into the bucket. Superadmin only, and deliberately batched — each row is
+ * a multi-MB string, so a whole-table pass would blow the isolate's memory.
+ *
+ * Call it repeatedly until `remaining` is 0. Reads keep working throughout:
+ * a row is only cleared once its object is in R2, and anything not yet moved
+ * still resolves through the base64 fallback.
+ */
+export async function handleMigrateSlipsToR2(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string; role: string }
+): Promise<Record<string, unknown>> {
+  if (user.role !== 'Superadmin') {
+    return { status: 'error', message: 'เฉพาะ Superadmin เท่านั้น' };
+  }
+  if (!slipsBucket(env)) return { status: 'error', message: 'R2 binding (SLIPS) is not configured' };
+
+  const archived = body.archived === true || body.archived === 'true';
+  const table = archived ? TABLES.archive : TABLES.reservations;
+  const limit = Math.min(Math.max(Number(body.limit) || 5, 1), 25);
+
+  const rows = await listBase64Slips(env.DB, limit, table);
+  let moved = 0;
+  const failed: string[] = [];
+
+  for (const row of rows) {
+    const ref = String(row.ref || '');
+    const decoded = parseDataUri(String(row.slip_base64 || ''));
+    if (!ref || !decoded) {
+      failed.push(ref || '(no ref)');
+      continue;
+    }
+    try {
+      const key = await putSlip(env, ref, decoded);
+      if (!key) {
+        failed.push(ref);
+        continue;
+      }
+      const cols: Array<[string, unknown]> = [
+        ['slip_key', key],
+        ['slip_base64', ''],
+      ];
+      if (archived) await updateArchivedReservationColumns(env.DB, ref, cols);
+      else await updateReservationColumns(env.DB, ref, cols);
+      moved += 1;
+    } catch {
+      failed.push(ref);
+    }
+  }
+
+  const remaining = await countBase64Slips(env.DB, table);
+  await logEvent(env, user.username, 'slips_migrated_to_r2', '', { moved, failed, remaining, table }, 'success');
+  if (moved > 0) await invalidateReservationsCache(env);
+  return { status: 'ok', table, moved, failed, remaining };
 }

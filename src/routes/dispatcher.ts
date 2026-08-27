@@ -42,6 +42,7 @@ import {
   handleGetSlipByRef,
   handleVerifySlip,
   handleReverifySlip,
+  handleMigrateSlipsToR2,
 } from './slip';
 import { handleLogin, handleChangePassword, handleRefresh } from './auth';
 import { handleGeneratePromptPayQr } from './promptpay';
@@ -101,6 +102,16 @@ function meta(ctx: RouteCtx) {
   return { ip: ctx.ip, userAgent: ctx.userAgent };
 }
 
+/** Origin the caller reached us on — slip URLs must be absolute because the
+ *  booking page and the dashboard are served from other origins. */
+function originOf(ctx: RouteCtx): string {
+  try {
+    return new URL(ctx.request.url).origin;
+  } catch {
+    return '';
+  }
+}
+
 const GET_ROUTES: Record<string, Route> = {
   getBackendUrl: { auth: false, handler: async (ctx) => handleGetBackendUrl(ctx.request) },
   resolveUrl: { auth: false, handler: async (ctx) => handleResolveUrl(ctx.request) },
@@ -112,7 +123,10 @@ const GET_ROUTES: Record<string, Route> = {
     handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body),
     rateLimit: { ns: 'lookup', ...PUBLIC_REF_LIMIT },
   },
-  getSlipByRef: { auth: true, handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body) },
+  getSlipByRef: {
+    auth: true,
+    handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body, originOf(ctx)),
+  },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
   getDataVersion: { auth: true, quiet: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
   getEventLogs: {
@@ -139,6 +153,10 @@ const GET_ROUTES: Record<string, Route> = {
     auth: false,
     handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body),
     rateLimit: { ns: 'slipverify', ...PUBLIC_SLIP_LIMIT },
+  },
+  migrateSlipsToR2: {
+    auth: true,
+    handler: async (ctx) => handleMigrateSlipsToR2(ctx.env, ctx.body, ctx.user!),
   },
   reverifySlip: {
     auth: true,
@@ -178,7 +196,7 @@ const POST_ROUTES: Record<string, Route> = {
   },
   uploadSlip: {
     auth: false,
-    handler: async (ctx) => handleUploadSlip(ctx.env, ctx.body, ctx.waitUntil),
+    handler: async (ctx) => handleUploadSlip(ctx.env, ctx.body, ctx.waitUntil, originOf(ctx)),
     rateLimit: { ns: 'slipupload', ...PUBLIC_SLIP_LIMIT },
   },
   updateSlipAndStatus: {

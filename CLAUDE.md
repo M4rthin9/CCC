@@ -75,7 +75,15 @@ math when displaying or bucketing by visit date.
 by `wrangler d1 migrations apply` (see `migrate`/`migrate:local` scripts). Keep numbering
 sequential when adding a new one.
 
-**Env bindings** (`src/types.ts` `Env` interface): `DB` (D1), `CACHE_KV` (KV), `AI` (Workers AI),
+**Slip images**: uploaded payment slips live in R2 (`SLIPS` binding, bucket `ccc-slips`),
+not in D1. `services/slipStorage.ts` owns put/get/delete plus the short-lived HMAC view
+tokens; D1 keeps only the object key in `reservations.slip_key`. Rows uploaded before the
+switch still hold a data URI in `slip_base64` and are read through that fallback — the
+`migrateSlipsToR2` action (Superadmin, batched) moves them across. Bytes are served by the
+Worker at `GET /api/slip/image?ref=&token=`, never from a public bucket.
+
+**Env bindings** (`src/types.ts` `Env` interface): `DB` (D1), `CACHE_KV` (KV), `SLIPS` (R2),
+`AI` (Workers AI),
 plus vars from `wrangler.toml` `[vars]` (`CACHE_VERSION`, `PASSWORD_SALT`, `ALLOWED_ORIGINS`,
 `TURNSTILE_ALLOWED_HOSTNAMES`, `NOTIFY_PUSH_ENABLED`, `NOTIFY_LINE_ENABLED`,
 `LINE_MONTHLY_CAP`) and secrets set via `wrangler secret put` (`JWT_SECRET`,

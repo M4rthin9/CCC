@@ -40,33 +40,21 @@ export async function invalidatePrisonerLookupCache(env: Env, prisonerId: string
 }
 
 export async function invalidateUserCache(env: Env, username: string): Promise<void> {
-  await Promise.all([
-    cacheRemove(env.CACHE_KV, cacheKeyUser(username)),
-    d1CacheRemove(env.DB, cacheKeyUser(username)),
-  ]);
+  await Promise.all([cacheRemove(env.CACHE_KV, cacheKeyUser(username)), d1CacheRemove(env.DB, cacheKeyUser(username))]);
 }
 
 export async function invalidateAllUsersCache(env: Env): Promise<void> {
-  await Promise.all([
-    cacheRemoveLarge(env.CACHE_KV, cacheKeyUsers(env)),
-    d1CacheRemove(env.DB, cacheKeyUsers(env)),
-  ]);
+  await Promise.all([cacheRemoveLarge(env.CACHE_KV, cacheKeyUsers(env)), d1CacheRemove(env.DB, cacheKeyUsers(env))]);
   await bumpDataVersion(env.DB, 'users');
 }
 
 export async function invalidatePrisonersCache(env: Env): Promise<void> {
-  await Promise.all([
-    cacheRemoveLarge(env.CACHE_KV, cacheKeyPrisoners()),
-    d1CacheRemove(env.DB, cacheKeyPrisoners()),
-  ]);
+  await Promise.all([cacheRemoveLarge(env.CACHE_KV, cacheKeyPrisoners()), d1CacheRemove(env.DB, cacheKeyPrisoners())]);
   await bumpDataVersion(env.DB, 'prisoners');
 }
 
 export async function invalidateRolesCache(env: Env): Promise<void> {
-  await Promise.all([
-    cacheRemove(env.CACHE_KV, cacheKeyRoles(env)),
-    d1CacheRemove(env.DB, cacheKeyRoles(env)),
-  ]);
+  await Promise.all([cacheRemove(env.CACHE_KV, cacheKeyRoles(env)), d1CacheRemove(env.DB, cacheKeyRoles(env))]);
   await bumpDataVersion(env.DB, 'roles');
 }
 

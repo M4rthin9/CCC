@@ -30,6 +30,7 @@ const RESERVATION_COLUMNS = [
   'payment_ref1',
   'status',
   'slipImage',
+  'slip_key',
   'slip_verify_status',
   'slip_verify_json',
   'slip_verify_at',
@@ -111,28 +112,75 @@ export function getReservationByRef(db: D1Database, ref: string): Promise<Reserv
     .then((r) => (r ? reservationRowToObject(r) : null));
 }
 
-export function getStoredSlipByRef(db: D1Database, ref: string): Promise<string> {
+export interface StoredSlip {
+  /** R2 object key ('' when the row predates the R2 migration). */
+  key: string;
+  /** Legacy base64 data URI kept in D1 ('' for R2-backed rows). */
+  dataUri: string;
+  /** Legacy Drive thumbnail URL from the Apps Script era. */
+  url: string;
+  /** True when the ref was found in the archive rather than the live table. */
+  archived: boolean;
+}
+
+const SLIP_SELECT = 'slipImage, slip_key, slip_base64';
+
+function rowToStoredSlip(r: Record<string, unknown> | null, archived: boolean): StoredSlip | null {
+  if (!r) return null;
+  const dataUri = r.slip_base64 ? String(r.slip_base64) : '';
+  const legacy = r.slipImage ? String(r.slipImage) : '';
+  return {
+    key: r.slip_key ? String(r.slip_key) : '',
+    dataUri,
+    // slipImage doubles as a Drive URL on legacy rows; a data URI there is
+    // still just the image.
+    url: legacy.indexOf('data:image') === 0 ? '' : legacy,
+    archived,
+  };
+}
+
+/** Locate a booking's slip in the live table, falling back to the archive. */
+export function getSlipRecordByRef(db: D1Database, ref: string): Promise<StoredSlip | null> {
   return db
-    .prepare(`SELECT slipImage, slip_base64 FROM ${TABLES.reservations} WHERE ref = ? LIMIT 1`)
+    .prepare(`SELECT ${SLIP_SELECT} FROM ${TABLES.reservations} WHERE ref = ? LIMIT 1`)
     .bind(ref)
-    .first<{ slipImage: string | null; slip_base64: string | null }>()
+    .first<Record<string, unknown>>()
     .then((r) => {
-      if (r) {
-        const b64 = r.slip_base64 ? String(r.slip_base64) : '';
-        if (b64) return b64;
-        if (r.slipImage) return String(r.slipImage);
-      }
+      const live = rowToStoredSlip(r, false);
+      if (live && (live.key || live.dataUri || live.url)) return live;
       return db
-        .prepare(`SELECT slipImage, slip_base64 FROM ${TABLES.archive} WHERE ref = ? LIMIT 1`)
+        .prepare(`SELECT ${SLIP_SELECT} FROM ${TABLES.archive} WHERE ref = ? LIMIT 1`)
         .bind(ref)
-        .first<{ slipImage: string | null; slip_base64: string | null }>()
-        .then((a) => {
-          if (!a) return '';
-          const b64 = a.slip_base64 ? String(a.slip_base64) : '';
-          if (b64) return b64;
-          return a.slipImage ? String(a.slipImage) : '';
-        });
+        .first<Record<string, unknown>>()
+        .then((a) => rowToStoredSlip(a, true) ?? live);
     });
+}
+
+/** Bookings whose slip still sits in D1 as base64, oldest first. Used by the
+ *  one-shot backfill that moves them into R2 — batched, because a page of these
+ *  rows is megabytes each. */
+export function listBase64Slips(
+  db: D1Database,
+  limit: number,
+  table: string = TABLES.reservations
+): Promise<Array<{ ref: string; slip_base64: string }>> {
+  return db
+    .prepare(`SELECT ref, slip_base64 FROM ${table} WHERE slip_base64 != '' AND slip_key = '' LIMIT ?`)
+    .bind(limit)
+    .all<{ ref: string; slip_base64: string }>()
+    .then((res) => res.results ?? []);
+}
+
+export function countBase64Slips(db: D1Database, table: string = TABLES.reservations): Promise<number> {
+  return db
+    .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE slip_base64 != '' AND slip_key = ''`)
+    .first<{ n: number }>()
+    .then((r) => Number(r?.n ?? 0));
+}
+
+/** Legacy accessor: the slip as a data URI, or '' when it lives in R2. */
+export function getStoredSlipByRef(db: D1Database, ref: string): Promise<string> {
+  return getSlipRecordByRef(db, ref).then((s) => (s ? s.dataUri || s.url : ''));
 }
 
 export function getReservationsByRefs(db: D1Database, ref: string): Promise<Reservation[]> {

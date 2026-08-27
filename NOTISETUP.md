@@ -35,12 +35,14 @@ NOTIFY_PUSH_ENABLED = "true"
 ### Frontend (Service Worker)
 
 1. Get the public key from backend:
+
    ```
    GET /api/notify/publicKey
    → { publicKey, pushEnabled }
    ```
 
 2. Register Service Worker + subscribe:
+
    ```js
    const reg = await navigator.serviceWorker.ready;
    const sub = await reg.pushManager.subscribe({
@@ -115,11 +117,11 @@ NOTIFY_EVENT_ALLOWLIST = "payment_due,booking_submitted,status_changed,payment_c
 
 ## 4. Tuning
 
-| Setting | Default | What it does |
-|---|---|---|
-| `LINE_MONTHLY_CAP` | 200 | Max LINE messages/month (can override per-account in settings) |
-| `NOTIFY_LINE_FALLBACK_ONLY` | `true` | Skip LINE if push already delivered successfully |
-| `NOTIFY_EVENT_ALLOWLIST` | `payment_due` | Comma-separated event types allowed to spend quota |
+| Setting                     | Default       | What it does                                                   |
+| --------------------------- | ------------- | -------------------------------------------------------------- |
+| `LINE_MONTHLY_CAP`          | 200           | Max LINE messages/month (can override per-account in settings) |
+| `NOTIFY_LINE_FALLBACK_ONLY` | `true`        | Skip LINE if push already delivered successfully               |
+| `NOTIFY_EVENT_ALLOWLIST`    | `payment_due` | Comma-separated event types allowed to spend quota             |
 
 ---
 

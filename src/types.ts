@@ -1,6 +1,9 @@
 export interface Env {
   DB: D1Database;
   CACHE_KV: KVNamespace;
+  /** Payment-slip object store. Optional so a deploy without the binding
+   *  falls back to the legacy base64-in-D1 path instead of failing uploads. */
+  SLIPS?: R2Bucket;
   JWT_SECRET: string;
   JWT_REFRESH_SECRET: string;
   TURNSTILE_SECRET: string;
@@ -89,6 +92,8 @@ export interface Reservation {
   slip_decision_json?: string;
   status?: string;
   slipImage?: string;
+  /** R2 object key for the uploaded slip (empty for legacy base64 rows). */
+  slip_key?: string;
   cancelReason?: string;
   createdAt?: string;
   updatedAt?: string;

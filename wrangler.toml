@@ -58,6 +58,15 @@ migrations_dir = "src/db/migrations"
 binding = "CACHE_KV"
 id = "e53d8e0df3d04533b140bb49b99d7df3"
 
+# ── R2 bucket (payment slip images) ────────────────────────────────
+# Create with:  wrangler r2 bucket create ccc-slips
+# Slips used to sit in D1 as base64 (slip_base64); they are objects here now
+# and D1 keeps only the key (slip_key). Kept private — the Worker serves the
+# bytes at /api/slip/image behind auth or a signed token.
+[[r2_buckets]]
+binding = "SLIPS"
+bucket_name = "ccc-slips"
+
 # ── Workers AI (slip OCR) ──────────────────────────────────────────
 [ai]
 binding = "AI"
@@ -119,6 +128,10 @@ migrations_dir = "src/db/migrations"
 [[env.development.kv_namespaces]]
 binding = "CACHE_KV"
 id = "7daf963bf3da42bc95961d2e74b23387"
+
+[[env.development.r2_buckets]]
+binding = "SLIPS"
+bucket_name = "ccc-slips-dev"
 
 [env.development.ai]
 binding = "AI"

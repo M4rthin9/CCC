@@ -1,5 +1,5 @@
 import { Env } from '../types';
-import { cacheGet, cachePut, cacheRemove } from '../cache/kv';
+import { cacheGet } from '../cache/kv';
 import { signAccessToken, verifyAccessToken } from '../auth/jwt';
 
 const SERVICE_NAME = 'ccc-backend';
@@ -56,22 +56,12 @@ export async function handleHealthJson(env: Env, request: Request): Promise<Reco
     checks.push({ ok: false, status: 'error', label: 'D1 database', detail: String(e) });
   }
 
-  // KV roundtrip
+  // KV read-only probe (avoids burning daily put quota on auto-refresh)
   try {
-    const probe = '__health:probe:' + Date.now();
-    await cachePut(env.CACHE_KV, probe, 'ok', 60);
-    const got = await cacheGet(env.CACHE_KV, probe);
-    await cacheRemove(env.CACHE_KV, probe);
-    if (got === 'ok') {
-      checks.push({ ok: true, status: 'ok', label: 'KV cache', detail: 'write/read/delete roundtrip ok' });
-    } else {
-      checks.push({
-        ok: false,
-        status: 'error',
-        label: 'KV cache',
-        detail: 'roundtrip mismatch (got ' + String(got) + ')',
-      });
-    }
+    const probeKey = '__health:read:' + Date.now();
+    const got = await cacheGet(env.CACHE_KV, probeKey);
+    // got should be null since we just made up the key — that proves read works
+    checks.push({ ok: got === null, status: got === null ? 'ok' : 'warn', label: 'KV cache', detail: 'read probe ok' });
   } catch (e) {
     checks.push({ ok: false, status: 'error', label: 'KV cache', detail: String(e) });
   }

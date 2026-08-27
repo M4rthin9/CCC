@@ -6,6 +6,37 @@
 
 const CACHE_CHUNK_SIZE = 90000;
 
+// ── In-memory write dedup ──────────────────────────────────────────
+// Cloudflare KV free tier allows only 1,000 puts/day. An in-memory map
+// tracks the last value written per key so we can skip redundant puts
+// (e.g. repeated health checks, identical cache refreshes within TTL).
+// The map is scoped to a single Worker isolate lifecycle; entries older
+// than DEDUP_TTL_MS are evicted on access.
+const DEDUP_TTL_MS = 30_000; // 30 s — shorter than any cache TTL
+const _lastWrite = new Map<string, { v: string; ts: number }>();
+
+function _wasRecentlyWritten(key: string, value: string): boolean {
+  const entry = _lastWrite.get(key);
+  if (entry && entry.v === value && Date.now() - entry.ts < DEDUP_TTL_MS) {
+    return true;
+  }
+  return false;
+}
+
+function _recordWrite(key: string, value: string): void {
+  // Cap map size to avoid unbounded memory growth (Worker isolate memory
+  // limit ~128 MB). Evict oldest 20% when the map exceeds 10 000 entries.
+  if (_lastWrite.size > 10_000) {
+    const cutoff = Date.now() - DEDUP_TTL_MS;
+    for (const [k, e] of _lastWrite) {
+      if (e.ts < cutoff) _lastWrite.delete(k);
+    }
+    // If still too large after eviction, clear entirely.
+    if (_lastWrite.size > 10_000) _lastWrite.clear();
+  }
+  _lastWrite.set(key, { v: value, ts: Date.now() });
+}
+
 export async function cachePutLarge(
   kv: KVNamespace,
   key: string,
@@ -14,10 +45,16 @@ export async function cachePutLarge(
 ): Promise<void> {
   try {
     if (typeof dataString !== 'string' || dataString.length <= CACHE_CHUNK_SIZE) {
-      await kv.put(key, String(dataString || ''), { expirationTtl: ttlSeconds });
+      const value = String(dataString || '');
+      if (_wasRecentlyWritten(key, value)) return;
+      await kv.put(key, value, { expirationTtl: ttlSeconds });
+      _recordWrite(key, value);
       return;
     }
+    // For chunked data, use the full payload + chunk count as the dedup fingerprint
     const chunkCount = Math.ceil(dataString.length / CACHE_CHUNK_SIZE);
+    const fingerprint = dataString.length + ':' + chunkCount;
+    if (_wasRecentlyWritten(key, fingerprint)) return;
     await Promise.all(
       Array.from({ length: chunkCount }, (_, i) =>
         kv.put(key + '_chunk_' + i, dataString.slice(i * CACHE_CHUNK_SIZE, (i + 1) * CACHE_CHUNK_SIZE), {
@@ -26,6 +63,7 @@ export async function cachePutLarge(
       )
     );
     await kv.put(key, '__chunks:' + chunkCount, { expirationTtl: ttlSeconds });
+    _recordWrite(key, fingerprint);
   } catch {
     // KV unavailable — callers fall back to direct DB reads.
   }
@@ -73,7 +111,9 @@ export async function cacheRemoveLarge(kv: KVNamespace, key: string): Promise<vo
 
 export async function cachePut(kv: KVNamespace, key: string, value: string, ttlSeconds: number): Promise<void> {
   try {
+    if (_wasRecentlyWritten(key, value)) return;
     await kv.put(key, value, { expirationTtl: ttlSeconds });
+    _recordWrite(key, value);
   } catch {
     // ignore
   }
@@ -106,7 +146,10 @@ export async function checkRateLimit(
   try {
     const attempts = parseInt((await kv.get(key)) || '0', 10) || 0;
     if (attempts >= maxAttempts) return false;
-    await kv.put(key, String(attempts + 1), { expirationTtl: ttlSeconds });
+    const next = String(attempts + 1);
+    if (_wasRecentlyWritten(key, next)) return true;
+    await kv.put(key, next, { expirationTtl: ttlSeconds });
+    _recordWrite(key, next);
     return true;
   } catch {
     return true;

@@ -1,7 +1,7 @@
 import { PUBLIC_CACHE_TTL } from '../constants';
 import { sanitizeStr } from '../config';
 import { cacheKeyPrisoners } from '../cache/keys';
-import { cacheGetLarge, cachePutLarge, cacheRemove } from '../cache/kv';
+import { d1CacheGet, d1CachePut, d1CacheRemove } from '../cache/d1Cache';
 import {
   getMinifiedPrisoners,
   getPrisonerById,
@@ -22,18 +22,18 @@ const RESERVATIONS_SYNC_BATCH = 100;
 
 export async function handleGetPrisoners(env: Env): Promise<Record<string, unknown>> {
   const key = cacheKeyPrisoners();
-  const cached = await cacheGetLarge(env.CACHE_KV, key);
+  const cached = await d1CacheGet<string>(env.DB, key);
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed)) return { status: 'ok', prisoners: parsed };
     } catch {
-      await cacheRemove(env.CACHE_KV, key).catch(() => undefined);
+      await d1CacheRemove(env.DB, key).catch(() => undefined);
     }
   }
 
   const prisoners = await getMinifiedPrisoners(env.DB);
-  await cachePutLarge(env.CACHE_KV, key, JSON.stringify(prisoners), PUBLIC_CACHE_TTL);
+  await d1CachePut(env.DB, key, JSON.stringify(prisoners), PUBLIC_CACHE_TTL);
   return { status: 'ok', prisoners };
 }
 

@@ -1,8 +1,8 @@
 import { PUBLIC_CACHE_TTL, VALID_STATUSES, ACTIVE_STATUSES } from '../constants';
 import { sanitizeStr, normalizeVisitDateISO, formatDateISO } from '../config';
 import { cacheKeyArchived, cacheKeyCounts, cacheKeyReservations } from '../cache/keys';
-import { cacheGetLarge, cachePutLarge, cacheRemove } from '../cache/kv';
-import { cacheGetVersioned, cachePutVersioned } from '../cache/versioned';
+import { d1CacheGet, d1CachePut, d1CacheRemove, d1CacheGetVersioned, d1CachePutVersioned } from '../cache/d1Cache';
+import { getScopeVersion } from '../db/queries/settings';
 import {
   getActiveReservations,
   getArchivedReservations,
@@ -42,11 +42,21 @@ const ACTIVE = ACTIVE_STATUSES;
 
 export async function getAllReservations(env: Env): Promise<Record<string, unknown>> {
   const key = cacheKeyReservations(env);
-  const { hit, version } = await cacheGetVersioned<Reservation[]>(env, key, 'reservations');
-  if (Array.isArray(hit)) return { status: 'ok', rows: hit };
+  let version: number;
+  try {
+    version = await getScopeVersion(env.DB, 'reservations');
+  } catch {
+    version = -1;
+  }
+  if (version !== -1) {
+    const { hit } = await d1CacheGetVersioned<Reservation[]>(env.DB, key, version);
+    if (Array.isArray(hit)) return { status: 'ok', rows: hit };
+  }
 
   const rows = await getActiveReservations(env.DB);
-  await cachePutVersioned(env, key, version, rows, PUBLIC_CACHE_TTL);
+  if (version !== -1) {
+    await d1CachePutVersioned(env.DB, key, version, rows, PUBLIC_CACHE_TTL);
+  }
   return { status: 'ok', rows };
 }
 
@@ -81,19 +91,19 @@ export async function getArchivedReservationsHandler(
   params: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   const key = cacheKeyArchived(env);
-  const cached = await cacheGetLarge(env.CACHE_KV, key);
+  const cached = await d1CacheGet<string>(env.DB, key);
   let rows: Reservation[] | null = null;
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed)) rows = parsed;
     } catch {
-      await cacheRemove(env.CACHE_KV, key).catch(() => undefined);
+      await d1CacheRemove(env.DB, key).catch(() => undefined);
     }
   }
   if (rows === null) {
     rows = await getArchivedReservations(env.DB);
-    await cachePutLarge(env.CACHE_KV, key, JSON.stringify(rows), 21600);
+    await d1CachePut(env.DB, key, JSON.stringify(rows), 21600);
   }
 
   const from = sanitizeStr(params.from, 10);
@@ -112,11 +122,21 @@ export async function getArchivedReservationsHandler(
 
 export async function getCountsByDate(env: Env): Promise<Record<string, unknown>> {
   const countsKey = cacheKeyCounts(env);
-  const { hit, version } = await cacheGetVersioned<Record<string, number>>(env, countsKey, 'reservations');
-  if (hit) return { status: 'ok', counts: hit };
+  let version: number;
+  try {
+    version = await getScopeVersion(env.DB, 'reservations');
+  } catch {
+    version = -1;
+  }
+  if (version !== -1) {
+    const { hit } = await d1CacheGetVersioned<Record<string, number>>(env.DB, countsKey, version);
+    if (hit) return { status: 'ok', counts: hit };
+  }
 
   const counts = await countReservationsByDate(env.DB);
-  await cachePutVersioned(env, countsKey, version, counts, PUBLIC_CACHE_TTL);
+  if (version !== -1) {
+    await d1CachePutVersioned(env.DB, countsKey, version, counts, PUBLIC_CACHE_TTL);
+  }
   return { status: 'ok', counts };
 }
 

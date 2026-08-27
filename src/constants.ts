@@ -79,7 +79,7 @@ export const PERMISSIONS: Record<string, readonly Permission[]> = {
 
 export const CACHE_TTL = 60;
 export const PUBLIC_CACHE_TTL = 300;
-export const LOOKUP_CACHE_TTL = 15;
+export const LOOKUP_CACHE_TTL = 60;
 export const LOGIN_RATE_LIMIT_TTL = 300;
 export const MAX_LOGIN_ATTEMPTS = 5;
 export const CACHE_VERSION = 'v3';

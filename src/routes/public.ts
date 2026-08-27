@@ -1,7 +1,7 @@
 import { PUBLIC_LOOKUP_FIELDS, LOOKUP_CACHE_TTL } from '../constants';
 import { sanitizeStr } from '../config';
 import { lookupCacheKey } from '../cache/keys';
-import { cacheGet, cachePut, cacheRemove } from '../cache/kv';
+import { d1CacheGet, d1CachePut, d1CacheRemove } from '../cache/d1Cache';
 import {
   getActiveReservations,
   getArchivedReservations,
@@ -203,13 +203,13 @@ export async function handleLookupByRef(env: Env, params: Record<string, unknown
   if (!ref && !prisonerId) return { status: 'error', message: 'Missing ref or prisonerId' };
 
   const cacheKey = lookupCacheKey(env, ref, prisonerId);
-  const cached = await cacheGet(env.CACHE_KV, cacheKey);
+  const cached = await d1CacheGet<string>(env.DB, cacheKey);
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
       if (parsed && Array.isArray(parsed.rows)) return { status: 'ok', rows: parsed.rows };
     } catch {
-      await cacheRemove(env.CACHE_KV, cacheKey).catch(() => undefined);
+      await d1CacheRemove(env.DB, cacheKey).catch(() => undefined);
     }
   }
 
@@ -228,6 +228,6 @@ export async function handleLookupByRef(env: Env, params: Record<string, unknown
   }
 
   const masked = matches.map(maskRowForPublic);
-  await cachePut(env.CACHE_KV, cacheKey, JSON.stringify({ rows: masked }), LOOKUP_CACHE_TTL);
+  await d1CachePut(env.DB, cacheKey, JSON.stringify({ rows: masked }), LOOKUP_CACHE_TTL);
   return { status: 'ok', rows: masked };
 }

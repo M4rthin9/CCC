@@ -1,7 +1,7 @@
 import { sanitizeStr } from '../config';
 import { AVAILABLE_PERMISSIONS, PUBLIC_CACHE_TTL } from '../constants';
 import { cacheKeyRoles } from '../cache/keys';
-import { cacheGet, cachePut, cacheRemove } from '../cache/kv';
+import { d1CacheGet, d1CachePut, d1CacheRemove } from '../cache/d1Cache';
 import { getRoles, createRole, roleExists } from '../db/queries/roles';
 import { hasPermission } from '../db/queries/roles';
 import { invalidateRolesCache } from '../cache/invalidation';
@@ -10,17 +10,17 @@ import { Env } from '../types';
 
 export async function getRolesHandler(env: Env): Promise<Record<string, unknown>> {
   const cacheKey = cacheKeyRoles(env);
-  const cached = await cacheGet(env.CACHE_KV, cacheKey);
+  const cached = await d1CacheGet<string>(env.DB, cacheKey);
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed)) return { status: 'ok', roles: parsed };
     } catch {
-      await cacheRemove(env.CACHE_KV, cacheKey).catch(() => undefined);
+      await d1CacheRemove(env.DB, cacheKey).catch(() => undefined);
     }
   }
   const roles = await getRoles(env.DB);
-  await cachePut(env.CACHE_KV, cacheKey, JSON.stringify(roles), PUBLIC_CACHE_TTL);
+  await d1CachePut(env.DB, cacheKey, JSON.stringify(roles), PUBLIC_CACHE_TTL);
   return { status: 'ok', roles };
 }
 

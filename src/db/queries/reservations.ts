@@ -1,4 +1,4 @@
-import { TABLES } from '../../constants';
+import { ACTIVE_STATUSES, AWAITING_PAYMENT, CANCELLED, HOLD_EXPIRED_REASON, TABLES } from '../../constants';
 import { Env, Reservation } from '../../types';
 
 const RESERVATION_COLUMNS = [
@@ -45,6 +45,8 @@ const RESERVATION_COLUMNS = [
   'version',
   'createdBy',
   'source',
+  'bookingType',
+  'holdExpiresAt',
 ];
 
 // slip_base64 holds multi-MB base64 slip uploads and is intentionally NOT part
@@ -260,11 +262,14 @@ export function findReservationBySlipFingerprint(
     );
 }
 
+/** Prisoner-visit bookings only: the no-prisoner table pool is counted separately
+ *  by countActiveTableBookingsByDate, so the two calendars stay independent. */
 export function countReservationsByDate(db: D1Database): Promise<Record<string, number>> {
   return db
     .prepare(
       `SELECT visitDateISO, COUNT(*) as c FROM ${TABLES.reservations}
      WHERE status IN (?, ?, ?, ?, ?) AND visitDateISO LIKE '____-__-__'
+       AND bookingType != 'table'
      GROUP BY visitDateISO`
     )
     .bind('รอตรวจสอบวินัย', 'รอตรวจสอบผู้เข้าร่วม', 'รอชำระเงิน', 'ชำระแล้ว', 'เสร็จสิ้น')
@@ -276,6 +281,73 @@ export function countReservationsByDate(db: D1Database): Promise<Record<string, 
       }
       return counts;
     });
+}
+
+// ── Table bookings (bookingType = 'table') ─────────────────────────
+// A day's capacity is consumed by every active table booking EXCEPT one that is
+// still awaiting payment past its hold. Excluding expired holds inside the count
+// itself is what makes capacity correct the instant a hold lapses, without
+// depending on the housekeeping sweep below having run first.
+const TABLE_ACTIVE_STATUSES = ACTIVE_STATUSES;
+
+export function countActiveTableBookings(db: D1Database, visitDateISO: string, nowIso: string): Promise<number> {
+  const placeholders = TABLE_ACTIVE_STATUSES.map(() => '?').join(', ');
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM ${TABLES.reservations}
+        WHERE bookingType = 'table'
+          AND visitDateISO = ?
+          AND status IN (${placeholders})
+          AND NOT (status = ? AND holdExpiresAt != '' AND holdExpiresAt < ?)`
+    )
+    .bind(visitDateISO, ...TABLE_ACTIVE_STATUSES, AWAITING_PAYMENT, nowIso)
+    .first<{ n: number }>()
+    .then((r) => Number(r?.n ?? 0));
+}
+
+/** Per-date used counts for the public availability calendar. */
+export function countActiveTableBookingsByDate(db: D1Database, nowIso: string): Promise<Record<string, number>> {
+  const placeholders = TABLE_ACTIVE_STATUSES.map(() => '?').join(', ');
+  return db
+    .prepare(
+      `SELECT visitDateISO, COUNT(*) AS c FROM ${TABLES.reservations}
+        WHERE bookingType = 'table'
+          AND visitDateISO LIKE '____-__-__'
+          AND status IN (${placeholders})
+          AND NOT (status = ? AND holdExpiresAt != '' AND holdExpiresAt < ?)
+        GROUP BY visitDateISO`
+    )
+    .bind(...TABLE_ACTIVE_STATUSES, AWAITING_PAYMENT, nowIso)
+    .all<{ visitDateISO: string; c: number }>()
+    .then((res) => {
+      const counts: Record<string, number> = {};
+      for (const r of res.results ?? []) counts[r.visitDateISO] = Number(r.c);
+      return counts;
+    });
+}
+
+/**
+ * Cancel table bookings whose payment hold has lapsed. Housekeeping only — the
+ * count above already ignores them — so this exists to keep zombie rows out of
+ * the dashboard. Returns the number of rows cancelled.
+ */
+export function releaseExpiredTableHolds(db: D1Database, nowIso: string, visitDateISO?: string): Promise<number> {
+  const scoped = visitDateISO ? ' AND visitDateISO = ?' : '';
+  // SET status, cancelReason, updatedAt | WHERE status, holdExpiresAt < now [, visitDateISO]
+  const binds: unknown[] = [CANCELLED, HOLD_EXPIRED_REASON, nowIso, AWAITING_PAYMENT, nowIso];
+  if (visitDateISO) binds.push(visitDateISO);
+  return db
+    .prepare(
+      `UPDATE ${TABLES.reservations}
+          SET status = ?, cancelReason = ?, holdExpiresAt = '', updatedAt = ?
+        WHERE bookingType = 'table'
+          AND status = ?
+          AND holdExpiresAt != ''
+          AND holdExpiresAt < ?${scoped}`
+    )
+    .bind(...binds)
+    .run()
+    .then((res) => Number(res.meta?.changes ?? 0));
 }
 
 export function getAllRefs(db: D1Database): Promise<string[]> {

@@ -97,6 +97,26 @@ export const VALID_STATUSES = [
 
 export const ACTIVE_STATUSES = ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย', 'รอชำระเงิน', 'ชำระแล้ว', 'เสร็จสิ้น'];
 
+// Named so the table-booking code can reference the two statuses it cares about
+// without re-typing Thai string literals that must match VALID_STATUSES exactly.
+export const AWAITING_PAYMENT = 'รอชำระเงิน';
+export const PAID_STATUS = 'ชำระแล้ว';
+export const CANCELLED = 'ยกเลิก';
+export const HOLD_EXPIRED_REASON = 'หมดเวลาชำระเงิน';
+
+// ── Table bookings (bookingType = 'table') ────────────────────────
+// A parallel, no-prisoner reservation: N tables per day, sold straight into the
+// payment step. Overridable per-deployment via admin_settings.tableBooking.
+export const BOOKING_TYPE_PRISONER = 'prisoner';
+export const BOOKING_TYPE_TABLE = 'table';
+export const DEFAULT_TABLES_PER_DAY = 10;
+/** How long an unpaid table booking keeps its slot before the hold lapses. */
+export const DEFAULT_TABLE_HOLD_MINUTES = 60;
+export const TABLE_BOOKING_SETTING_KEY = 'tableBooking';
+/** Distinct ref prefix so staff can tell the two booking kinds apart at a glance. */
+export const TABLE_REF_PREFIX = 'TBL-';
+export const VISIT_REF_PREFIX = 'VIS-';
+
 export const SAVE_RESERVATION_FIELDS = [
   'ref',
   'timestamp',
@@ -124,6 +144,12 @@ export const SAVE_RESERVATION_FIELDS = [
   'status',
   'slipImage',
 ];
+
+// Accepted on the public table-booking path: SAVE_RESERVATION_FIELDS minus the
+// prisoner columns, which have no meaning without a prisoner attached.
+export const SAVE_TABLE_RESERVATION_FIELDS = SAVE_RESERVATION_FIELDS.filter(
+  (f) => f !== 'prisonerName' && f !== 'prisonerId' && f !== 'wing'
+);
 
 export const SAVE_NUMERIC_FIELDS = [
   'visitorCount',
@@ -239,12 +265,14 @@ export const STANDARD_HEADERS = [
   'status',
   'slipImage',
   'cancelReason',
+  'bookingType',
 ];
 
 export const PUBLIC_LOOKUP_FIELDS = [
   'ref',
   'timestamp',
   'status',
+  'bookingType',
   'visitDate',
   'visitDateISO',
   'prisonerName',

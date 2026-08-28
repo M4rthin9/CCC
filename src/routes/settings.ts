@@ -1,6 +1,7 @@
 import { getSettings, saveSettings, getAllDataVersions, bumpDataVersion } from '../db/queries/settings';
 import { hasPermission } from '../db/queries/roles';
 import { logEvent } from '../services/logger';
+import { getTableBookingConfig } from '../services/tableCapacity';
 import { Env } from '../types';
 
 export async function handleSaveSettings(
@@ -49,7 +50,15 @@ export async function readPaymentSwitch(env: Env): Promise<{ enabled: boolean; c
  */
 export async function handleGetPublicSettings(env: Env): Promise<Record<string, unknown>> {
   const payment = await readPaymentSwitch(env);
-  return { status: 'ok', paymentEnabled: payment.enabled, paymentClosedMessage: payment.closedMessage };
+  // The table-booking knobs are not secrets — the booking page needs them to draw
+  // the calendar and to tell the visitor how long their slot is held.
+  const tableBooking = await getTableBookingConfig(env);
+  return {
+    status: 'ok',
+    paymentEnabled: payment.enabled,
+    paymentClosedMessage: payment.closedMessage,
+    tableBooking,
+  };
 }
 
 // Polled by the dashboard on a short interval to drive live updates. One D1 read,

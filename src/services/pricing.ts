@@ -1,5 +1,6 @@
 // Thai visitor pricing (mirrors the frontend's calcCost in booking.svelte.ts):
-//   - prisoner:     1000 THB
+//   - prisoner:     1000 THB (omitted entirely for a no-prisoner "table" booking —
+//                   pass includePrisonerFee: false)
 //   - main visitor: 1000 THB, unless a child (relation in CHILD_RELATIONS):
 //       age < 5  -> free (0)
 //       age <= 8 -> 500 THB
@@ -77,6 +78,11 @@ export interface BookingCostInput {
   relation?: string;
   visitorAge?: string;
   extraVisitorNames?: string;
+  /**
+   * False for a no-prisoner "table" booking: the visitor ladder is identical,
+   * but there is no prisoner to charge the PRISONER_FEE line item for.
+   */
+  includePrisonerFee?: boolean;
 }
 
 export interface BookingCost {
@@ -89,7 +95,12 @@ export interface BookingCost {
 
 /** Mirrors frontend `calcCost` (booking.svelte.ts:76). `visitorCount` is the
  *  main visitor + all extra visitors; the prisoner is not counted. */
-export function computeBookingCost({ relation, visitorAge, extraVisitorNames }: BookingCostInput): BookingCost {
+export function computeBookingCost({
+  relation,
+  visitorAge,
+  extraVisitorNames,
+  includePrisonerFee = true,
+}: BookingCostInput): BookingCost {
   const mainFee = mainVisitorFee(relation ?? '', visitorAge ?? '');
 
   let extraFees = 0;
@@ -118,7 +129,7 @@ export function computeBookingCost({ relation, visitorAge, extraVisitorNames }: 
 
   const visitorCount = 1 + extras.length;
   return {
-    total: PRISONER_FEE + mainFee + extraFees,
+    total: (includePrisonerFee ? PRISONER_FEE : 0) + mainFee + extraFees,
     visitorCount,
     adultCount: adults,
     child5to8Count: kids5_8,
@@ -131,7 +142,11 @@ export function computeBookingCost({ relation, visitorAge, extraVisitorNames }: 
  * Returns the client-supplied total (if any) for discrepancy logging — the
  * caller decides whether to log a tamper signal; we never fail hard.
  */
-export function applyServerPricing(data: Record<string, unknown>): { clientTotal?: number; serverTotal: number } {
+export function applyServerPricing(
+  data: Record<string, unknown>,
+  options: { includePrisonerFee?: boolean } = {}
+): { clientTotal?: number; serverTotal: number } {
+  const includePrisonerFee = options.includePrisonerFee !== false;
   const clientTotal =
     data.total !== undefined && data.total !== null && data.total !== '' ? Number(data.total) : undefined;
 
@@ -139,6 +154,7 @@ export function applyServerPricing(data: Record<string, unknown>): { clientTotal
     relation: String(data.relation || ''),
     visitorAge: String(data.visitorAge || ''),
     extraVisitorNames: String(data.extraVisitorNames || ''),
+    includePrisonerFee,
   });
 
   data.total = cost.total;
@@ -146,7 +162,8 @@ export function applyServerPricing(data: Record<string, unknown>): { clientTotal
   data.adultCount = cost.adultCount;
   data.child5to8Count = cost.child5to8Count;
   data.childUnder5Count = cost.childUnder5Count;
-  data.totalPersons = cost.visitorCount + 1;
+  // The prisoner occupies a seat on a visit booking but not on a table booking.
+  data.totalPersons = includePrisonerFee ? cost.visitorCount + 1 : cost.visitorCount;
 
   return { clientTotal, serverTotal: cost.total };
 }

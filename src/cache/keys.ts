@@ -8,6 +8,11 @@ export function cacheKeyCounts(env: { CACHE_VERSION?: string }): string {
   return getCacheVersion(env) + ':counts';
 }
 
+/** Per-date used-slot counts for the no-prisoner table booking calendar. */
+export function cacheKeyTableCounts(env: { CACHE_VERSION?: string }): string {
+  return getCacheVersion(env) + ':tableCounts';
+}
+
 export function cacheKeyArchived(env: { CACHE_VERSION?: string }): string {
   return getCacheVersion(env) + ':allArchived';
 }

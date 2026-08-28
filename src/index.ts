@@ -8,6 +8,7 @@ import { sanitizeStr } from './config';
 import { cleanupExpiredDiscipline } from './services/disciplineService';
 import { archiveOldReservations } from './services/archiveService';
 import { deleteExpiredRefreshTokens } from './db/queries/refreshTokens';
+import { releaseExpiredTableHolds } from './db/queries/reservations';
 import { handleHealthHtml, handleHealthJson } from './routes/health';
 import { handleLineWebhook } from './routes/notifications';
 import { handleGetSlipImage } from './routes/slip';
@@ -77,6 +78,9 @@ app.get('/api/reservations/archive', async (c) =>
   runDispatch(c.req.raw, c.env, true, { action: 'getArchivedReservations', ...queryToBody(c.req.raw) })
 );
 app.get('/api/reservations/counts', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getCountsByDate' }));
+app.get('/api/table-reservations/counts', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getTableCountsByDate' })
+);
 app.get('/api/lookup', async (c) =>
   runDispatch(c.req.raw, c.env, true, { action: 'lookupByRef', ...queryToBody(c.req.raw) })
 );
@@ -107,6 +111,9 @@ app.post('/api/refresh', async (c) =>
 );
 app.post('/api/reservations', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'saveReservation', ...(await bodyToObj(c.req.raw)) })
+);
+app.post('/api/table-reservations', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { action: 'saveTableReservation', ...(await bodyToObj(c.req.raw)) })
 );
 app.post('/api/reservations/cancel', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'publicCancelBooking', ...(await bodyToObj(c.req.raw)) })
@@ -259,8 +266,12 @@ async function runCron(cron: string, env: Env): Promise<void> {
     if (cron === '0 17 * * *') {
       const result = await cleanupExpiredDiscipline(env);
       await deleteExpiredRefreshTokens(env);
+      // Housekeeping only: countActiveTableBookings already ignores lapsed holds,
+      // so this exists to keep zombie unpaid rows out of the dashboard.
+      const released = await releaseExpiredTableHolds(env.DB, new Date().toISOString());
       const notif = await processPendingNotifications(env);
       console.log('[Cron] discipline cleanup:', JSON.stringify(result));
+      console.log('[Cron] table holds released:', released);
       console.log('[Cron] notifications:', JSON.stringify(notif));
     } else if (cron === '15 17 1 */3 *') {
       const result = await archiveOldReservations(env);

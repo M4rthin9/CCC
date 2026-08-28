@@ -108,7 +108,12 @@ async function verifyAndMaybeApprove(
       String(booking.status || '').trim() === AWAITING_PAYMENT;
     if (!approve) return { result, autoApproved: false };
 
-    await updateReservationColumns(env.DB, ref, [['status', PAID]]);
+    // Clearing the hold matters for table bookings: a paid row must never be
+    // caught by releaseExpiredTableHolds. It is already '' on visit bookings.
+    await updateReservationColumns(env.DB, ref, [
+      ['status', PAID],
+      ['holdExpiresAt', ''],
+    ]);
     await logEvent(
       env,
       actor,
@@ -232,6 +237,9 @@ export async function handleUpdateSlipAndStatus(
   }
 
   const cols: Array<[string, unknown]> = [['status', status]];
+  // Once paid, the table booking owns its slot outright — drop the payment hold
+  // so the expiry sweep can never cancel it out from under the visitor.
+  if (status === PAID) cols.push(['holdExpiresAt', '']);
   let uploadedDataUri = '';
   if (body.slipImage) {
     const slipVal = String(body.slipImage);

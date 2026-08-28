@@ -100,6 +100,10 @@ export interface Reservation {
   version?: number;
   createdBy?: string;
   source?: string;
+  /** 'prisoner' (visit flow) | 'table' (no-prisoner seating). */
+  bookingType?: string;
+  /** ISO instant an unpaid table booking releases its slot; '' = no hold. */
+  holdExpiresAt?: string;
   _archived?: boolean;
 }
 

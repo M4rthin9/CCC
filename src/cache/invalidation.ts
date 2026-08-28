@@ -4,6 +4,7 @@ import {
   cacheKeyPrisoners,
   cacheKeyReservations,
   cacheKeyRoles,
+  cacheKeyTableCounts,
   cacheKeyUser,
   cacheKeyUsers,
   lookupCacheKey,
@@ -17,8 +18,10 @@ export async function invalidateReservationsCache(env: Env): Promise<void> {
   await Promise.all([
     cacheRemoveLarge(env.CACHE_KV, cacheKeyReservations(env)),
     cacheRemoveLarge(env.CACHE_KV, cacheKeyCounts(env)),
+    cacheRemoveLarge(env.CACHE_KV, cacheKeyTableCounts(env)),
     d1CacheRemove(env.DB, cacheKeyReservations(env)),
     d1CacheRemove(env.DB, cacheKeyCounts(env)),
+    d1CacheRemove(env.DB, cacheKeyTableCounts(env)),
   ]);
   await bumpDataVersion(env.DB, 'reservations');
 }

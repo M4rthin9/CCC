@@ -1,6 +1,14 @@
-import { PUBLIC_CACHE_TTL, VALID_STATUSES, ACTIVE_STATUSES } from '../constants';
+import {
+  PUBLIC_CACHE_TTL,
+  VALID_STATUSES,
+  ACTIVE_STATUSES,
+  BOOKING_TYPE_PRISONER,
+  BOOKING_TYPE_TABLE,
+  TABLE_REF_PREFIX,
+  VISIT_REF_PREFIX,
+} from '../constants';
 import { sanitizeStr, normalizeVisitDateISO, formatDateISO } from '../config';
-import { cacheKeyArchived, cacheKeyCounts, cacheKeyReservations } from '../cache/keys';
+import { cacheKeyArchived, cacheKeyCounts, cacheKeyReservations, cacheKeyTableCounts } from '../cache/keys';
 import { d1CacheGet, d1CachePut, d1CacheRemove, d1CacheGetVersioned, d1CachePutVersioned } from '../cache/d1Cache';
 import { getScopeVersion } from '../db/queries/settings';
 import {
@@ -12,6 +20,8 @@ import {
   updateArchivedReservationColumns,
   insertReservation,
   countReservationsByDate,
+  countActiveTableBookingsByDate,
+  countActiveTableBookings,
   getAllRefs,
   deleteReservation,
   deleteArchivedReservation,
@@ -30,11 +40,13 @@ import { logEvent } from '../services/logger';
 import { deleteSlipsForRef } from '../services/slipStorage';
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
+import { checkTableCapacity, dayFullMessage, getTableBookingConfig, holdExpiryFrom } from '../services/tableCapacity';
 import {
   generateUniqueRefServer,
   parseUpdateBookingFields,
   findDuplicateActive,
   validateSaveReservation,
+  validateSaveTableReservation,
 } from '../services/reservationService';
 import { Env, Reservation } from '../types';
 import { AuthenticatedUser } from '../auth/middleware';
@@ -139,6 +151,45 @@ export async function getCountsByDate(env: Env): Promise<Record<string, unknown>
     await d1CachePutVersioned(env.DB, countsKey, version, counts, PUBLIC_CACHE_TTL);
   }
   return { status: 'ok', counts };
+}
+
+/**
+ * Availability for the no-prisoner table calendar: used slots per visit date plus
+ * the day's capacity. Modelled on getCountsByDate — same version-guarded D1 cache,
+ * dropped by invalidateReservationsCache on every booking write.
+ *
+ * Separate from getCountsByDate on purpose: the two pools are parallel, so table
+ * availability must not be affected by prisoner-visit volume or vice versa.
+ */
+export async function getTableCountsByDate(env: Env): Promise<Record<string, unknown>> {
+  const config = await getTableBookingConfig(env);
+  const now = new Date().toISOString();
+  const key = cacheKeyTableCounts(env);
+
+  let version: number;
+  try {
+    version = await getScopeVersion(env.DB, 'reservations');
+  } catch {
+    version = -1;
+  }
+  if (version !== -1) {
+    const { hit } = await d1CacheGetVersioned<Record<string, number>>(env.DB, key, version);
+    if (hit) {
+      return {
+        status: 'ok',
+        counts: hit,
+        perDay: config.perDay,
+        holdMinutes: config.holdMinutes,
+        enabled: config.enabled,
+      };
+    }
+  }
+
+  const counts = await countActiveTableBookingsByDate(env.DB, now);
+  if (version !== -1) {
+    await d1CachePutVersioned(env.DB, key, version, counts, PUBLIC_CACHE_TTL);
+  }
+  return { status: 'ok', counts, perDay: config.perDay, holdMinutes: config.holdMinutes, enabled: config.enabled };
 }
 
 export async function handleDedupeReservations(
@@ -792,7 +843,10 @@ export async function handleUpdateBooking(
   // Discipline and duplicate-booking checks guard future visits. An archived
   // row is a historical record, so moving its prisoner/date cannot create a
   // new double-booking and the prisoner's current standing is irrelevant.
-  const touchesKeyFields = !fromArchive && (changes.prisonerId !== undefined || changes.visitDateISO !== undefined);
+  // A table booking has no prisoner, so neither guard applies to it.
+  const isTableBooking = String(current.bookingType || 'prisoner') === 'table';
+  const touchesKeyFields =
+    !fromArchive && !isTableBooking && (changes.prisonerId !== undefined || changes.visitDateISO !== undefined);
   if (touchesKeyFields) {
     const effPrisonerId =
       changes.prisonerId !== undefined
@@ -830,7 +884,7 @@ export async function handleUpdateBooking(
     const merged: Record<string, unknown> = { ...current, ...changes };
     const clientTotal =
       merged.total !== undefined && merged.total !== null && merged.total !== '' ? Number(merged.total) : undefined;
-    const pricing = applyServerPricing(merged);
+    const pricing = applyServerPricing(merged, { includePrisonerFee: !isTableBooking });
     pricingNumerics.forEach((f) => {
       const i = cols.findIndex(([c]) => c === f);
       if (i >= 0) cols.splice(i, 1);
@@ -889,16 +943,20 @@ export async function handleCreateBooking(
     return { status: 'error', message: 'Role "' + user.role + '" is not allowed to create bookings' };
   }
 
+  // Staff can create either kind of booking: the ordinary prisoner visit, or one
+  // of the day's no-prisoner tables (e.g. taken over the phone).
+  const isTable = String(body.bookingType || '') === BOOKING_TYPE_TABLE;
+
   // Mirror handleSaveReservation minus Turnstile: allow the server to assign the ref.
   const payload = { ...body };
   if (!String(payload.ref || '').trim()) payload.ref = '__AUTO__';
-  const validation = validateSaveReservation(payload);
+  const validation = isTable ? validateSaveTableReservation(payload) : validateSaveReservation(payload);
   if (!validation.ok) return { status: 'error', message: validation.message };
 
   const data = validation.data;
 
   // Server-authoritative pricing (mirrors handleSaveReservation).
-  const { clientTotal, serverTotal } = applyServerPricing(data);
+  const { clientTotal, serverTotal } = applyServerPricing(data, { includePrisonerFee: !isTable });
   if (clientTotal !== undefined && clientTotal !== serverTotal) {
     await logEvent(
       env,
@@ -910,49 +968,79 @@ export async function handleCreateBooking(
     );
   }
 
-  const newPrisonerId = String(data.prisonerId || '').trim();
+  const newPrisonerId = isTable ? '' : String(data.prisonerId || '').trim();
+  const now = new Date().toISOString();
+  const tableConfig = isTable ? await getTableBookingConfig(env) : null;
 
-  const discipline = await getPrisonerDiscipline(env, newPrisonerId);
-  if (discipline.restricted) {
-    return { status: 'error', message: discipline.message };
-  }
+  if (isTable) {
+    // No prisoner means no discipline standing and no duplicate to guard against;
+    // the daily table cap takes their place.
+    const visitDateISO = normalizeVisitDateISO(data.visitDateISO);
+    if (!visitDateISO) return { status: 'error', message: 'กรุณาเลือกวันที่เข้าใช้บริการ' };
+    data.visitDateISO = visitDateISO;
+    const capacity = await checkTableCapacity(env, visitDateISO, tableConfig!.perDay, now);
+    if (!capacity.ok) {
+      return { status: 'error', message: dayFullMessage(tableConfig!.perDay), full: true, used: capacity.used };
+    }
+  } else {
+    const discipline = await getPrisonerDiscipline(env, newPrisonerId);
+    if (discipline.restricted) {
+      return { status: 'error', message: discipline.message };
+    }
 
-  const dupRef = await findDuplicateActive(env, newPrisonerId, String(data.visitDateISO || ''), null);
-  if (dupRef !== null) {
-    return {
-      status: 'error',
-      message:
-        '⚠️ ไม่สามารถจองได้ — มีการจองผู้ต้องขังหมายเลข "' +
-        newPrisonerId +
-        '" ในวันนี้อยู่แล้ว' +
-        (dupRef ? ' (Ref: ' + dupRef + ')' : ''),
-    };
+    const dupRef = await findDuplicateActive(env, newPrisonerId, String(data.visitDateISO || ''), null);
+    if (dupRef !== null) {
+      return {
+        status: 'error',
+        message:
+          '⚠️ ไม่สามารถจองได้ — มีการจองผู้ต้องขังหมายเลข "' +
+          newPrisonerId +
+          '" ในวันนี้อยู่แล้ว' +
+          (dupRef ? ' (Ref: ' + dupRef + ')' : ''),
+      };
+    }
   }
 
   const existingRefs = await getAllRefs(env.DB);
   let ref = String(data.ref || '').trim();
   if (!ref || ref === '__AUTO__' || existingRefs.includes(ref)) {
-    ref = generateUniqueRefServer(existingRefs);
+    ref = generateUniqueRefServer(existingRefs, isTable ? TABLE_REF_PREFIX : VISIT_REF_PREFIX);
   }
   data.ref = ref;
 
-  const now = new Date().toISOString();
   const row: Record<string, unknown> = {
     ...data,
+    ...(isTable
+      ? {
+          bookingType: BOOKING_TYPE_TABLE,
+          holdExpiresAt: holdExpiryFrom(now, tableConfig!.holdMinutes),
+        }
+      : // insertReservation writes '' for anything it is not given, so the D1
+        // DEFAULT never applies — state the type explicitly.
+        { bookingType: BOOKING_TYPE_PRISONER }),
     createdAt: now,
     updatedAt: now,
     version: 1,
     createdBy: user.username,
-    source: 'admin',
+    source: isTable ? 'admin-table' : 'admin',
   };
 
   await insertReservation(env.DB, row);
+
+  if (isTable) {
+    const after = await countActiveTableBookings(env.DB, String(data.visitDateISO), now);
+    if (after > tableConfig!.perDay) {
+      await deleteReservation(env.DB, ref).catch(() => undefined);
+      return { status: 'error', message: dayFullMessage(tableConfig!.perDay), full: true, used: tableConfig!.perDay };
+    }
+  }
+
   await invalidateReservationsCache(env);
-  await invalidatePrisonerLookupCache(env, newPrisonerId);
+  if (newPrisonerId) await invalidatePrisonerLookupCache(env, newPrisonerId);
   await logEvent(
     env,
     user.username,
-    'booking_created_admin',
+    isTable ? 'table_booking_created_admin' : 'booking_created_admin',
     ref,
     {
       visitorName: data.visitorName,

@@ -468,14 +468,20 @@ const payClosed = await readPaymentSwitch(
 check('payment switch explicit closed', payClosed.enabled, false);
 check('payment switch closed message', payClosed.closedMessage, 'come back later');
 
-// The public endpoint must expose the payment fields and nothing else -- the
-// same blob also holds the PromptPay biller config.
+// The public endpoint must expose the payment fields and the table-booking knobs
+// and nothing else -- the same blob also holds the PromptPay biller config.
 const publicSettings = await handleGetPublicSettings(
   envWithSettings(JSON.stringify({ promptpay: { billerId: 'SECRET' }, payment: { enabled: false } }))
 );
 check('public settings exposes paymentEnabled', String(publicSettings.paymentEnabled), 'false');
 check('public settings hides promptpay', String('promptpay' in publicSettings), 'false');
-check('public settings key count', String(Object.keys(publicSettings).length), '3');
+// status + the two payment fields + the tableBooking knobs the booking page needs.
+check('public settings key count', String(Object.keys(publicSettings).length), '4');
+check(
+  'public settings exposes tableBooking perDay',
+  String((publicSettings.tableBooking as { perDay?: number } | undefined)?.perDay),
+  '10'
+);
 
 // Closed payment must block an unauthenticated slip submission before any write.
 const closedEnv = envWithSettings(JSON.stringify({ payment: { enabled: false, closedMessage: 'closed now' } }));

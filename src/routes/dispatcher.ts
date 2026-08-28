@@ -11,6 +11,7 @@ import {
   handleTestConnection,
   handleGetSheetInfo,
   handleSaveReservation,
+  handleSaveTableReservation,
   handleLookupByRef,
 } from './public';
 import {
@@ -18,6 +19,7 @@ import {
   getAllReservationsWithArchive,
   getArchivedReservationsHandler,
   getCountsByDate,
+  getTableCountsByDate,
   handleDedupeReservations,
   handleFindDuplicateBookings,
   handleCancelBooking,
@@ -118,6 +120,7 @@ const GET_ROUTES: Record<string, Route> = {
   getAll: { auth: true, handler: async (ctx) => getAllReservations(ctx.env) },
   getAllWithArchive: { auth: true, handler: async (ctx) => getAllReservationsWithArchive(ctx.env, ctx.body) },
   getCountsByDate: { auth: false, handler: async (ctx) => getCountsByDate(ctx.env) },
+  getTableCountsByDate: { auth: false, handler: async (ctx) => getTableCountsByDate(ctx.env) },
   lookupByRef: {
     auth: false,
     handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body),
@@ -173,6 +176,13 @@ const POST_ROUTES: Record<string, Route> = {
     handler: async (ctx) => handleChangePassword(ctx.env, ctx.body, ctx.user, meta(ctx)),
   },
   saveReservation: { auth: false, handler: async (ctx) => handleSaveReservation(ctx.env, ctx.body, meta(ctx)) },
+  // Parallel no-prisoner booking. Same public budget as the other ref-taking
+  // actions, on its own namespace so it cannot eat the lookup allowance.
+  saveTableReservation: {
+    auth: false,
+    handler: async (ctx) => handleSaveTableReservation(ctx.env, ctx.body, meta(ctx)),
+    rateLimit: { ns: 'tablebook', ...PUBLIC_REF_LIMIT },
+  },
   dedupeReservations: { auth: true, handler: async (ctx) => handleDedupeReservations(ctx.env, ctx.body, ctx.user!) },
   findDuplicateBookings: {
     auth: true,
@@ -181,6 +191,7 @@ const POST_ROUTES: Record<string, Route> = {
   getAll: { auth: true, handler: async (ctx) => getAllReservations(ctx.env) },
   getAllWithArchive: { auth: true, handler: async (ctx) => getAllReservationsWithArchive(ctx.env, ctx.body) },
   getCountsByDate: { auth: false, handler: async (ctx) => getCountsByDate(ctx.env) },
+  getTableCountsByDate: { auth: false, handler: async (ctx) => getTableCountsByDate(ctx.env) },
   lookupByRef: {
     auth: false,
     handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body),

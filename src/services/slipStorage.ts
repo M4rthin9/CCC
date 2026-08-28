@@ -1,5 +1,12 @@
 import { Env } from '../types';
 
+const BANGKOK_DATE = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Bangkok',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 /**
  * Payment slips used to live in D1 as a base64 data URI (`slip_base64`), which
  * capped an upload at the ~2MB D1 cell limit and dragged the whole image
@@ -59,11 +66,12 @@ export function toDataUri(bytes: Uint8Array, contentType: string): string {
   return `data:${contentType || 'image/jpeg'};base64,${bytesToBase64(bytes)}`;
 }
 
-/** `slips/<ref>/<epoch-ms>.<ext>` — one prefix per booking so a re-upload can
- *  be found and swept without a listing of the whole bucket. */
-export function buildSlipKey(ref: string, contentType: string): string {
-  const safeRef = ref.replace(/[^A-Za-z0-9_-]/g, '') || 'unknown';
-  return `slips/${safeRef}/${Date.now()}.${EXT_BY_TYPE[contentType] || 'bin'}`;
+/** `slips/YYYY-MM-DD/<epoch-ms>.<ext>` — slips are bucketed by the Bangkok
+ *  upload date. The dashboard never deletes slips, so no per-ref prefix is
+ *  needed; files are addressed directly by their stored `slip_key`. */
+export function buildSlipKey(_ref: string, contentType: string): string {
+  const date = BANGKOK_DATE.format(new Date());
+  return `slips/${date}/${Date.now()}.${EXT_BY_TYPE[contentType] || 'bin'}`;
 }
 
 export function slipsBucket(env: Env): R2Bucket | null {
@@ -91,14 +99,14 @@ export async function getSlip(env: Env, key: string): Promise<{ bytes: Uint8Arra
   return { bytes: new Uint8Array(buf), contentType: obj.httpMetadata?.contentType || 'image/jpeg' };
 }
 
-/** Drop every object stored under a booking's prefix (revert / delete paths). */
-export async function deleteSlipsForRef(env: Env, ref: string): Promise<void> {
-  const bucket = slipsBucket(env);
-  const safeRef = ref.replace(/[^A-Za-z0-9_-]/g, '');
-  if (!bucket || !safeRef) return;
-  const listed = await bucket.list({ prefix: `slips/${safeRef}/` });
-  if (listed.objects.length === 0) return;
-  await bucket.delete(listed.objects.map((o) => o.key));
+/** Drop every object stored under a booking's prefix (revert / delete paths).
+ *
+ *  Slips are now bucketed by upload date (`slips/YYYY-MM-DD/...`) with no
+ *  per-ref prefix, so a slip can no longer be located by reservation reference.
+ *  The dashboard does not delete slips, so this is intentionally a no-op; the
+ *  image for a reverted booking is simply orphaned in R2. */
+export async function deleteSlipsForRef(_env: Env, _ref: string): Promise<void> {
+  return;
 }
 
 // ── Short-lived view tokens ────────────────────────────────────────

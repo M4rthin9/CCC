@@ -109,13 +109,19 @@ export async function deleteSlipsForRef(_env: Env, _ref: string): Promise<void> 
   return;
 }
 
-// ── Short-lived view tokens ────────────────────────────────────────
+// ── View tokens ────────────────────────────────────────────────────
 // The slip image is served by the Worker rather than from a public bucket, so
 // bank details are never world-readable. Staff reach it with their normal auth;
 // the visitor who just uploaded gets a signed, expiring link instead — the same
 // trust level as the ref-keyed public endpoints, but it cannot be guessed.
+//
+// TTL is deliberately generous (7 days). An `<img src>` cannot carry the staff
+// Bearer token, and the dashboard caches the signed URL it got from the last
+// reservation list bind — so if the token expired inside that window the slip
+// would 401 in the review modal. The HMAC + expiry still binds the URL to a
+// specific ref and keeps it from being a forever-open door.
 
-const TOKEN_TTL_SECONDS = 60 * 60;
+const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 async function hmacHex(secret: string, message: string): Promise<string> {
   const key = await crypto.subtle.importKey(

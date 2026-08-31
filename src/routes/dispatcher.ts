@@ -1,7 +1,7 @@
 import { Env } from '../types';
 import { AuthenticatedUser } from '../auth/middleware';
 import { jsonResponse } from '../middleware/http';
-import { checkRateLimit } from '../cache/kv';
+import { d1CheckRateLimit } from '../cache/d1Cache';
 import { rateLimitKey } from '../cache/keys';
 import { logEvent } from '../services/logger';
 import {
@@ -431,7 +431,7 @@ export async function dispatchAction(ctx: RouteCtx, action: string, isGet: boole
   // per IP before the handler runs, so a rejected call costs no D1 work.
   if (route.rateLimit && !ctx.user) {
     const { ns, max, ttl } = route.rateLimit;
-    const allowed = await checkRateLimit(ctx.env.CACHE_KV, rateLimitKey(ns, ctx.ip), max, ttl);
+    const allowed = await d1CheckRateLimit(ctx.env.DB, rateLimitKey(ns, ctx.ip), max, ttl);
     if (!allowed) {
       await logEvent(
         ctx.env,

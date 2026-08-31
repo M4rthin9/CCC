@@ -94,3 +94,51 @@ export async function d1CachePutVersioned(
   const envelope: Envelope = { v: version, d: data };
   await d1CachePut(db, key, JSON.stringify(envelope), ttlSeconds);
 }
+
+// ── Counters (rate limits, daily budgets) ────────────────────────────
+// These used to live in KV, one get + one put per public request, which
+// blew through the KV free-tier 1,000 writes/day. D1 has no such cap, and
+// the increment is a single atomic statement instead of a read-modify-write
+// race between isolates.
+
+/**
+ * Increment the counter at `key` and return its new value, resetting to 1
+ * when the previous window has expired. Returns null if D1 is unavailable —
+ * callers decide whether that fails open or closed.
+ */
+export async function d1IncrementCounter(db: D1Database, key: string, ttlSeconds: number): Promise<number | null> {
+  const now = nowSec();
+  const expiresAt = now + ttlSeconds;
+  try {
+    const row = await db
+      .prepare(
+        'INSERT INTO d1_cache (key, value, expires_at) VALUES (?1, ?2, ?3) ' +
+          'ON CONFLICT(key) DO UPDATE SET ' +
+          'value = CAST(CASE WHEN d1_cache.expires_at <= ?4 THEN 0 ELSE CAST(d1_cache.value AS INTEGER) END + 1 AS TEXT), ' +
+          'expires_at = CASE WHEN d1_cache.expires_at <= ?4 THEN ?3 ELSE d1_cache.expires_at END ' +
+          'RETURNING value'
+      )
+      .bind(key, '1', expiresAt, now)
+      .first<{ value: string }>();
+    const n = parseInt(row?.value ?? '', 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Attempt counter with TTL. Returns true when the request is allowed (fails open). */
+export async function d1CheckRateLimit(
+  db: D1Database,
+  key: string,
+  maxAttempts: number,
+  ttlSeconds: number
+): Promise<boolean> {
+  const used = await d1IncrementCounter(db, key, ttlSeconds);
+  if (used === null) return true;
+  return used <= maxAttempts;
+}
+
+export async function d1ResetRateLimit(db: D1Database, key: string): Promise<void> {
+  await d1CacheRemove(db, key);
+}

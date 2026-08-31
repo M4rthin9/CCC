@@ -2,7 +2,7 @@ import { buildPromptPayBillPayment, renderPromptPayCardSvg, TAG62_MAX_LENGTH } f
 import { getPromptPayConfig, PROMPTPAY_MERCHANT_NAME } from '../services/promptpayConfig';
 import { renderQr } from '../services/qrImage';
 import { getReservationByRef } from '../db/queries/reservations';
-import { checkRateLimit } from '../cache/kv';
+import { d1CheckRateLimit } from '../cache/d1Cache';
 import { rateLimitKey } from '../cache/keys';
 import { sanitizeStr } from '../config';
 import { Env } from '../types';
@@ -62,7 +62,7 @@ export async function handleGeneratePromptPayQr(
     return handleSampleQr(env, body);
   }
 
-  if (!(await checkRateLimit(env.CACHE_KV, rateLimitKey('qr', ip), QR_RATE_LIMIT_MAX, QR_RATE_LIMIT_TTL_SECONDS))) {
+  if (!(await d1CheckRateLimit(env.DB, rateLimitKey('qr', ip), QR_RATE_LIMIT_MAX, QR_RATE_LIMIT_TTL_SECONDS))) {
     return { status: 'error', message: 'Too many requests — please try again later' };
   }
 

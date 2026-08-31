@@ -1,4 +1,4 @@
-import { cacheGet, cachePut } from '../cache/kv';
+import { d1IncrementCounter } from '../cache/d1Cache';
 import { Env } from '../types';
 
 // The Mini-QR parsed in slipverify.ts proves a slip is genuine and unused, but
@@ -67,21 +67,16 @@ function dailyMax(env: Env): number {
 
 /**
  * Day-bucketed spend guard for the Workers AI free allocation (10,000
- * Neurons/day). Unlike `checkRateLimit` this fails **closed**: a KV read that
- * throws must not open the tap on a metered resource.
+ * Neurons/day). Unlike `d1CheckRateLimit` this fails **closed**: a counter
+ * that errors must not open the tap on a metered resource.
  */
 async function consumeDailyBudget(env: Env, max: number): Promise<boolean> {
   const key = 'ai:slipocr:' + new Date().toISOString().slice(0, 10);
-  try {
-    const used = parseInt((await cacheGet(env.CACHE_KV, key)) || '0', 10) || 0;
-    if (used >= max) return false;
-    // Two days of TTL so a request near midnight UTC cannot resurrect a
-    // yesterday bucket that outlived its own day.
-    await cachePut(env.CACHE_KV, key, String(used + 1), 48 * 60 * 60);
-    return true;
-  } catch {
-    return false;
-  }
+  // Two days of TTL so a request near midnight UTC cannot resurrect a
+  // yesterday bucket that outlived its own day.
+  const used = await d1IncrementCounter(env.DB, key, 48 * 60 * 60);
+  if (used === null) return false;
+  return used <= max;
 }
 
 function coerceFields(raw: unknown): SlipOcrFields | null {

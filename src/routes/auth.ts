@@ -1,6 +1,6 @@
 import { MAX_LOGIN_ATTEMPTS, LOGIN_RATE_LIMIT_TTL } from '../constants';
 import { cacheKeyUser, rateLimitKey } from '../cache/keys';
-import { checkRateLimit, resetRateLimit, cacheRemove } from '../cache/kv';
+import { d1CacheRemove, d1CheckRateLimit, d1ResetRateLimit } from '../cache/d1Cache';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { signAccessToken, signRefreshToken, hashToken } from '../auth/jwt';
 import { getUserByUsername, updateUserColumns } from '../db/queries/users';
@@ -18,9 +18,7 @@ export async function handleLogin(
   const rawUsername = String(body.username || '').trim();
   const username = rawUsername.toLowerCase();
 
-  if (
-    !(await checkRateLimit(env.CACHE_KV, rateLimitKey('login', username), MAX_LOGIN_ATTEMPTS, LOGIN_RATE_LIMIT_TTL))
-  ) {
+  if (!(await d1CheckRateLimit(env.DB, rateLimitKey('login', username), MAX_LOGIN_ATTEMPTS, LOGIN_RATE_LIMIT_TTL))) {
     await logEvent(env, rawUsername, 'login_failed', '', { reason: 'rate_limited' }, 'error', meta);
     return { status: 'error', message: 'การพยายามเข้าสู่ระบบหลายครั้งเกินไป กรุณารอ 5 นาที' };
   }
@@ -35,10 +33,10 @@ export async function handleLogin(
     await updateUserColumns(env.DB, rawUsername, [
       ['password', await hashPassword(env, rawUsername, String(body.password || ''))],
     ]);
-    await cacheRemove(env.CACHE_KV, cacheKeyUser(rawUsername));
+    await d1CacheRemove(env.DB, cacheKeyUser(rawUsername));
   }
 
-  await resetRateLimit(env.CACHE_KV, rateLimitKey('login', username));
+  await d1ResetRateLimit(env.DB, rateLimitKey('login', username));
 
   const defaultHashes = await getDefaultAccountHashes(env.DB);
   const mustChangePassword = defaultHashes[username] === user.password;
@@ -97,8 +95,8 @@ export async function handleChangePassword(
   // Same budget as login: this endpoint verifies a password, so it is a
   // credential oracle and must not be brute-forceable.
   if (
-    !(await checkRateLimit(
-      env.CACHE_KV,
+    !(await d1CheckRateLimit(
+      env.DB,
       rateLimitKey('changepw', username.toLowerCase()),
       MAX_LOGIN_ATTEMPTS,
       LOGIN_RATE_LIMIT_TTL
@@ -126,8 +124,8 @@ export async function handleChangePassword(
 
   const hashed = await hashPassword(env, user.username, newPassword);
   await updateUserColumns(env.DB, user.username, [['password', hashed]]);
-  await cacheRemove(env.CACHE_KV, cacheKeyUser(user.username));
-  await resetRateLimit(env.CACHE_KV, rateLimitKey('changepw', username.toLowerCase()));
+  await d1CacheRemove(env.DB, cacheKeyUser(user.username));
+  await d1ResetRateLimit(env.DB, rateLimitKey('changepw', username.toLowerCase()));
   await revokeRefreshToken(env, user.username);
   await logEvent(env, user.username, 'password_changed', '', {}, 'success', meta);
   return { status: 'ok', message: 'เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าระบบใหม่' };

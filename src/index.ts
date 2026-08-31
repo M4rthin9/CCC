@@ -1,3 +1,4 @@
+import { d1CacheCleanup } from './cache/d1Cache';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { Env } from './types';
@@ -270,9 +271,13 @@ async function runCron(cron: string, env: Env): Promise<void> {
       // so this exists to keep zombie unpaid rows out of the dashboard.
       const released = await releaseExpiredTableHolds(env.DB, new Date().toISOString());
       const notif = await processPendingNotifications(env);
+      // Rate-limit counters and cached payloads both live in d1_cache now;
+      // expired rows have no TTL eviction of their own.
+      const purged = await d1CacheCleanup(env.DB);
       console.log('[Cron] discipline cleanup:', JSON.stringify(result));
       console.log('[Cron] table holds released:', released);
       console.log('[Cron] notifications:', JSON.stringify(notif));
+      console.log('[Cron] d1_cache rows purged:', purged);
     } else if (cron === '15 17 1 */3 *') {
       const result = await archiveOldReservations(env);
       console.log('[Cron] archive:', JSON.stringify(result));

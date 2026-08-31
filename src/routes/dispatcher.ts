@@ -132,10 +132,13 @@ const GET_ROUTES: Record<string, Route> = {
   },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
   getDataVersion: { auth: true, quiet: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
+  // The permission check must run against the AUTHENTICATED user, never against
+  // `body.username`: on the JWT path that field is unverified caller input, so
+  // preferring it let any logged-in account borrow a privileged user's rights by
+  // naming them. `body.username` is still read inside the handler as a *filter*.
   getEventLogs: {
     auth: true,
-    handler: async (ctx) =>
-      handleGetEventLogs(ctx.env, ctx.body, { username: (ctx.body.username as string) || ctx.user?.username || '' }),
+    handler: async (ctx) => handleGetEventLogs(ctx.env, ctx.body, ctx.user!),
   },
   getPrisoners: { auth: false, handler: async (ctx) => handleGetPrisoners(ctx.env) },
   getRoles: { auth: true, handler: async (ctx) => getRolesHandler(ctx.env) },
@@ -197,7 +200,13 @@ const POST_ROUTES: Record<string, Route> = {
     handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body),
     rateLimit: { ns: 'lookup', ...PUBLIC_REF_LIMIT },
   },
-  getSlipByRef: { auth: true, handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body) },
+  // Must pass the origin exactly like the GET route: an R2-backed slip comes
+  // back as a URL for <img src>, and the dashboard is on a different origin
+  // from the Worker, so a relative path would resolve against the dashboard.
+  getSlipByRef: {
+    auth: true,
+    handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body, originOf(ctx)),
+  },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
   getDataVersion: { auth: true, quiet: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
   publicCancelBooking: {

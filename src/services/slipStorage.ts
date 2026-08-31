@@ -112,16 +112,20 @@ export async function deleteSlipsForRef(_env: Env, _ref: string): Promise<void> 
 // ── View tokens ────────────────────────────────────────────────────
 // The slip image is served by the Worker rather than from a public bucket, so
 // bank details are never world-readable. Staff reach it with their normal auth;
-// the visitor who just uploaded gets a signed, expiring link instead — the same
-// trust level as the ref-keyed public endpoints, but it cannot be guessed.
+// everyone else needs a signed, ref-bound token — the same trust level as the
+// ref-keyed public endpoints, but it cannot be guessed.
 //
-// TTL is deliberately generous (7 days). An `<img src>` cannot carry the staff
-// Bearer token, and the dashboard caches the signed URL it got from the last
-// reservation list bind — so if the token expired inside that window the slip
-// would 401 in the review modal. The HMAC + expiry still binds the URL to a
-// specific ref and keeps it from being a forever-open door.
-
-const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
+// Tokens do NOT expire. An `<img src>` cannot carry the staff Bearer token, and
+// the dashboard renders whatever signed URL it got from its last reservation
+// list bind — under any TTL a modal opened from a stale bind 401s and the slip
+// silently fails to load. `exp = 0` is the never-expires sentinel; the HMAC
+// still binds the URL to one specific ref, so it stays unguessable and the
+// bucket stays private. The trade-off is that a leaked slip URL keeps working
+// until JWT_SECRET is rotated.
+//
+// Legacy tokens minted before this switch carry a real expiry inside the token
+// and keep being honoured until it lapses.
+const NEVER_EXPIRES = 0;
 
 async function hmacHex(secret: string, message: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -137,8 +141,10 @@ async function hmacHex(secret: string, message: string): Promise<string> {
     .join('');
 }
 
-export async function signSlipToken(env: Env, ref: string, ttlSeconds = TOKEN_TTL_SECONDS): Promise<string> {
-  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+/** Pass `ttlSeconds` only to mint a deliberately short-lived link; the default
+ *  is a non-expiring token so slip images never break in a review modal. */
+export async function signSlipToken(env: Env, ref: string, ttlSeconds?: number): Promise<string> {
+  const exp = ttlSeconds === undefined ? NEVER_EXPIRES : Math.floor(Date.now() / 1000) + ttlSeconds;
   const sig = await hmacHex(env.JWT_SECRET || env.PASSWORD_SALT || '', `${ref}.${exp}`);
   return `${exp}.${sig.slice(0, 32)}`;
 }
@@ -146,7 +152,11 @@ export async function signSlipToken(env: Env, ref: string, ttlSeconds = TOKEN_TT
 export async function verifySlipToken(env: Env, ref: string, token: string): Promise<boolean> {
   const [expStr, sig] = String(token || '').split('.');
   const exp = Number(expStr);
-  if (!exp || !sig || exp < Math.floor(Date.now() / 1000)) return false;
+  // `exp === 0` is the never-expires sentinel; any other value is a legacy
+  // token and is still checked against the clock. Note !Number.isFinite rather
+  // than !exp, so 0 is not mistaken for a malformed token.
+  if (!sig || !Number.isFinite(exp) || exp < 0) return false;
+  if (exp !== NEVER_EXPIRES && exp < Math.floor(Date.now() / 1000)) return false;
   const expected = (await hmacHex(env.JWT_SECRET || env.PASSWORD_SALT || '', `${ref}.${exp}`)).slice(0, 32);
   if (expected.length !== sig.length) return false;
   let diff = 0;

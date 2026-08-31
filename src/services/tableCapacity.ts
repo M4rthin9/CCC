@@ -1,4 +1,10 @@
-import { DEFAULT_TABLES_PER_DAY, DEFAULT_TABLE_HOLD_MINUTES, TABLE_BOOKING_SETTING_KEY } from '../constants';
+import {
+  DEFAULT_TABLES_PER_DAY,
+  DEFAULT_TABLE_HOLD_MINUTES,
+  DEFAULT_TABLE_SEATS,
+  TABLE_BOOKING_SETTING_KEY,
+} from '../constants';
+import { parseExtraVisitorNames } from './pricing';
 import { getSettings } from '../db/queries/settings';
 import { countActiveTableBookings, releaseExpiredTableHolds } from '../db/queries/reservations';
 import { Env } from '../types';
@@ -10,12 +16,15 @@ export interface TableBookingConfig {
   perDay: number;
   /** Minutes an unpaid booking keeps its slot. */
   holdMinutes: number;
+  /** People one table seats, counting the visitor who made the booking. */
+  seatsPerTable: number;
 }
 
 const DEFAULT_CONFIG: TableBookingConfig = {
   enabled: true,
   perDay: DEFAULT_TABLES_PER_DAY,
   holdMinutes: DEFAULT_TABLE_HOLD_MINUTES,
+  seatsPerTable: DEFAULT_TABLE_SEATS,
 };
 
 /** Clamp a settings value to a sane positive integer, falling back on garbage. */
@@ -44,6 +53,7 @@ export async function getTableBookingConfig(env: Env): Promise<TableBookingConfi
     enabled: cfg.enabled !== false,
     perDay: positiveInt(cfg.perDay, DEFAULT_CONFIG.perDay, 500),
     holdMinutes: positiveInt(cfg.holdMinutes, DEFAULT_CONFIG.holdMinutes, 60 * 24 * 7),
+    seatsPerTable: positiveInt(cfg.seatsPerTable, DEFAULT_CONFIG.seatsPerTable, 50),
   };
 }
 
@@ -74,6 +84,26 @@ export async function checkTableCapacity(
   await releaseExpiredTableHolds(env.DB, nowIso, visitDateISO).catch(() => 0);
   const used = await countActiveTableBookings(env.DB, visitDateISO, nowIso);
   return { ok: used < perDay, used, perDay };
+}
+
+/**
+ * Head count a table booking occupies: the visitor who books, plus every extra
+ * visitor named on it. The prisoner ladder does not apply — a table booking has
+ * no prisoner — and children still take a seat even when they are charged less.
+ */
+export function tableSeatsUsed(data: { extraVisitorNames?: unknown }): number {
+  return 1 + parseExtraVisitorNames(data.extraVisitorNames).length;
+}
+
+/** Returns an error message when the booking wants more seats than one table has. */
+export function checkTableSeats(data: { extraVisitorNames?: unknown }, seatsPerTable: number): string | null {
+  const used = tableSeatsUsed(data);
+  if (used <= seatsPerTable) return null;
+  return seatsFullMessage(seatsPerTable, used);
+}
+
+export function seatsFullMessage(seatsPerTable: number, requested: number): string {
+  return `⚠️ 1 โต๊ะรับได้สูงสุด ${seatsPerTable} คน (รวมผู้จอง) แต่ระบุมา ${requested} คน กรุณาลดจำนวนผู้เข้าร่วม`;
 }
 
 export function dayFullMessage(perDay: number): string {

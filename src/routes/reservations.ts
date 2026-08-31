@@ -40,7 +40,13 @@ import { logEvent } from '../services/logger';
 import { deleteSlipsForRef } from '../services/slipStorage';
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
-import { checkTableCapacity, dayFullMessage, getTableBookingConfig, holdExpiryFrom } from '../services/tableCapacity';
+import {
+  checkTableCapacity,
+  checkTableSeats,
+  dayFullMessage,
+  getTableBookingConfig,
+  holdExpiryFrom,
+} from '../services/tableCapacity';
 import {
   generateUniqueRefServer,
   parseUpdateBookingFields,
@@ -180,6 +186,7 @@ export async function getTableCountsByDate(env: Env): Promise<Record<string, unk
         counts: hit,
         perDay: config.perDay,
         holdMinutes: config.holdMinutes,
+        seatsPerTable: config.seatsPerTable,
         enabled: config.enabled,
       };
     }
@@ -189,7 +196,14 @@ export async function getTableCountsByDate(env: Env): Promise<Record<string, unk
   if (version !== -1) {
     await d1CachePutVersioned(env.DB, key, version, counts, PUBLIC_CACHE_TTL);
   }
-  return { status: 'ok', counts, perDay: config.perDay, holdMinutes: config.holdMinutes, enabled: config.enabled };
+  return {
+    status: 'ok',
+    counts,
+    perDay: config.perDay,
+    holdMinutes: config.holdMinutes,
+    seatsPerTable: config.seatsPerTable,
+    enabled: config.enabled,
+  };
 }
 
 export async function handleDedupeReservations(
@@ -845,6 +859,14 @@ export async function handleUpdateBooking(
   // new double-booking and the prisoner's current standing is irrelevant.
   // A table booking has no prisoner, so neither guard applies to it.
   const isTableBooking = String(current.bookingType || 'prisoner') === 'table';
+
+  // Editing the guest list must not push a table past its seat count either.
+  if (isTableBooking && changes.extraVisitorNames !== undefined) {
+    const { seatsPerTable } = await getTableBookingConfig(env);
+    const seatsError = checkTableSeats({ extraVisitorNames: changes.extraVisitorNames }, seatsPerTable);
+    if (seatsError) return { status: 'error', message: seatsError, seatsPerTable };
+  }
+
   const touchesKeyFields =
     !fromArchive && !isTableBooking && (changes.prisonerId !== undefined || changes.visitDateISO !== undefined);
   if (touchesKeyFields) {
@@ -978,6 +1000,8 @@ export async function handleCreateBooking(
     const visitDateISO = normalizeVisitDateISO(data.visitDateISO);
     if (!visitDateISO) return { status: 'error', message: 'กรุณาเลือกวันที่เข้าใช้บริการ' };
     data.visitDateISO = visitDateISO;
+    const seatsError = checkTableSeats(data, tableConfig!.seatsPerTable);
+    if (seatsError) return { status: 'error', message: seatsError, seatsPerTable: tableConfig!.seatsPerTable };
     const capacity = await checkTableCapacity(env, visitDateISO, tableConfig!.perDay, now);
     if (!capacity.ok) {
       return { status: 'error', message: dayFullMessage(tableConfig!.perDay), full: true, used: capacity.used };

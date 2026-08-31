@@ -112,6 +112,9 @@ export const BOOKING_TYPE_TABLE = 'table';
 export const DEFAULT_TABLES_PER_DAY = 10;
 /** How long an unpaid table booking keeps its slot before the hold lapses. */
 export const DEFAULT_TABLE_HOLD_MINUTES = 60;
+/** People one table seats. The person making the booking occupies one of them,
+ *  so a booking may carry at most DEFAULT_TABLE_SEATS - 1 extra visitors. */
+export const DEFAULT_TABLE_SEATS = 5;
 export const TABLE_BOOKING_SETTING_KEY = 'tableBooking';
 /** Distinct ref prefix so staff can tell the two booking kinds apart at a glance. */
 export const TABLE_REF_PREFIX = 'TBL-';

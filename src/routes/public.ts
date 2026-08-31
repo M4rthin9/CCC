@@ -20,7 +20,13 @@ import {
   generateUniqueRefServer,
   findDuplicateActive,
 } from '../services/reservationService';
-import { checkTableCapacity, dayFullMessage, getTableBookingConfig, holdExpiryFrom } from '../services/tableCapacity';
+import {
+  checkTableCapacity,
+  checkTableSeats,
+  dayFullMessage,
+  getTableBookingConfig,
+  holdExpiryFrom,
+} from '../services/tableCapacity';
 import { BOOKING_TYPE_PRISONER, BOOKING_TYPE_TABLE, TABLE_REF_PREFIX } from '../constants';
 import { normalizeVisitDateISO } from '../config';
 import { applyServerPricing } from '../services/pricing';
@@ -229,6 +235,12 @@ export async function handleSaveTableReservation(
   const visitDateISO = normalizeVisitDateISO(data.visitDateISO);
   if (!visitDateISO) return { status: 'error', message: 'กรุณาเลือกวันที่เข้าใช้บริการ' };
   data.visitDateISO = visitDateISO;
+
+  // One table seats a fixed number of people, the visitor who books included.
+  // Checked before pricing so an oversized party is rejected outright rather
+  // than being quoted a total it can never use.
+  const seatsError = checkTableSeats(data, config.seatsPerTable);
+  if (seatsError) return { status: 'error', message: seatsError, seatsPerTable: config.seatsPerTable };
 
   // Server-authoritative pricing: same age ladder as a visit booking, minus the
   // prisoner fee — there is no prisoner on this booking.

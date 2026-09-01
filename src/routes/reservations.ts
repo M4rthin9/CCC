@@ -521,7 +521,12 @@ export async function handlePublicCancelBooking(
   const prevStatus = String(rows[0]!.status || '');
   if (prevStatus === 'ยกเลิก') return { status: 'ok', noop: true };
 
-  await updateReservationColumns(env.DB, ref, [['status', 'ยกเลิก']]);
+  const nowIso = new Date().toISOString();
+  await updateReservationColumns(env.DB, ref, [
+    ['status', 'ยกเลิก'],
+    ['cancelAt', nowIso],
+    ['updatedAt', nowIso],
+  ]);
 
   await logEvent(
     env,
@@ -668,6 +673,10 @@ export async function handleUpdateStatus(
   const cols: Array<[string, unknown]> = [['status', status]];
   if (body.reason && (status === 'ไม่อนุมัติ' || status === 'ยกเลิก')) {
     cols.push(['cancelReason', sanitizeStr(body.reason, 2000)]);
+  }
+  if (status === 'ยกเลิก') {
+    cols.push(['cancelAt', new Date().toISOString()]);
+    cols.push(['updatedAt', new Date().toISOString()]);
   }
   if (fromArchive) {
     await updateArchivedReservationColumns(env.DB, ref, cols);

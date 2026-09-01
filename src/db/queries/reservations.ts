@@ -47,6 +47,7 @@ const RESERVATION_COLUMNS = [
   'source',
   'bookingType',
   'holdExpiresAt',
+  'cancelAt',
 ];
 
 // slip_base64 holds multi-MB base64 slip uploads and is intentionally NOT part
@@ -329,12 +330,12 @@ export function countActiveTableBookingsByDate(db: D1Database, nowIso: string): 
 export function releaseExpiredTableHolds(db: D1Database, nowIso: string, visitDateISO?: string): Promise<number> {
   const scoped = visitDateISO ? ' AND visitDateISO = ?' : '';
   // SET status, cancelReason, updatedAt | WHERE status, holdExpiresAt < now [, visitDateISO]
-  const binds: unknown[] = [CANCELLED, HOLD_EXPIRED_REASON, nowIso, AWAITING_PAYMENT, nowIso];
+  const binds: unknown[] = [CANCELLED, HOLD_EXPIRED_REASON, nowIso, nowIso, AWAITING_PAYMENT, nowIso];
   if (visitDateISO) binds.push(visitDateISO);
   return db
     .prepare(
       `UPDATE ${TABLES.reservations}
-          SET status = ?, cancelReason = ?, holdExpiresAt = '', updatedAt = ?
+          SET status = ?, cancelReason = ?, holdExpiresAt = '', cancelAt = ?, updatedAt = ?
         WHERE bookingType = 'table'
           AND status = ?
           AND holdExpiresAt != ''
@@ -350,6 +351,40 @@ export function getAllRefs(db: D1Database): Promise<string[]> {
     .prepare(`SELECT ref FROM ${TABLES.reservations}`)
     .all<{ ref: string }>()
     .then((res) => (res.results ?? []).map((r) => r.ref));
+}
+
+/**
+ * Live allocations that have been cancelled (status 'ยกเลิก') and are now well
+ * past their use are permanently dropped so the reservation page stays clean.
+ * A row qualifies once EITHER threshold is met (whichever happens first):
+ *   - 48 hours after it was marked cancelled (cancelAt), or
+ *   - 2 days after the visit date (visitDateISO).
+ * Returns the refs removed, for downstream note/notification cleanup.
+ */
+export async function listExpiredCancelledRefs(
+  db: D1Database,
+  nowIso: string,
+  cancelAfterHours = 48,
+  cancelAfterDays = 2
+): Promise<string[]> {
+  const res = await db
+    .prepare(
+      `SELECT ref FROM ${TABLES.reservations}
+        WHERE status = ?
+          AND (
+            (cancelAt != '' AND cancelAt <= ?)
+            OR
+            (visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND visitDateISO < date(?, ?))
+          )`
+    )
+    .bind(CANCELLED, subtractHours(nowIso, cancelAfterHours), nowIso, '-' + cancelAfterDays + ' days')
+    .all<{ ref: string }>();
+  return (res.results ?? []).map((r) => r.ref);
+}
+
+function subtractHours(iso: string, hours: number): string {
+  const ms = new Date(iso).getTime() - hours * 3600000;
+  return new Date(ms).toISOString();
 }
 
 export function insertReservation(db: D1Database, data: Record<string, unknown>): Promise<void> {

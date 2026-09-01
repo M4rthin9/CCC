@@ -153,3 +153,33 @@ export function parseUpdateBookingFields(body: Record<string, unknown>): UpdateB
 
   return { cols, changes, errors };
 }
+
+/**
+ * Permanently delete cancelled bookings once they are well past their use so the
+ * reservation page stays clean: 48h after cancel or 2 days after the visit date
+ * (whichever comes first). Also removes the row's notes and notification data.
+ * Returns the number of rows hard-deleted.
+ */
+export async function cleanupExpiredCancelledBookings(
+  env: Env,
+  nowIso: string,
+  cancelAfterHours = 48,
+  cancelAfterDays = 2
+): Promise<{ deleted: number; refs: string[] }> {
+  const { listExpiredCancelledRefs } = await import('../db/queries/reservations');
+  const { deleteNotesByRef } = await import('../db/queries/notes');
+  const { deleteNotificationDataByRef } = await import('../db/queries/notifications');
+  const { deleteReservation } = await import('../db/queries/reservations');
+
+  const refs = await listExpiredCancelledRefs(env.DB, nowIso, cancelAfterHours, cancelAfterDays);
+  for (const ref of refs) {
+    await deleteNotesByRef(env.DB, ref).catch(() => undefined);
+    await deleteNotificationDataByRef(env.DB, ref).catch(() => undefined);
+    await deleteReservation(env.DB, ref).catch(() => undefined);
+  }
+  if (refs.length > 0) {
+    const { invalidateReservationsCache } = await import('../cache/invalidation');
+    await invalidateReservationsCache(env).catch(() => undefined);
+  }
+  return { deleted: refs.length, refs };
+}

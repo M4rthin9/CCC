@@ -8,6 +8,7 @@ import { dispatchAction, RouteCtx } from './routes/dispatcher';
 import { sanitizeStr } from './config';
 import { cleanupExpiredDiscipline } from './services/disciplineService';
 import { archiveOldReservations } from './services/archiveService';
+import { cleanupExpiredCancelledBookings } from './services/reservationService';
 import { deleteExpiredRefreshTokens } from './db/queries/refreshTokens';
 import { releaseExpiredTableHolds } from './db/queries/reservations';
 import { handleHealthHtml, handleHealthJson } from './routes/health';
@@ -271,12 +272,14 @@ async function runCron(cron: string, env: Env): Promise<void> {
       // so this exists to keep zombie unpaid rows out of the dashboard.
       const released = await releaseExpiredTableHolds(env.DB, new Date().toISOString());
       const notif = await processPendingNotifications(env);
+      const cancelled = await cleanupExpiredCancelledBookings(env, new Date().toISOString());
       // Rate-limit counters and cached payloads both live in d1_cache now;
       // expired rows have no TTL eviction of their own.
       const purged = await d1CacheCleanup(env.DB);
       console.log('[Cron] discipline cleanup:', JSON.stringify(result));
       console.log('[Cron] table holds released:', released);
       console.log('[Cron] notifications:', JSON.stringify(notif));
+      console.log('[Cron] cancelled removed:', cancelled.deleted);
       console.log('[Cron] d1_cache rows purged:', purged);
     } else if (cron === '15 17 1 */3 *') {
       const result = await archiveOldReservations(env);

@@ -18,12 +18,12 @@ import { readPaymentSwitch } from './settings';
 import {
   base64ToBytes,
   getSlip,
+  loadSlipDataUri,
   parseDataUri,
   putSlip,
   signSlipToken,
   slipImageUrl,
   slipsBucket,
-  toDataUri,
   verifySlipToken,
   type DecodedSlip,
 } from '../services/slipStorage';
@@ -62,16 +62,6 @@ async function slipColumns(env: Env, ref: string, dataUri: string): Promise<Arra
         ['slip_base64', dataUri],
         ['slip_key', ''],
       ];
-}
-
-/** The stored slip as a data URI — what OCR and the legacy clients want. */
-async function loadSlipDataUri(env: Env, ref: string): Promise<string> {
-  const rec = await getSlipRecordByRef(env.DB, ref);
-  if (!rec) return '';
-  if (rec.dataUri) return rec.dataUri;
-  if (!rec.key) return '';
-  const obj = await getSlip(env, rec.key);
-  return obj ? toDataUri(obj.bytes, obj.contentType) : '';
 }
 
 function autoApproveEnabled(env: Env): boolean {

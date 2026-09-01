@@ -5,10 +5,10 @@ import { parsePayload, parseSlipVerify, parseTrueMoneySlipVerify } from '@thai-q
 import { formatBangkok } from '../config';
 import {
   getReservationByRef,
-  getStoredSlipByRef,
   updateReservationColumns,
   findReservationBySlipFingerprint,
 } from '../db/queries/reservations';
+import { loadSlipDataUri } from './slipStorage';
 import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
 import { logEvent } from './logger';
 import { extractSlipFields, SlipOcrOutcome } from './slipOcr';
@@ -500,21 +500,15 @@ export async function handleVerifySlip(env: Env, body: Record<string, unknown>):
   const booking = await getReservationByRef(env.DB, ref);
   if (!booking) return { status: 'error', message: 'Ref not found' };
 
+  // The stored slip lives in R2 now, so it has to be fetched through
+  // loadSlipDataUri — reading slip_base64 alone left every migrated booking
+  // with 'No slip image available', which skipped the duplicate-slip guard.
   const inline = String(body.base64Data || '').trim();
+  const dataUri = inline || (await loadSlipDataUri(env, ref));
   let imageBytes: Uint8Array | null = null;
-  if (inline) {
+  if (dataUri) {
     try {
-      imageBytes = base64ToBytes(stripDataUri(inline));
-    } catch {
-      imageBytes = null;
-    }
-  }
-  if (!imageBytes || imageBytes.length === 0) {
-    const stored = await getStoredSlipByRef(env.DB, ref);
-    const stripped = stored ? stripDataUri(stored) : '';
-    if (!stripped) return { status: 'error', message: 'No slip image available' };
-    try {
-      imageBytes = base64ToBytes(stripped);
+      imageBytes = base64ToBytes(stripDataUri(dataUri));
     } catch {
       imageBytes = null;
     }
@@ -523,7 +517,6 @@ export async function handleVerifySlip(env: Env, body: Record<string, unknown>):
     return { status: 'error', message: 'No slip image available' };
   }
 
-  const dataUri = inline || (await getStoredSlipByRef(env.DB, ref));
   const { result, fingerprint, imageHash } = await verifyAndDecideSlip(env, booking, imageBytes, dataUri);
   await persistVerify(env, ref, result, fingerprint, imageHash);
   return { status: 'ok', result };

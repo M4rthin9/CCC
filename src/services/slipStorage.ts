@@ -1,3 +1,4 @@
+import { getSlipRecordByRef } from '../db/queries/reservations';
 import { Env } from '../types';
 
 const BANGKOK_DATE = new Intl.DateTimeFormat('sv-SE', {
@@ -97,6 +98,21 @@ export async function getSlip(env: Env, key: string): Promise<{ bytes: Uint8Arra
   if (!obj) return null;
   const buf = await obj.arrayBuffer();
   return { bytes: new Uint8Array(buf), contentType: obj.httpMetadata?.contentType || 'image/jpeg' };
+}
+
+/**
+ * The stored slip as a data URI — what OCR, the QR/duplicate verifier and the
+ * legacy clients want. Resolves R2-backed rows through the bucket and falls
+ * back to the pre-migration `slip_base64`, so callers never have to know where
+ * the image lives.
+ */
+export async function loadSlipDataUri(env: Env, ref: string): Promise<string> {
+  const rec = await getSlipRecordByRef(env.DB, ref);
+  if (!rec) return '';
+  if (rec.dataUri) return rec.dataUri;
+  if (!rec.key) return '';
+  const obj = await getSlip(env, rec.key);
+  return obj ? toDataUri(obj.bytes, obj.contentType) : '';
 }
 
 /** Drop every object stored under a booking's prefix (revert / delete paths).

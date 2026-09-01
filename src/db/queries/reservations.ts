@@ -180,11 +180,6 @@ export function countBase64Slips(db: D1Database, table: string = TABLES.reservat
     .then((r) => Number(r?.n ?? 0));
 }
 
-/** Legacy accessor: the slip as a data URI, or '' when it lives in R2. */
-export function getStoredSlipByRef(db: D1Database, ref: string): Promise<string> {
-  return getSlipRecordByRef(db, ref).then((s) => (s ? s.dataUri || s.url : ''));
-}
-
 export function getReservationsByRefs(db: D1Database, ref: string): Promise<Reservation[]> {
   return db
     .prepare(`SELECT ${RESERVATION_COLUMNS.join(', ')} FROM ${TABLES.reservations} WHERE ref = ? ORDER BY rowid`)

@@ -19,6 +19,7 @@ import {
   validateSaveTableReservation,
   generateUniqueRefServer,
   findDuplicateActive,
+  autoApproveTableVisitors,
 } from '../services/reservationService';
 import {
   checkTableCapacity,
@@ -272,6 +273,7 @@ export async function handleSaveTableReservation(
 
   const row: Record<string, unknown> = {
     ...data,
+    ...autoApproveTableVisitors(data),
     bookingType: BOOKING_TYPE_TABLE,
     holdExpiresAt: holdExpiryFrom(now, config.holdMinutes),
     createdAt: now,

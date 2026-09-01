@@ -82,6 +82,25 @@ export async function collectActiveRefs(env: Env): Promise<string[]> {
   return rows.map((r) => String(r.ref || '').trim()).filter(Boolean);
 }
 
+/**
+ * Table (no-prisoner) bookings skip the staff approval stage by design: there is
+ * no prisoner to clear, and the visitor is registering a party for a paid table,
+ * so every listed visitor is granted entry automatically. Returns the persisted
+ * approval fields that mark the main visitor and all extra visitors as approved,
+ * so the dashboard/gate see them as attendees without needing an approver.
+ */
+export function autoApproveTableVisitors(data: Record<string, unknown>): {
+  visitorApproved: string;
+  extraVisitorApproved: string;
+} {
+  const raw = String(data.extraVisitorNames || '').trim();
+  const count = raw ? raw.split(';;').filter((p) => String(p).trim()).length : 0;
+  return {
+    visitorApproved: 'yes',
+    extraVisitorApproved: count > 0 ? Array(count).fill('yes').join(';;') : '',
+  };
+}
+
 export async function findDuplicateActive(
   env: Env,
   prisonerId: string,

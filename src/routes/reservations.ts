@@ -53,6 +53,7 @@ import {
   findDuplicateActive,
   validateSaveReservation,
   validateSaveTableReservation,
+  autoApproveTableVisitors,
 } from '../services/reservationService';
 import { Env, Reservation } from '../types';
 import { AuthenticatedUser } from '../auth/middleware';
@@ -1036,6 +1037,7 @@ export async function handleCreateBooking(
     ...data,
     ...(isTable
       ? {
+          ...autoApproveTableVisitors(data),
           bookingType: BOOKING_TYPE_TABLE,
           holdExpiresAt: holdExpiryFrom(now, tableConfig!.holdMinutes),
         }

@@ -83,6 +83,12 @@ app.get('/api/reservations/counts', async (c) => runDispatch(c.req.raw, c.env, t
 app.get('/api/table-reservations/counts', async (c) =>
   runDispatch(c.req.raw, c.env, true, { action: 'getTableCountsByDate' })
 );
+app.get('/api/reports/monthly', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getMonthlyReport', ...queryToBody(c.req.raw) })
+);
+app.get('/api/reports/filtered', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getFilteredReport', ...queryToBody(c.req.raw) })
+);
 app.get('/api/lookup', async (c) =>
   runDispatch(c.req.raw, c.env, true, { action: 'lookupByRef', ...queryToBody(c.req.raw) })
 );

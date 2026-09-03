@@ -20,6 +20,8 @@ import {
   getArchivedReservationsHandler,
   getCountsByDate,
   getTableCountsByDate,
+  getMonthlyReportHandler,
+  getFilteredReportHandler,
   handleDedupeReservations,
   handleFindDuplicateBookings,
   handleCancelBooking,
@@ -121,6 +123,8 @@ const GET_ROUTES: Record<string, Route> = {
   getAllWithArchive: { auth: true, handler: async (ctx) => getAllReservationsWithArchive(ctx.env, ctx.body) },
   getCountsByDate: { auth: false, handler: async (ctx) => getCountsByDate(ctx.env) },
   getTableCountsByDate: { auth: false, handler: async (ctx) => getTableCountsByDate(ctx.env) },
+  getMonthlyReport: { auth: true, handler: async (ctx) => getMonthlyReportHandler(ctx.env, ctx.body) },
+  getFilteredReport: { auth: true, handler: async (ctx) => getFilteredReportHandler(ctx.env, ctx.body) },
   lookupByRef: {
     auth: false,
     handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body),
@@ -195,6 +199,8 @@ const POST_ROUTES: Record<string, Route> = {
   getAllWithArchive: { auth: true, handler: async (ctx) => getAllReservationsWithArchive(ctx.env, ctx.body) },
   getCountsByDate: { auth: false, handler: async (ctx) => getCountsByDate(ctx.env) },
   getTableCountsByDate: { auth: false, handler: async (ctx) => getTableCountsByDate(ctx.env) },
+  getMonthlyReport: { auth: true, handler: async (ctx) => getMonthlyReportHandler(ctx.env, ctx.body) },
+  getFilteredReport: { auth: true, handler: async (ctx) => getFilteredReportHandler(ctx.env, ctx.body) },
   lookupByRef: {
     auth: false,
     handler: async (ctx) => handleLookupByRef(ctx.env, ctx.body),

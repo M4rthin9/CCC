@@ -8,7 +8,14 @@ import {
   VISIT_REF_PREFIX,
 } from '../constants';
 import { sanitizeStr, normalizeVisitDateISO, formatDateISO } from '../config';
-import { cacheKeyArchived, cacheKeyCounts, cacheKeyReservations, cacheKeyTableCounts } from '../cache/keys';
+import {
+  cacheKeyArchived,
+  cacheKeyCounts,
+  cacheKeyFilteredReport,
+  cacheKeyMonthlyReport,
+  cacheKeyReservations,
+  cacheKeyTableCounts,
+} from '../cache/keys';
 import { d1CacheGet, d1CachePut, d1CacheRemove, d1CacheGetVersioned, d1CachePutVersioned } from '../cache/d1Cache';
 import { getScopeVersion } from '../db/queries/settings';
 import {
@@ -25,6 +32,8 @@ import {
   getAllRefs,
   deleteReservation,
   deleteArchivedReservation,
+  getMonthlyReport,
+  getFilteredReport,
 } from '../db/queries/reservations';
 import { deleteNotesByRef } from '../db/queries/notes';
 import { deleteNotificationDataByRef } from '../db/queries/notifications';
@@ -1234,4 +1243,68 @@ export async function handleBulkBookingAction(
   );
 
   return { status, operation, requested: refs.length, processed: results.length, succeeded, failed, results };
+}
+
+// ── Reports (VIS / TBL separated) ─────────────────────────────────
+
+function reportMonth(month: unknown): string {
+  const m = String(month || '').trim();
+  if (/^\d{4}-\d{2}$/.test(m)) return m;
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+}
+
+export async function getMonthlyReportHandler(
+  env: Env,
+  params: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const month = reportMonth(params.month);
+  const key = cacheKeyMonthlyReport(env, month);
+  let version: number;
+  try {
+    version = await getScopeVersion(env.DB, 'reservations');
+  } catch {
+    version = -1;
+  }
+  if (version !== -1) {
+    const { hit } = await d1CacheGetVersioned<Record<string, unknown>>(env.DB, key, version);
+    if (hit) return { status: 'ok', month, ...hit };
+  }
+
+  const report = await getMonthlyReport(env.DB, month);
+  if (version !== -1) {
+    await d1CachePutVersioned(env.DB, key, version, report, PUBLIC_CACHE_TTL);
+  }
+  return { status: 'ok', month, vis: report.vis, tbl: report.tbl };
+}
+
+export async function getFilteredReportHandler(
+  env: Env,
+  params: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const from = sanitizeStr(params.from, 10);
+  const to = sanitizeStr(params.to, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return { status: 'error', message: 'from และ to ต้องเป็นรูปแบบ YYYY-MM-DD' };
+  }
+  if (from > to) {
+    return { status: 'error', message: 'วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด' };
+  }
+  const key = cacheKeyFilteredReport(env, from, to);
+  let version: number;
+  try {
+    version = await getScopeVersion(env.DB, 'reservations');
+  } catch {
+    version = -1;
+  }
+  if (version !== -1) {
+    const { hit } = await d1CacheGetVersioned<Record<string, unknown>>(env.DB, key, version);
+    if (hit) return { status: 'ok', from, to, ...hit };
+  }
+
+  const report = await getFilteredReport(env.DB, from, to);
+  if (version !== -1) {
+    await d1CachePutVersioned(env.DB, key, version, report, PUBLIC_CACHE_TTL);
+  }
+  return { status: 'ok', from, to, vis: report.vis, tbl: report.tbl };
 }

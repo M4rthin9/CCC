@@ -462,6 +462,142 @@ export function clearAllReservations(db: D1Database): Promise<void> {
     .then(() => undefined);
 }
 
+// ── Reports (VIS / TBL separated) ──────────────────────────────────
+
+interface ReportByType {
+  totalBookings: number;
+  byStatus: Record<string, number>;
+  totalRevenue: number;
+  avgVisitorCount: number;
+}
+
+interface MonthlyReportResult {
+  vis: ReportByType;
+  tbl: ReportByType;
+}
+
+interface ReportRow {
+  ref: string;
+  bookingType: string;
+  visitorName: string;
+  prisonerName: string;
+  visitDateISO: string;
+  visitorCount: number;
+  total: number;
+  status: string;
+}
+
+interface FilteredReportResult {
+  vis: ReportByType & { rows: ReportRow[] };
+  tbl: ReportByType & { rows: ReportRow[] };
+}
+
+const REPORT_COLUMNS = [
+  'ref',
+  'bookingType',
+  'visitorName',
+  'prisonerName',
+  'visitDateISO',
+  'visitorCount',
+  'total',
+  'status',
+].join(', ');
+
+function emptyReport(): ReportByType {
+  return { totalBookings: 0, byStatus: {}, totalRevenue: 0, avgVisitorCount: 0 };
+}
+
+function aggregateRows(rows: ReportRow[]): ReportByType {
+  const report = emptyReport();
+  report.totalBookings = rows.length;
+  let totalVisitors = 0;
+  for (const r of rows) {
+    report.byStatus[r.status] = (report.byStatus[r.status] || 0) + 1;
+    report.totalRevenue += Number(r.total) || 0;
+    totalVisitors += Number(r.visitorCount) || 0;
+  }
+  report.avgVisitorCount = rows.length > 0 ? Math.round((totalVisitors / rows.length) * 10) / 10 : 0;
+  return report;
+}
+
+/**
+ * Monthly report with VIS and TBL bookings separated.
+ * @param month YYYY-MM format
+ */
+export function getMonthlyReport(db: D1Database, month: string): Promise<MonthlyReportResult> {
+  const like = month + '-%';
+  const stmt = `SELECT ${REPORT_COLUMNS} FROM ${TABLES.reservations}
+    WHERE visitDateISO LIKE ? AND visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+    ORDER BY visitDateISO ASC`;
+  return db
+    .prepare(stmt)
+    .bind(like)
+    .all<Record<string, unknown>>()
+    .then((res) => {
+      const vis: ReportRow[] = [];
+      const tbl: ReportRow[] = [];
+      for (const r of res.results ?? []) {
+        const row: ReportRow = {
+          ref: String(r.ref || ''),
+          bookingType: String(r.bookingType || 'prisoner'),
+          visitorName: String(r.visitorName || ''),
+          prisonerName: String(r.prisonerName || ''),
+          visitDateISO: String(r.visitDateISO || ''),
+          visitorCount: Number(r.visitorCount) || 0,
+          total: Number(r.total) || 0,
+          status: String(r.status || ''),
+        };
+        if (row.bookingType === 'table') {
+          tbl.push(row);
+        } else {
+          vis.push(row);
+        }
+      }
+      return { vis: aggregateRows(vis), tbl: aggregateRows(tbl) };
+    });
+}
+
+/**
+ * Filtered report with VIS and TBL bookings separated.
+ * @param from YYYY-MM-DD (inclusive)
+ * @param to YYYY-MM-DD (inclusive)
+ */
+export function getFilteredReport(db: D1Database, from: string, to: string): Promise<FilteredReportResult> {
+  const stmt = `SELECT ${REPORT_COLUMNS} FROM ${TABLES.reservations}
+    WHERE visitDateISO >= ? AND visitDateISO <= ?
+      AND visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+    ORDER BY visitDateISO ASC`;
+  return db
+    .prepare(stmt)
+    .bind(from, to)
+    .all<Record<string, unknown>>()
+    .then((res) => {
+      const vis: ReportRow[] = [];
+      const tbl: ReportRow[] = [];
+      for (const r of res.results ?? []) {
+        const row: ReportRow = {
+          ref: String(r.ref || ''),
+          bookingType: String(r.bookingType || 'prisoner'),
+          visitorName: String(r.visitorName || ''),
+          prisonerName: String(r.prisonerName || ''),
+          visitDateISO: String(r.visitDateISO || ''),
+          visitorCount: Number(r.visitorCount) || 0,
+          total: Number(r.total) || 0,
+          status: String(r.status || ''),
+        };
+        if (row.bookingType === 'table') {
+          tbl.push(row);
+        } else {
+          vis.push(row);
+        }
+      }
+      return {
+        vis: { ...aggregateRows(vis), rows: vis },
+        tbl: { ...aggregateRows(tbl), rows: tbl },
+      };
+    });
+}
+
 export function getEnvDb(env: Env): D1Database {
   return env.DB;
 }

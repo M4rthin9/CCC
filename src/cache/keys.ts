@@ -49,6 +49,14 @@ export function lookupCacheKey(env: { CACHE_VERSION?: string }, ref: string | nu
   );
 }
 
+export function cacheKeyMonthlyReport(env: { CACHE_VERSION?: string }, month: string): string {
+  return getCacheVersion(env) + ':monthlyReport:' + month;
+}
+
+export function cacheKeyFilteredReport(env: { CACHE_VERSION?: string }, from: string, to: string): string {
+  return getCacheVersion(env) + ':filteredReport:' + from + ':' + to;
+}
+
 export function rateLimitKey(namespace: string, key: string): string {
   return 'rl:' + namespace + ':' + key;
 }

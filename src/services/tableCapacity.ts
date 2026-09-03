@@ -12,6 +12,8 @@ import { Env } from '../types';
 export interface TableBookingConfig {
   /** False closes the no-prisoner booking flow without a deploy. */
   enabled: boolean;
+  /** True keeps the table-booking page behind a maintenance/coming-soon popup. */
+  maintenance: boolean;
   /** Tables sellable per visit date. */
   perDay: number;
   /** Minutes an unpaid booking keeps its slot. */
@@ -22,6 +24,7 @@ export interface TableBookingConfig {
 
 const DEFAULT_CONFIG: TableBookingConfig = {
   enabled: true,
+  maintenance: true,
   perDay: DEFAULT_TABLES_PER_DAY,
   holdMinutes: DEFAULT_TABLE_HOLD_MINUTES,
   seatsPerTable: DEFAULT_TABLE_SEATS,
@@ -51,6 +54,7 @@ export async function getTableBookingConfig(env: Env): Promise<TableBookingConfi
   const cfg = raw as Record<string, unknown>;
   return {
     enabled: cfg.enabled !== false,
+    maintenance: cfg.maintenance !== false,
     perDay: positiveInt(cfg.perDay, DEFAULT_CONFIG.perDay, 500),
     holdMinutes: positiveInt(cfg.holdMinutes, DEFAULT_CONFIG.holdMinutes, 60 * 24 * 7),
     seatsPerTable: positiveInt(cfg.seatsPerTable, DEFAULT_CONFIG.seatsPerTable, 50),

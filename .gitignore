@@ -10,3 +10,6 @@ data/*.tmp
 .DS_Store
 data/
 .claude/
+.agents/
+opencode.json
+skills-lock.json

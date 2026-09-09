@@ -9,6 +9,7 @@ import {
   insertReservation,
   deleteReservation,
   countActiveTableBookings,
+  countPublicPrisonerBookings,
   getAllRefs,
 } from '../db/queries/reservations';
 import { verifyTurnstileToken } from '../middleware/turnstile';
@@ -28,6 +29,7 @@ import {
   getTableBookingConfig,
   holdExpiryFrom,
 } from '../services/tableCapacity';
+import { getPublicBookingConfig, visitsFullMessage } from '../services/publicCapacity';
 import { BOOKING_TYPE_PRISONER, BOOKING_TYPE_TABLE, TABLE_REF_PREFIX } from '../constants';
 import { normalizeVisitDateISO } from '../config';
 import { applyServerPricing } from '../services/pricing';
@@ -150,6 +152,14 @@ export async function handleSaveReservation(
     };
   }
 
+  // Hard daily cap on public bookings: every submission for the date consumes a
+  // slot, rejected or cancelled included, so the page stays at perDay/perDay.
+  const { perDay } = await getPublicBookingConfig(env);
+  const used = await countPublicPrisonerBookings(env.DB, String(data.visitDateISO || ''));
+  if (used >= perDay) {
+    return { status: 'error', message: visitsFullMessage(perDay), full: true, used };
+  }
+
   const existingRefs = await getAllRefs(env.DB);
   let ref = String(data.ref || '').trim();
   if (!ref || existingRefs.includes(ref)) {
@@ -170,6 +180,25 @@ export async function handleSaveReservation(
   };
 
   await insertReservation(env.DB, row);
+
+  // D1 gives us no transaction across the count and the insert, so two requests
+  // can both see the last slot. Re-count afterwards and roll our own row back
+  // if we went over — cheap, and it closes the double-submit window.
+  const after = await countPublicPrisonerBookings(env.DB, String(data.visitDateISO || ''));
+  if (after > perDay) {
+    await deleteReservation(env.DB, ref).catch(() => undefined);
+    await logEvent(
+      env,
+      'public',
+      'booking_overbooked',
+      ref,
+      { visitDateISO: data.visitDateISO, used: after },
+      'denied',
+      meta
+    );
+    return { status: 'error', message: visitsFullMessage(perDay), full: true, used: perDay };
+  }
+
   await invalidateReservationsCache(env);
   await invalidatePrisonerLookupCache(env, newPrisonerId);
   await logEvent(

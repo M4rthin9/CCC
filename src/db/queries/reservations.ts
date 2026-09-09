@@ -260,23 +260,42 @@ export function findReservationBySlipFingerprint(
 
 /** Prisoner-visit bookings only: the no-prisoner table pool is counted separately
  *  by countActiveTableBookingsByDate, so the two calendars stay independent. */
+/**
+ * Per-date used counts for the public prisoner-visit calendar.
+ *
+ * A public submission consumes its slot permanently: every status counts,
+ * rejected or cancelled included, and only admin-created rows (source='admin')
+ * are skipped so dashboard overrides do not inflate (or fool) the public count.
+ */
 export function countReservationsByDate(db: D1Database): Promise<Record<string, number>> {
   return db
     .prepare(
       `SELECT visitDateISO, COUNT(*) as c FROM ${TABLES.reservations}
-     WHERE status IN (?, ?, ?, ?, ?) AND visitDateISO LIKE '____-__-__'
+     WHERE visitDateISO LIKE '____-__-__'
        AND bookingType != 'table'
+       AND source != 'admin'
      GROUP BY visitDateISO`
     )
-    .bind('รอตรวจสอบวินัย', 'รอตรวจสอบผู้เข้าร่วม', 'รอชำระเงิน', 'ชำระแล้ว', 'เสร็จสิ้น')
     .all<{ visitDateISO: string; c: number }>()
     .then((res) => {
       const counts: Record<string, number> = {};
-      for (const r of res.results ?? []) {
-        counts[r.visitDateISO] = Number(r.c);
-      }
+      for (const r of res.results ?? []) counts[r.visitDateISO] = Number(r.c);
       return counts;
     });
+}
+
+/** Scalar form of countReservationsByDate for the public daily-cap enforcement. */
+export function countPublicPrisonerBookings(db: D1Database, visitDateISO: string): Promise<number> {
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM ${TABLES.reservations}
+        WHERE bookingType != 'table'
+          AND visitDateISO = ?
+          AND source != 'admin'`
+    )
+    .bind(visitDateISO)
+    .first<{ n: number }>()
+    .then((r) => Number(r?.n ?? 0));
 }
 
 // ── Table bookings (bookingType = 'table') ─────────────────────────

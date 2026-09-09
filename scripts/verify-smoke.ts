@@ -476,11 +476,16 @@ const publicSettings = await handleGetPublicSettings(
 check('public settings exposes paymentEnabled', String(publicSettings.paymentEnabled), 'false');
 check('public settings hides promptpay', String('promptpay' in publicSettings), 'false');
 // status + the two payment fields + the tableBooking knobs the booking page needs.
-check('public settings key count', String(Object.keys(publicSettings).length), '4');
+check('public settings key count', String(Object.keys(publicSettings).length), '5');
 check(
   'public settings exposes tableBooking perDay',
   String((publicSettings.tableBooking as { perDay?: number } | undefined)?.perDay),
   '10'
+);
+check(
+  'public settings exposes publicBooking perDay',
+  String((publicSettings.publicBooking as { perDay?: number } | undefined)?.perDay),
+  '20'
 );
 
 // Closed payment must block an unauthenticated slip submission before any write.

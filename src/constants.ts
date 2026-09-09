@@ -116,6 +116,14 @@ export const DEFAULT_TABLE_HOLD_MINUTES = 60;
  *  so a booking may carry at most DEFAULT_TABLE_SEATS - 1 extra visitors. */
 export const DEFAULT_TABLE_SEATS = 5;
 export const TABLE_BOOKING_SETTING_KEY = 'tableBooking';
+
+// ── Public prisoner-visit daily cap ────────────────────────────────
+// The normal (no-prisoner-free) visit path sells a fixed number of public
+// bookings per day. Unlike table bookings there is no hold window: every
+// public submission consumes a slot, rejected or cancelled included, so the
+// public page locks at `perDay/perDay`. Overridable via admin_settings.publicBooking.
+export const PUBLIC_BOOKING_SETTING_KEY = 'publicBooking';
+export const DEFAULT_PUBLIC_VISITS_PER_DAY = 20;
 /** Distinct ref prefix so staff can tell the two booking kinds apart at a glance. */
 export const TABLE_REF_PREFIX = 'TBL-';
 export const VISIT_REF_PREFIX = 'VIS-';

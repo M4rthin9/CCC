@@ -56,6 +56,7 @@ import {
   getTableBookingConfig,
   holdExpiryFrom,
 } from '../services/tableCapacity';
+import { getPublicBookingConfig } from '../services/publicCapacity';
 import {
   generateUniqueRefServer,
   parseUpdateBookingFields,
@@ -150,6 +151,7 @@ export async function getArchivedReservationsHandler(
 }
 
 export async function getCountsByDate(env: Env): Promise<Record<string, unknown>> {
+  const config = await getPublicBookingConfig(env);
   const countsKey = cacheKeyCounts(env);
   let version: number;
   try {
@@ -159,14 +161,14 @@ export async function getCountsByDate(env: Env): Promise<Record<string, unknown>
   }
   if (version !== -1) {
     const { hit } = await d1CacheGetVersioned<Record<string, number>>(env.DB, countsKey, version);
-    if (hit) return { status: 'ok', counts: hit };
+    if (hit) return { status: 'ok', counts: hit, perDay: config.perDay };
   }
 
   const counts = await countReservationsByDate(env.DB);
   if (version !== -1) {
     await d1CachePutVersioned(env.DB, countsKey, version, counts, PUBLIC_CACHE_TTL);
   }
-  return { status: 'ok', counts };
+  return { status: 'ok', counts, perDay: config.perDay };
 }
 
 /**

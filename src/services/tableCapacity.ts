@@ -31,7 +31,7 @@ const DEFAULT_CONFIG: TableBookingConfig = {
 };
 
 /** Clamp a settings value to a sane positive integer, falling back on garbage. */
-function positiveInt(value: unknown, fallback: number, max: number): number {
+export function positiveInt(value: unknown, fallback: number, max: number): number {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n) || n <= 0 || n > max) return fallback;
   return n;

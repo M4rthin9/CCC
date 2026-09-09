@@ -2,6 +2,7 @@ import { getSettings, saveSettings, getAllDataVersions, bumpDataVersion } from '
 import { hasPermission } from '../db/queries/roles';
 import { logEvent } from '../services/logger';
 import { getTableBookingConfig } from '../services/tableCapacity';
+import { getPublicBookingConfig } from '../services/publicCapacity';
 import { Env } from '../types';
 
 export async function handleSaveSettings(
@@ -53,11 +54,15 @@ export async function handleGetPublicSettings(env: Env): Promise<Record<string, 
   // The table-booking knobs are not secrets — the booking page needs them to draw
   // the calendar and to tell the visitor how long their slot is held.
   const tableBooking = await getTableBookingConfig(env);
+  // Same story for the daily cap on the normal visit path (held in a key the
+  // booking page reads, rejected/cancelled bookings keep their slot).
+  const publicBooking = await getPublicBookingConfig(env);
   return {
     status: 'ok',
     paymentEnabled: payment.enabled,
     paymentClosedMessage: payment.closedMessage,
     tableBooking,
+    publicBooking,
   };
 }
 

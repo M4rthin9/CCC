@@ -373,37 +373,27 @@ export function getAllRefs(db: D1Database): Promise<string[]> {
 }
 
 /**
- * Live allocations that have been cancelled (status 'ยกเลิก') and are now well
- * past their use are permanently dropped so the reservation page stays clean.
- * A row qualifies once EITHER threshold is met (whichever happens first):
- *   - 48 hours after it was marked cancelled (cancelAt), or
- *   - 2 days after the visit date (visitDateISO).
+ * Live allocations that have been cancelled (status 'ยกเลิก') are permanently
+ * dropped only once the visit date is well past (2 days after visitDateISO) so
+ * the reservation page stays clean. A cancelled booking must never free its
+ * day's slot, so nothing is deleted while its visit date is still ahead.
  * Returns the refs removed, for downstream note/notification cleanup.
  */
 export async function listExpiredCancelledRefs(
   db: D1Database,
   nowIso: string,
-  cancelAfterHours = 48,
   cancelAfterDays = 2
 ): Promise<string[]> {
   const res = await db
     .prepare(
       `SELECT ref FROM ${TABLES.reservations}
         WHERE status = ?
-          AND (
-            (cancelAt != '' AND cancelAt <= ?)
-            OR
-            (visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND visitDateISO < date(?, ?))
-          )`
+          AND visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+          AND visitDateISO < date(?, ?)`
     )
-    .bind(CANCELLED, subtractHours(nowIso, cancelAfterHours), nowIso, '-' + cancelAfterDays + ' days')
+    .bind(CANCELLED, nowIso, '-' + cancelAfterDays + ' days')
     .all<{ ref: string }>();
   return (res.results ?? []).map((r) => r.ref);
-}
-
-function subtractHours(iso: string, hours: number): string {
-  const ms = new Date(iso).getTime() - hours * 3600000;
-  return new Date(ms).toISOString();
 }
 
 export function insertReservation(db: D1Database, data: Record<string, unknown>): Promise<void> {

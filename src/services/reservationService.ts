@@ -156,14 +156,13 @@ export function parseUpdateBookingFields(body: Record<string, unknown>): UpdateB
 
 /**
  * Permanently delete cancelled bookings once they are well past their use so the
- * reservation page stays clean: 48h after cancel or 2 days after the visit date
- * (whichever comes first). Also removes the row's notes and notification data.
+ * reservation page stays clean: 2 days after the visit date. Also removes the
+ * row's notes and notification data.
  * Returns the number of rows hard-deleted.
  */
 export async function cleanupExpiredCancelledBookings(
   env: Env,
   nowIso: string,
-  cancelAfterHours = 48,
   cancelAfterDays = 2
 ): Promise<{ deleted: number; refs: string[] }> {
   const { listExpiredCancelledRefs } = await import('../db/queries/reservations');
@@ -171,7 +170,7 @@ export async function cleanupExpiredCancelledBookings(
   const { deleteNotificationDataByRef } = await import('../db/queries/notifications');
   const { deleteReservation } = await import('../db/queries/reservations');
 
-  const refs = await listExpiredCancelledRefs(env.DB, nowIso, cancelAfterHours, cancelAfterDays);
+  const refs = await listExpiredCancelledRefs(env.DB, nowIso, cancelAfterDays);
   for (const ref of refs) {
     await deleteNotesByRef(env.DB, ref).catch(() => undefined);
     await deleteNotificationDataByRef(env.DB, ref).catch(() => undefined);

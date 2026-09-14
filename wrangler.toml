@@ -72,10 +72,18 @@ bucket_name = "ccc-slips"
 binding = "AI"
 
 # ── Scheduled tasks (cron, UTC) ────────────────────────────────────
-# 0 17 * * *   = 00:00 Bangkok  — daily expired-discipline cleanup
-# 15 17 1 */3 * = 00:15 Bangkok, 1st of every 3rd month — archive old reservations
+# 0 17 * * *  = 00:00 Bangkok — daily housekeeping: expired-discipline cleanup,
+#               expired refresh tokens, lapsed table holds, pending
+#               notifications, cancelled-booking cleanup, d1_cache purge, and
+#               the rolling-window archive sweep (anything with a visit date
+#               older than ARCHIVE_MONTHS moves to reservations_archive).
+#
+# The archive sweep used to be its own quarterly cron ("15 17 1 */3 *"). Firing
+# it four times a year let up to six months of bookings pile up in the live
+# table between runs, so the dashboard's month filter kept growing. It is part
+# of the daily job now — a sweep with nothing to move is a single indexed COUNT.
 [triggers]
-crons = ["0 17 * * *", "15 17 1 */3 *"]
+crons = ["0 17 * * *"]
 
 # ── Observability ──────────────────────────────────────────────────
 [observability]
@@ -136,8 +144,8 @@ bucket_name = "ccc-slips-dev"
 [env.development.ai]
 binding = "AI"
 
-# No cron in dev — the daily discipline cleanup and the quarterly archive
-# job would silently mutate dev data in the background. Run them on demand:
+# No cron in dev — the daily housekeeping job (discipline cleanup, archive
+# sweep, …) would silently mutate dev data in the background. Run it on demand:
 #   npx wrangler dev --env development --test-scheduled
 [env.development.triggers]
 crons = []

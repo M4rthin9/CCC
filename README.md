@@ -44,7 +44,10 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
 
 - **Reservations** — list, list with archive, archived list, per-date counts,
   dedupe/find-duplicate scans, cancel, update status, update visitor approval,
-  update/edit a booking, create a booking, update slip + status.
+  update/edit a booking, create a booking, update slip + status, force the
+  rolling-window archive sweep (`archiveOldReservations`, Superadmin, batched —
+  takes `limit`, returns `{ archived, remaining, cutoff }`; call it again while
+  `remaining` > 0).
 - **Prisoners** — import (up to 5,000 rows), sync wings onto active reservations,
   re-check discipline status.
 - **Users** — list, create, update, delete (Superadmin / `manage_users` permission).
@@ -70,8 +73,15 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
   children under 5 free, children ≤ 8 pay 500 THB (`pricing.ts`).
 - **Discipline status** (`ติดวินัย งดเยี่ยม`): prisoners with this status are blocked
   from new bookings; status auto-expires after 1 year (`disciplineService.ts`).
-- **Archiving**: reservations older than 3 months are moved to the archive table
-  (cron, 1st of every 3rd month).
+- **Archiving**: the live reservations table is kept to a rolling 3-month window —
+  the daily cron moves anything with a visit date older than that into the archive
+  table, so the dashboard's month filter never accumulates more than a few months.
+  Rows move whole (every column, slip bytes included) in batches of 50, capped at
+  2000 per run; a backlog is drained across consecutive days, or on demand with the
+  Superadmin `archiveOldReservations` action. Malformed visit dates are never
+  archived — their age is unknowable, so they stay visible on the dashboard.
+  Monthly and filtered reports read both tables, so archiving shortens the
+  dashboard's month filter without shortening the books.
 
 ### Slip verification & auto-approval (no bank API)
 
@@ -132,10 +142,14 @@ instead add the Official Account and reply with their booking ref, which
 
 ### Scheduled tasks (cron, UTC)
 
-| Schedule        | Bangkok time          | Job                                                             |
-| --------------- | --------------------- | --------------------------------------------------------------- |
-| `0 17 * * *`    | 00:00 daily           | Clear expired discipline status + delete expired refresh tokens |
-| `15 17 1 */3 *` | 00:15, 1st of quarter | Archive reservations older than 3 months                        |
+| Schedule     | Bangkok time | Job                                                                                                                                                                                                   |
+| ------------ | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0 17 * * *` | 00:00 daily  | Clear expired discipline status, delete expired refresh tokens, release lapsed table holds, send pending notifications, purge cancelled rows and `d1_cache`, archive reservations older than 3 months |
+
+Archiving used to be its own quarterly cron (`15 17 1 */3 *`). Running it four times a
+year let the live table grow to six months of bookings between sweeps, which is what
+stacked up the dashboard's month filter; it runs daily now. A sweep with nothing to move
+costs one indexed `COUNT`.
 
 ### Observability
 
@@ -282,7 +296,7 @@ because wrangler does **not** inherit top-level `[vars]`, `[[d1_databases]]`,
 | D1              | `ccc-reservations`         | `ccc-reservations-dev`             |
 | KV              | `ccc-cache`                | `ccc-cache-dev`                    |
 | `CACHE_VERSION` | `v4`                       | `dev-v1`                           |
-| Cron            | daily + quarterly          | none (`crons = []`)                |
+| Cron            | daily                      | none (`crons = []`)                |
 | Turnstile       | real widget                | Cloudflare test keys (always pass) |
 | Notifications   | configurable               | forced off                         |
 | Frontend        | `cida.dpdns.org`           | `dev.ccc-frontend.pages.dev`       |
@@ -315,9 +329,10 @@ them in production.
 `src/middleware/http.ts`) — no wildcards, no subdomain matching, so every dev origin is
 listed literally. `TURNSTILE_ALLOWED_HOSTNAMES` _does_ match subdomains.
 
-Cron is deliberately disabled on dev: the daily discipline cleanup and the quarterly
-archive job would otherwise mutate dev data in the background. Exercise them on demand
-with `npx wrangler dev --env development --test-scheduled`.
+Cron is deliberately disabled on dev: the daily housekeeping job (discipline cleanup,
+archive sweep, notification outbox, …) would otherwise mutate dev data in the background.
+Exercise it on demand with `npx wrangler dev --env development --test-scheduled`, then
+`curl 'http://localhost:8787/cdn-cgi/handler/scheduled?cron=0+17+*+*+*'`.
 
 #### Refreshing the dev database from production
 

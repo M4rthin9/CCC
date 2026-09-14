@@ -379,11 +379,7 @@ export function getAllRefs(db: D1Database): Promise<string[]> {
  * day's slot, so nothing is deleted while its visit date is still ahead.
  * Returns the refs removed, for downstream note/notification cleanup.
  */
-export async function listExpiredCancelledRefs(
-  db: D1Database,
-  nowIso: string,
-  cancelAfterDays = 2
-): Promise<string[]> {
+export async function listExpiredCancelledRefs(db: D1Database, nowIso: string, cancelAfterDays = 2): Promise<string[]> {
   const res = await db
     .prepare(
       `SELECT ref FROM ${TABLES.reservations}
@@ -435,19 +431,6 @@ export function updateArchivedReservationColumns(
   return updateColumnsIn(db, TABLES.archive, ref, cols);
 }
 
-export function insertArchivedReservation(db: D1Database, data: Record<string, unknown>): Promise<void> {
-  const cols = [...RESERVATION_COLUMNS, 'slip_base64', 'archivedAt'];
-  const values = cols.map((c) => (data[c] !== undefined ? data[c] : ''));
-  return db
-    .prepare(
-      `INSERT OR REPLACE INTO ${TABLES.archive} (${cols.join(', ')})
-     VALUES (${cols.map(() => '?').join(', ')})`
-    )
-    .bind(...values)
-    .run()
-    .then(() => undefined);
-}
-
 export function deleteReservation(db: D1Database, ref: string): Promise<void> {
   return db
     .prepare(`DELETE FROM ${TABLES.reservations} WHERE ref = ?`)
@@ -464,11 +447,65 @@ export function deleteArchivedReservation(db: D1Database, ref: string): Promise<
     .then(() => undefined);
 }
 
-export function clearAllReservations(db: D1Database): Promise<void> {
+// ── Rolling-window archiving ───────────────────────────────────────
+// The live table is kept to a rolling ARCHIVE_MONTHS window so the dashboard's
+// month filter never grows past a handful of entries. Rows move across in
+// small batches of whole refs — never by rebuilding the table — so a failure
+// mid-sweep leaves every untouched booking exactly where it was.
+
+// Rows whose visitDateISO is not a well-formed date are never archived: there
+// is no way to tell how old they are, and dropping them out of the live table
+// would hide them from the dashboard entirely.
+const ARCHIVABLE_WHERE = `visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND visitDateISO < ?`;
+
+/** How many live rows sit older than the cutoff (oldest visit date first). */
+export function countArchivableReservations(db: D1Database, cutoffISO: string): Promise<number> {
   return db
-    .prepare(`DELETE FROM ${TABLES.reservations}`)
-    .run()
-    .then(() => undefined);
+    .prepare(`SELECT COUNT(*) AS n FROM ${TABLES.reservations} WHERE ${ARCHIVABLE_WHERE}`)
+    .bind(cutoffISO)
+    .first<{ n: number }>()
+    .then((r) => Number(r?.n ?? 0));
+}
+
+/** The next `limit` refs due for archiving, oldest visit date first. */
+export function getArchivableRefs(db: D1Database, cutoffISO: string, limit: number): Promise<string[]> {
+  return db
+    .prepare(
+      `SELECT ref FROM ${TABLES.reservations}
+        WHERE ${ARCHIVABLE_WHERE}
+        ORDER BY visitDateISO ASC, ref ASC
+        LIMIT ?`
+    )
+    .bind(cutoffISO, limit)
+    .all<{ ref: string }>()
+    .then((res) => (res.results ?? []).map((r) => String(r.ref)));
+}
+
+/**
+ * Moves the named refs into the archive table: copy then delete, as a single
+ * D1 batch so the two statements commit or roll back together. Copying with
+ * INSERT ... SELECT keeps every column (slip_base64 included) — reading rows
+ * into JS and writing them back would silently drop the columns the list
+ * queries leave out.
+ *
+ * Keep `refs` small: D1 allows at most 100 bound parameters per statement.
+ */
+export async function archiveReservationsByRef(db: D1Database, refs: string[], archivedAt: string): Promise<number> {
+  if (refs.length === 0) return 0;
+  const cols = RESERVATION_WRITABLE_COLUMNS;
+  const placeholders = refs.map(() => '?').join(', ');
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR REPLACE INTO ${TABLES.archive} (${cols.join(', ')}, archivedAt)
+         SELECT ${cols.join(', ')}, ? FROM ${TABLES.reservations} WHERE ref IN (${placeholders})`
+      )
+      .bind(archivedAt, ...refs),
+    db.prepare(`DELETE FROM ${TABLES.reservations} WHERE ref IN (${placeholders})`).bind(...refs),
+  ]);
+
+  return refs.length;
 }
 
 // ── Reports (VIS / TBL separated) ──────────────────────────────────
@@ -530,17 +567,30 @@ function aggregateRows(rows: ReportRow[]): ReportByType {
 }
 
 /**
+ * Reports read the live table AND the archive. The live table only ever holds a
+ * rolling ARCHIVE_MONTHS window (see archiveService), so a report for any month
+ * past that would come back empty if it queried `reservations` alone — moving a
+ * booking out of the dashboard's month filter must not erase it from the books.
+ * A ref lives in exactly one of the two tables, so UNION ALL cannot double-count.
+ *
+ * `where` is applied to both halves and must bind the same parameters in the
+ * same order, so callers bind their parameter list twice.
+ */
+function reportUnionSql(where: string): string {
+  const half = (table: string) => `SELECT ${REPORT_COLUMNS} FROM ${table} WHERE ${where}`;
+  return `${half(TABLES.reservations)} UNION ALL ${half(TABLES.archive)} ORDER BY visitDateISO ASC`;
+}
+
+/**
  * Monthly report with VIS and TBL bookings separated.
  * @param month YYYY-MM format
  */
 export function getMonthlyReport(db: D1Database, month: string): Promise<MonthlyReportResult> {
   const like = month + '-%';
-  const stmt = `SELECT ${REPORT_COLUMNS} FROM ${TABLES.reservations}
-    WHERE visitDateISO LIKE ? AND visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-    ORDER BY visitDateISO ASC`;
+  const stmt = reportUnionSql(`visitDateISO LIKE ? AND visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`);
   return db
     .prepare(stmt)
-    .bind(like)
+    .bind(like, like)
     .all<Record<string, unknown>>()
     .then((res) => {
       const vis: ReportRow[] = [];
@@ -572,13 +622,12 @@ export function getMonthlyReport(db: D1Database, month: string): Promise<Monthly
  * @param to YYYY-MM-DD (inclusive)
  */
 export function getFilteredReport(db: D1Database, from: string, to: string): Promise<FilteredReportResult> {
-  const stmt = `SELECT ${REPORT_COLUMNS} FROM ${TABLES.reservations}
-    WHERE visitDateISO >= ? AND visitDateISO <= ?
-      AND visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-    ORDER BY visitDateISO ASC`;
+  const stmt = reportUnionSql(
+    `visitDateISO >= ? AND visitDateISO <= ? AND visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`
+  );
   return db
     .prepare(stmt)
-    .bind(from, to)
+    .bind(from, to, from, to)
     .all<Record<string, unknown>>()
     .then((res) => {
       const vis: ReportRow[] = [];

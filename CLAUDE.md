@@ -89,6 +89,13 @@ plus vars from `wrangler.toml` `[vars]` (`CACHE_VERSION`, `PASSWORD_SALT`, `ALLO
 `LINE_MONTHLY_CAP`) and secrets set via `wrangler secret put` (`JWT_SECRET`,
 `JWT_REFRESH_SECRET`, `TURNSTILE_SECRET`).
 
-**Cron** (`wrangler.toml` `[triggers]`, handled in `index.ts` `scheduled()`): daily
-expired-discipline cleanup + expired-refresh-token deletion; quarterly archiving of
-reservations older than 3 months into an archive table.
+**Cron** (`wrangler.toml` `[triggers]`, handled in `index.ts` `scheduled()`): one daily
+job — expired-discipline cleanup, expired-refresh-token deletion, lapsed table holds,
+the notification outbox, cancelled-row cleanup, `d1_cache` purge, and the rolling-window
+archive sweep. `services/archiveService.ts` moves every reservation with a visit date
+older than `ARCHIVE_MONTHS` into `reservations_archive`, keeping the live table (and so
+the dashboard's month filter) to a rolling three months. Rows move by ref in batches of
+50 via `archiveReservationsByRef` — `INSERT ... SELECT` then `DELETE` in one D1 batch, so
+every column travels and an interrupted sweep leaves untouched rows alone; never rebuild
+the table to archive. Superadmins can force a sweep with the `archiveOldReservations`
+action.

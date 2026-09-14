@@ -287,9 +287,20 @@ async function runCron(cron: string, env: Env): Promise<void> {
       console.log('[Cron] notifications:', JSON.stringify(notif));
       console.log('[Cron] cancelled removed:', cancelled.deleted);
       console.log('[Cron] d1_cache rows purged:', purged);
-    } else if (cron === '15 17 1 */3 *') {
-      const result = await archiveOldReservations(env);
-      console.log('[Cron] archive:', JSON.stringify(result));
+      // Archiving runs every day, not quarterly: a sweep every three months let
+      // the live table grow to six months of bookings, which is what stacked up
+      // the dashboard's month filter. Daily keeps it a true rolling window, and
+      // a sweep with nothing to move costs one indexed COUNT.
+      //
+      // Own try/catch so the rolling window keeps being enforced even if an
+      // unrelated housekeeping step above throws. Last in the block, so the
+      // cancelled rows cleanupExpiredCancelledBookings deletes are already gone.
+      try {
+        const archived = await archiveOldReservations(env);
+        console.log('[Cron] archive:', JSON.stringify(archived));
+      } catch (e) {
+        console.error('[Cron] archive error:', String(e));
+      }
     } else {
       console.log('[Cron] unknown schedule:', cron);
     }

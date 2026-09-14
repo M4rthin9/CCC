@@ -18,6 +18,7 @@ import {
   getAllReservations,
   getAllReservationsWithArchive,
   getArchivedReservationsHandler,
+  handleArchiveOldReservations,
   getCountsByDate,
   getTableCountsByDate,
   getMonthlyReportHandler,
@@ -191,6 +192,12 @@ const POST_ROUTES: Record<string, Route> = {
     rateLimit: { ns: 'tablebook', ...PUBLIC_REF_LIMIT },
   },
   dedupeReservations: { auth: true, handler: async (ctx) => handleDedupeReservations(ctx.env, ctx.body, ctx.user!) },
+  // Manual drain of the rolling archive window. The daily cron does this on its
+  // own; this is for clearing an existing backlog without waiting days for it.
+  archiveOldReservations: {
+    auth: true,
+    handler: async (ctx) => handleArchiveOldReservations(ctx.env, ctx.body, ctx.user!, meta(ctx)),
+  },
   findDuplicateBookings: {
     auth: true,
     handler: async (ctx) => handleFindDuplicateBookings(ctx.env, ctx.body, ctx.user!),

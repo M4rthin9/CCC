@@ -7,7 +7,7 @@ import {
   TABLE_REF_PREFIX,
   VISIT_REF_PREFIX,
 } from '../constants';
-import { sanitizeStr, normalizeVisitDateISO, formatDateISO } from '../config';
+import { sanitizeStr, sanitizeInt, normalizeVisitDateISO, formatDateISO } from '../config';
 import {
   cacheKeyArchived,
   cacheKeyCounts,
@@ -47,6 +47,7 @@ import {
 import { computeApprovalTotals, applyServerPricing } from '../services/pricing';
 import { logEvent } from '../services/logger';
 import { deleteSlipsForRef } from '../services/slipStorage';
+import { archiveOldReservations } from '../services/archiveService';
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
 import {
@@ -1309,4 +1310,30 @@ export async function getFilteredReportHandler(
     await d1CachePutVersioned(env.DB, key, version, report, PUBLIC_CACHE_TTL);
   }
   return { status: 'ok', from, to, vis: report.vis, tbl: report.tbl };
+}
+
+/**
+ * Superadmin-only manual run of the rolling-window archive sweep. The daily
+ * cron already enforces the window; this exists to drain a backlog on demand
+ * (e.g. right after deploy, when months of old bookings are still live) without
+ * waiting a day per 2000 rows. Call it repeatedly while `remaining` > 0.
+ */
+export async function handleArchiveOldReservations(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string; role: string },
+  meta?: { ip?: string; userAgent?: string }
+): Promise<Record<string, unknown>> {
+  if (user.role !== 'Superadmin') {
+    return { status: 'error', message: 'เฉพาะ Superadmin เท่านั้น' };
+  }
+  const limit = Math.min(Math.max(sanitizeInt(body.limit, 2000), 1), 5000);
+  try {
+    const result = await archiveOldReservations(env, limit);
+    await logEvent(env, user.username, 'archive_old_reservations', null, result, 'success', meta);
+    return { ...result, message: `ย้ายการจองเข้าคลังแล้ว ${result.archived} รายการ (เหลือ ${result.remaining})` };
+  } catch (e) {
+    await logEvent(env, user.username, 'archive_old_reservations', null, { error: String(e) }, 'error', meta);
+    return { status: 'error', message: 'ย้ายการจองเข้าคลังไม่สำเร็จ' };
+  }
 }

@@ -81,6 +81,7 @@ const ROLE_PERMISSION_COLUMNS = [
   'export',
   'print',
   'manage_users',
+  'manage_prisoners',
   'view_eventlog',
   'approve_discipline',
   'reject_discipline',

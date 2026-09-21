@@ -42,7 +42,7 @@ export async function handleImportPrisoners(
   body: Record<string, unknown>,
   user: { username: string }
 ): Promise<Record<string, unknown>> {
-  if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
+  if (!(await hasPermission(env.DB, user.username, 'manage_prisoners'))) {
     return { status: 'error', message: 'ไม่มีสิทธิ์นำเข้าข้อมูลผู้ต้องขัง' };
   }
 
@@ -144,7 +144,7 @@ export async function handleSyncPrisonerWings(
   _body: Record<string, unknown>,
   user: { username: string }
 ): Promise<Record<string, unknown>> {
-  if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
+  if (!(await hasPermission(env.DB, user.username, 'manage_prisoners'))) {
     return { status: 'error', message: 'Unauthorized' };
   }
 

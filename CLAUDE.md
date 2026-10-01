@@ -116,3 +116,11 @@ is a no-op from 2027-01-01, when it can be deleted. Rows move by ref in batches 
 every column travels and an interrupted sweep leaves untouched rows alone; never rebuild
 the table to archive. Superadmins can force a sweep with the `archiveOldReservations`
 action.
+
+**`reservations_backup` (October 2026 reset)**: migration `0016` moved every booking with a
+visit date in October 2026 (any status) out of `reservations` into `reservations_backup` so
+the month could be booked again from scratch. It is deliberately NOT `reservations_archive`:
+no code reads it, no report counts it, and the archive sweep never touches it — it exists
+only so a reset booking can still be found by ref with a direct D1 query. Each row is
+deleted from the live table only once its copy exists. Do not wire this table into the
+dashboard or the archive sweep.

@@ -16,6 +16,7 @@ import { handleLineWebhook } from './routes/notifications';
 import { handleGetSlipImage } from './routes/slip';
 import { handleGetPromoImage } from './routes/promo';
 import { processPendingNotifications } from './services/notifications';
+import { purgeOldCookieConsents } from './services/pdpa';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -290,11 +291,14 @@ async function runCron(cron: string, env: Env): Promise<void> {
       // Rate-limit counters and cached payloads both live in d1_cache now;
       // expired rows have no TTL eviction of their own.
       const purged = await d1CacheCleanup(env.DB);
+      // PDPA retention: consent evidence older than the window is deleted.
+      const consentsPurged = await purgeOldCookieConsents(env).catch(() => 0);
       console.log('[Cron] discipline cleanup:', JSON.stringify(result));
       console.log('[Cron] table holds released:', released);
       console.log('[Cron] notifications:', JSON.stringify(notif));
       console.log('[Cron] cancelled removed:', cancelled.deleted);
       console.log('[Cron] d1_cache rows purged:', purged);
+      console.log('[Cron] cookie consents purged:', consentsPurged);
       // Archiving runs every day, not quarterly: a sweep every three months let
       // the live table grow to six months of bookings, which is what stacked up
       // the dashboard's month filter. Daily keeps it a true rolling window, and

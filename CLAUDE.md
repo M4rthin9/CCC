@@ -90,6 +90,13 @@ notice text — `services/promo.ts`) and `admin_settings.bookingWindow` (global 
 and are served publicly at `GET /api/promo/image?id=` — the id regex in `isPromoImageId` is
 what keeps that public route away from the private `slips/` keys, so never loosen it.
 
+**PDPA cookie consent**: the booking site's cookie banner logs every decision through the
+public `recordCookieConsent` action into `cookie_consents` (random consent id, choice,
+categories, policy version, salted IP hash — never the raw IP). `admin_settings.pdpa` holds
+`policyVersion` (a bump makes every visitor answer again) and the DPO `contact` shown in the
+policy. The daily cron purges rows older than `COOKIE_CONSENT_RETENTION_DAYS` (2 years) — the
+public policy text promises that, so keep them in sync.
+
 **Env bindings** (`src/types.ts` `Env` interface): `DB` (D1), `CACHE_KV` (KV), `SLIPS` (R2),
 `AI` (Workers AI),
 plus vars from `wrangler.toml` `[vars]` (`CACHE_VERSION`, `PASSWORD_SALT`, `ALLOWED_ORIGINS`,

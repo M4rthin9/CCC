@@ -5,6 +5,7 @@ import { getTableBookingConfig } from '../services/tableCapacity';
 import { getPublicBookingConfig } from '../services/publicCapacity';
 import { getBookingWindow } from '../services/bookingWindow';
 import { getPromoConfig, promoImageUrl } from '../services/promo';
+import { getPdpaConfig } from '../services/pdpa';
 import { Env } from '../types';
 
 export async function handleSaveSettings(
@@ -65,6 +66,8 @@ export async function handleGetPublicSettings(env: Env, origin: string): Promise
   // Home-page adverts: hidden ones are dropped here, and each image gets an
   // absolute URL because the booking site lives on another origin.
   const promo = await getPromoConfig(env);
+  // Cookie-banner policy version (a bump re-asks everyone) and the DPO contact.
+  const pdpa = await getPdpaConfig(env);
   return {
     status: 'ok',
     paymentEnabled: payment.enabled,
@@ -79,6 +82,7 @@ export async function handleGetPublicSettings(env: Env, origin: string): Promise
         .map((a) => ({ id: a.id, title: a.title, link: a.link, url: promoImageUrl(origin, a.id) })),
       notice: promo.notice.enabled ? promo.notice : { enabled: false, title: '', body: '' },
     },
+    pdpa,
   };
 }
 

@@ -53,6 +53,7 @@ import { handleLogin, handleChangePassword, handleRefresh } from './auth';
 import { handleGeneratePromptPayQr } from './promptpay';
 import { handleGenerateSlipVerifyQr } from './slipQr';
 import { handleUploadPromoImage, handleDeletePromoImage } from './promo';
+import { handleRecordCookieConsent, handleGetCookieConsentStats } from './pdpa';
 import {
   handleNotify,
   handleLinkLine,
@@ -166,6 +167,7 @@ const GET_ROUTES: Record<string, Route> = {
     handler: async (ctx) => handleVerifySlip(ctx.env, ctx.body),
     rateLimit: { ns: 'slipverify', ...PUBLIC_SLIP_LIMIT },
   },
+  getCookieConsentStats: { auth: true, handler: async (ctx) => handleGetCookieConsentStats(ctx.env, ctx.user!) },
   migrateSlipsToR2: {
     auth: true,
     handler: async (ctx) => handleMigrateSlipsToR2(ctx.env, ctx.body, ctx.user!),
@@ -275,6 +277,16 @@ const POST_ROUTES: Record<string, Route> = {
     handler: async (ctx) => handleUploadPromoImage(ctx.env, ctx.body, ctx.user!, originOf(ctx)),
   },
   deletePromoImage: { auth: true, handler: async (ctx) => handleDeletePromoImage(ctx.env, ctx.body, ctx.user!) },
+  // PDPA consent evidence from the cookie banner. A visitor decides once per
+  // policy version, so the budget only has to stop a script filling the table —
+  // but mobile carriers put many phones behind one IP, so it is not tighter
+  // than the other public actions.
+  recordCookieConsent: {
+    auth: false,
+    handler: async (ctx) => handleRecordCookieConsent(ctx.env, ctx.body, meta(ctx)),
+    rateLimit: { ns: 'consent', ...PUBLIC_REF_LIMIT },
+  },
+  getCookieConsentStats: { auth: true, handler: async (ctx) => handleGetCookieConsentStats(ctx.env, ctx.user!) },
   addNote: { auth: true, handler: async (ctx) => handleAddNote(ctx.env, ctx.body, ctx.user!) },
   importPrisoners: { auth: true, handler: async (ctx) => handleImportPrisoners(ctx.env, ctx.body, ctx.user!) },
   syncPrisonerWings: { auth: true, handler: async (ctx) => handleSyncPrisonerWings(ctx.env, ctx.body, ctx.user!) },

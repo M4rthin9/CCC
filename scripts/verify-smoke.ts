@@ -17,6 +17,7 @@ import { handleGetPublicSettings, readPaymentSwitch } from '../src/routes/settin
 import { handleUpdateSlipAndStatus } from '../src/routes/slip';
 import { bookingWindowError, parseBookingWindow } from '../src/services/bookingWindow';
 import { isPromoImageId, parsePromo } from '../src/services/promo';
+import { parsePdpa } from '../src/services/pdpa';
 import { decideSlip, parseSlipDateTime } from '../src/services/slipMatch';
 import type { SlipMatchInput } from '../src/services/slipMatch';
 import type { PromptPayConfig } from '../src/services/promptpayConfig';
@@ -478,8 +479,8 @@ const publicSettings = await handleGetPublicSettings(
 );
 check('public settings exposes paymentEnabled', String(publicSettings.paymentEnabled), 'false');
 check('public settings hides promptpay', String('promptpay' in publicSettings), 'false');
-// status + the two payment fields + tableBooking + publicBooking + bookingWindow + promo.
-check('public settings key count', String(Object.keys(publicSettings).length), '7');
+// status + the two payment fields + tableBooking + publicBooking + bookingWindow + promo + pdpa.
+check('public settings key count', String(Object.keys(publicSettings).length), '8');
 check(
   'public settings exposes tableBooking perDay',
   String((publicSettings.tableBooking as { perDay?: number } | undefined)?.perDay),
@@ -532,6 +533,10 @@ const promoCfg = parsePromo({
 check('promo drops bad and duplicate ids', String(promoCfg.ads.length), '1');
 check('promo strips javascript links', String(promoCfg.ads[0]?.link), '');
 check('promo ads default active', promoCfg.ads[0]?.active === true, true);
+
+// ── PDPA: missing config still yields a version the banner can compare against ──
+check('pdpa default policy version', parsePdpa(undefined).policyVersion, '1');
+check('pdpa keeps admin version', parsePdpa({ policyVersion: '3', contact: 'dpo@x' }).policyVersion, '3');
 
 // Closed payment must block an unauthenticated slip submission before any write.
 const closedEnv = envWithSettings(JSON.stringify({ payment: { enabled: false, closedMessage: 'closed now' } }));

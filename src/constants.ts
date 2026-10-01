@@ -8,6 +8,7 @@ export const TABLES = {
   notes: 'notes',
   settings: 'settings',
   refreshTokens: 'refresh_tokens',
+  cookieConsents: 'cookie_consents',
 } as const;
 
 export const ARCHIVE_MONTHS = 3;
@@ -139,6 +140,14 @@ export const PROMO_SETTING_KEY = 'promo';
 export const PROMO_KEY_PREFIX = 'promo/';
 export const MAX_PROMO_ADS = 10;
 export const MAX_PROMO_IMAGE_BYTES = 3 * 1024 * 1024;
+
+// ── PDPA cookie consent (admin_settings.pdpa + cookie_consents table) ──
+// Bumping the policy version makes every visitor answer the banner again.
+export const PDPA_SETTING_KEY = 'pdpa';
+export const DEFAULT_PDPA_POLICY_VERSION = '1';
+export const COOKIE_CONSENT_CHOICES = ['accept_all', 'reject_all', 'custom'] as const;
+/** Consent evidence is kept two years, then purged by the daily cron. */
+export const COOKIE_CONSENT_RETENTION_DAYS = 730;
 
 /** Distinct ref prefix so staff can tell the two booking kinds apart at a glance. */
 export const TABLE_REF_PREFIX = 'TBL-';

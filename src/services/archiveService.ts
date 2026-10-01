@@ -1,4 +1,4 @@
-import { ARCHIVE_MONTHS } from '../constants';
+import { ARCHIVE_FLOOR_ISO, ARCHIVE_MONTHS } from '../constants';
 import { formatBangkok } from '../config';
 import { archiveReservationsByRef, countArchivableReservations, getArchivableRefs } from '../db/queries/reservations';
 import { Env } from '../types';
@@ -23,15 +23,17 @@ export interface ArchiveResult {
 }
 
 /**
- * Bangkok calendar date, ARCHIVE_MONTHS back from today. visitDateISO is a
- * Bangkok-local date, so the cutoff has to be one too — a UTC `new Date()`
- * is up to seven hours behind and would keep a day of stale rows around.
+ * Bangkok calendar date, ARCHIVE_MONTHS back from today — but never earlier
+ * than ARCHIVE_FLOOR_ISO. visitDateISO is a Bangkok-local date, so the cutoff
+ * has to be one too — a UTC `new Date()` is up to seven hours behind and would
+ * keep a day of stale rows around.
  */
 export function archiveCutoffISO(now: Date = new Date()): string {
   const [y, m, d] = formatBangkok(now).slice(0, 10).split('-');
   // Date.UTC normalises the month underflow (e.g. month -1 → December of the
   // previous year) for us.
-  return new Date(Date.UTC(Number(y), Number(m) - 1 - ARCHIVE_MONTHS, Number(d))).toISOString().slice(0, 10);
+  const rolling = new Date(Date.UTC(Number(y), Number(m) - 1 - ARCHIVE_MONTHS, Number(d))).toISOString().slice(0, 10);
+  return rolling > ARCHIVE_FLOOR_ISO ? rolling : ARCHIVE_FLOOR_ISO;
 }
 
 /**

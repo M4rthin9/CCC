@@ -109,7 +109,9 @@ job — expired-discipline cleanup, expired-refresh-token deletion, lapsed table
 the notification outbox, cancelled-row cleanup, `d1_cache` purge, and the rolling-window
 archive sweep. `services/archiveService.ts` moves every reservation with a visit date
 older than `ARCHIVE_MONTHS` into `reservations_archive`, keeping the live table (and so
-the dashboard's month filter) to a rolling three months. Rows move by ref in batches of
+the dashboard's month filter) to a rolling three months — but never earlier than
+`ARCHIVE_FLOOR_ISO` (2026-10-01): the dashboard starts from October 2026, and the floor
+is a no-op from 2027-01-01, when it can be deleted. Rows move by ref in batches of
 50 via `archiveReservationsByRef` — `INSERT ... SELECT` then `DELETE` in one D1 batch, so
 every column travels and an interrupted sweep leaves untouched rows alone; never rebuild
 the table to archive. Superadmins can force a sweep with the `archiveOldReservations`

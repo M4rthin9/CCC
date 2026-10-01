@@ -18,6 +18,7 @@ import { handleUpdateSlipAndStatus } from '../src/routes/slip';
 import { bookingWindowError, parseBookingWindow } from '../src/services/bookingWindow';
 import { isPromoImageId, parsePromo } from '../src/services/promo';
 import { parsePdpa } from '../src/services/pdpa';
+import { archiveCutoffISO } from '../src/services/archiveService';
 import { decideSlip, parseSlipDateTime } from '../src/services/slipMatch';
 import type { SlipMatchInput } from '../src/services/slipMatch';
 import type { PromptPayConfig } from '../src/services/promptpayConfig';
@@ -533,6 +534,12 @@ const promoCfg = parsePromo({
 check('promo drops bad and duplicate ids', String(promoCfg.ads.length), '1');
 check('promo strips javascript links', String(promoCfg.ads[0]?.link), '');
 check('promo ads default active', promoCfg.ads[0]?.active === true, true);
+
+// ── Archive cutoff: October 2026 floor, then the rolling 3-month window ──
+// 05:00 UTC = 12:00 Bangkok, so the Bangkok date is the one written here.
+check('archive cutoff floors at 2026-10-01', archiveCutoffISO(new Date('2026-10-01T05:00:00Z')), '2026-10-01');
+check('archive cutoff floor holds in December', archiveCutoffISO(new Date('2026-12-31T05:00:00Z')), '2026-10-01');
+check('archive cutoff rolls once past the floor', archiveCutoffISO(new Date('2027-02-15T05:00:00Z')), '2026-11-15');
 
 // ── PDPA: missing config still yields a version the banner can compare against ──
 check('pdpa default policy version', parsePdpa(undefined).policyVersion, '1');

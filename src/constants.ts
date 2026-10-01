@@ -12,6 +12,12 @@ export const TABLES = {
 } as const;
 
 export const ARCHIVE_MONTHS = 3;
+/**
+ * The live table starts at the October 2026 cut-over: anything dated earlier is
+ * archived whatever the rolling window says. A no-op from 2027-01-01, when the
+ * rolling ARCHIVE_MONTHS cutoff passes it — delete it then.
+ */
+export const ARCHIVE_FLOOR_ISO = '2026-10-01';
 
 export const AVAILABLE_PERMISSIONS = [
   'approve',

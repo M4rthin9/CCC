@@ -15,6 +15,8 @@ import { importPrisonersBulk, type PrisonerImportRow } from '../src/db/queries/p
 import { PROMPTPAY_DEFAULTS } from '../src/services/promptpayConfig';
 import { handleGetPublicSettings, readPaymentSwitch } from '../src/routes/settings';
 import { handleUpdateSlipAndStatus } from '../src/routes/slip';
+import { bookingWindowError, parseBookingWindow } from '../src/services/bookingWindow';
+import { isPromoImageId, parsePromo } from '../src/services/promo';
 import { decideSlip, parseSlipDateTime } from '../src/services/slipMatch';
 import type { SlipMatchInput } from '../src/services/slipMatch';
 import type { PromptPayConfig } from '../src/services/promptpayConfig';
@@ -471,12 +473,13 @@ check('payment switch closed message', payClosed.closedMessage, 'come back later
 // The public endpoint must expose the payment fields and the table-booking knobs
 // and nothing else -- the same blob also holds the PromptPay biller config.
 const publicSettings = await handleGetPublicSettings(
-  envWithSettings(JSON.stringify({ promptpay: { billerId: 'SECRET' }, payment: { enabled: false } }))
+  envWithSettings(JSON.stringify({ promptpay: { billerId: 'SECRET' }, payment: { enabled: false } })),
+  'https://api.example'
 );
 check('public settings exposes paymentEnabled', String(publicSettings.paymentEnabled), 'false');
 check('public settings hides promptpay', String('promptpay' in publicSettings), 'false');
-// status + the two payment fields + the tableBooking knobs the booking page needs.
-check('public settings key count', String(Object.keys(publicSettings).length), '5');
+// status + the two payment fields + tableBooking + publicBooking + bookingWindow + promo.
+check('public settings key count', String(Object.keys(publicSettings).length), '7');
 check(
   'public settings exposes tableBooking perDay',
   String((publicSettings.tableBooking as { perDay?: number } | undefined)?.perDay),
@@ -487,6 +490,48 @@ check(
   String((publicSettings.publicBooking as { perDay?: number } | undefined)?.perDay),
   '20'
 );
+
+// ── Booking window: global switch + per-date overrides ────────────
+check(
+  'booking window missing key is open',
+  String(bookingWindowError(parseBookingWindow(undefined), '2026-10-05')),
+  'null'
+);
+const windowCfg = parseBookingWindow({
+  closedDates: { '2026-10-05': 'งานพิเศษ', 'not-a-date': 'x' },
+  openDates: ['2026-10-10', '2026-10-05', 'bogus'],
+});
+check('booking window drops malformed closed dates', Object.keys(windowCfg.closedDates).join(','), '2026-10-05');
+// A date cannot be both closed and opened — closed wins.
+check('booking window open dates exclude closed ones', windowCfg.openDates.join(','), '2026-10-10');
+check(
+  'booking window refuses a closed date',
+  String(bookingWindowError(windowCfg, '2026-10-05')).includes('งานพิเศษ'),
+  true
+);
+check('booking window allows other dates', String(bookingWindowError(windowCfg, '2026-10-06')), 'null');
+check(
+  'booking window global close uses admin message',
+  String(bookingWindowError(parseBookingWindow({ open: false, closedMessage: 'ปิดปรับปรุง' }), '2026-10-06')),
+  'ปิดปรับปรุง'
+);
+
+// ── Promo: only well-formed ids reach R2, only http(s) links reach the page ──
+const promoId = '0b6f7c1e-3d0a-4c39-9a51-6f0d9b1f2a3c.webp';
+check('promo id accepts minted shape', isPromoImageId(promoId), true);
+check('promo id refuses a slip key', isPromoImageId('slips/2026-10-01/1.jpg'), false);
+check('promo id refuses traversal', isPromoImageId('../slips/' + promoId), false);
+const promoCfg = parsePromo({
+  ads: [
+    { id: promoId, title: 'A', link: 'javascript:alert(1)' },
+    { id: promoId, title: 'dup' },
+    { id: 'evil', title: 'B' },
+  ],
+  notice: { enabled: true, title: 'T', body: 'B' },
+});
+check('promo drops bad and duplicate ids', String(promoCfg.ads.length), '1');
+check('promo strips javascript links', String(promoCfg.ads[0]?.link), '');
+check('promo ads default active', promoCfg.ads[0]?.active === true, true);
 
 // Closed payment must block an unauthenticated slip submission before any write.
 const closedEnv = envWithSettings(JSON.stringify({ payment: { enabled: false, closedMessage: 'closed now' } }));

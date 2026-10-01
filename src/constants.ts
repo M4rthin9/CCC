@@ -126,6 +126,20 @@ export const TABLE_BOOKING_SETTING_KEY = 'tableBooking';
 // public page locks at `perDay/perDay`. Overridable via admin_settings.publicBooking.
 export const PUBLIC_BOOKING_SETTING_KEY = 'publicBooking';
 export const DEFAULT_PUBLIC_VISITS_PER_DAY = 20;
+// ── Booking window (admin_settings.bookingWindow) ─────────────────
+// One switch that closes every public booking path, plus per-date overrides:
+// `closedDates` shuts a date that would otherwise be bookable, `openDates`
+// opens one the booking calendar blocks by default (a weekend or holiday).
+export const BOOKING_WINDOW_SETTING_KEY = 'bookingWindow';
+
+// ── Home-page promo (admin_settings.promo) ─────────────────────────
+// Advert images shown as a popup carousel plus a free-text notice. Images live
+// in the SLIPS bucket under PROMO_KEY_PREFIX and are served publicly by id.
+export const PROMO_SETTING_KEY = 'promo';
+export const PROMO_KEY_PREFIX = 'promo/';
+export const MAX_PROMO_ADS = 10;
+export const MAX_PROMO_IMAGE_BYTES = 3 * 1024 * 1024;
+
 /** Distinct ref prefix so staff can tell the two booking kinds apart at a glance. */
 export const TABLE_REF_PREFIX = 'TBL-';
 export const VISIT_REF_PREFIX = 'VIS-';

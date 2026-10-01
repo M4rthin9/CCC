@@ -82,6 +82,14 @@ switch still hold a data URI in `slip_base64` and are read through that fallback
 `migrateSlipsToR2` action (Superadmin, batched) moves them across. Bytes are served by the
 Worker at `GET /api/slip/image?ref=&token=`, never from a public bucket.
 
+**Home-page promo + booking window**: `admin_settings.promo` (popup switch, advert list,
+notice text — `services/promo.ts`) and `admin_settings.bookingWindow` (global open/close,
+`closedDates` map, `openDates` list — `services/bookingWindow.ts`) are both exposed through
+`getPublicSettings`. The window is enforced server-side on both public booking paths; staff
+`createBooking` ignores it. Advert images share the `SLIPS` bucket under `promo/<uuid>.<ext>`
+and are served publicly at `GET /api/promo/image?id=` — the id regex in `isPromoImageId` is
+what keeps that public route away from the private `slips/` keys, so never loosen it.
+
 **Env bindings** (`src/types.ts` `Env` interface): `DB` (D1), `CACHE_KV` (KV), `SLIPS` (R2),
 `AI` (Workers AI),
 plus vars from `wrangler.toml` `[vars]` (`CACHE_VERSION`, `PASSWORD_SALT`, `ALLOWED_ORIGINS`,

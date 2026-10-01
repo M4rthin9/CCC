@@ -30,6 +30,7 @@ import {
   holdExpiryFrom,
 } from '../services/tableCapacity';
 import { getPublicBookingConfig, visitsFullMessage } from '../services/publicCapacity';
+import { bookingWindowError, getBookingWindow } from '../services/bookingWindow';
 import { BOOKING_TYPE_PRISONER, BOOKING_TYPE_TABLE, TABLE_REF_PREFIX } from '../constants';
 import { normalizeVisitDateISO } from '../config';
 import { applyServerPricing } from '../services/pricing';
@@ -110,6 +111,14 @@ export async function handleSaveReservation(
 ): Promise<Record<string, unknown>> {
   const validation = validateSaveReservation(body);
   if (!validation.ok) return { status: 'error', message: validation.message };
+
+  // Admin open/close switch and closed dates — checked before Turnstile so a
+  // refused booking does not burn the visitor's token.
+  const windowError = bookingWindowError(
+    await getBookingWindow(env),
+    normalizeVisitDateISO(validation.data.visitDateISO)
+  );
+  if (windowError) return { status: 'error', message: windowError, closed: true };
 
   // Turnstile gate (public booking path only). Fail closed on bad/missing token.
   const remoteIp = sanitizeStr(body.ip, 64) || meta.ip || undefined;
@@ -253,6 +262,12 @@ export async function handleSaveTableReservation(
   if (!String(payload.ref || '').trim()) payload.ref = '__AUTO__';
   const validation = validateSaveTableReservation(payload);
   if (!validation.ok) return { status: 'error', message: validation.message };
+
+  const windowError = bookingWindowError(
+    await getBookingWindow(env),
+    normalizeVisitDateISO(validation.data.visitDateISO)
+  );
+  if (windowError) return { status: 'error', message: windowError, closed: true };
 
   // Turnstile gate (public booking path only). Fail closed on bad/missing token.
   const remoteIp = sanitizeStr(body.ip, 64) || meta.ip || undefined;

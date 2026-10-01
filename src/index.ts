@@ -14,6 +14,7 @@ import { releaseExpiredTableHolds } from './db/queries/reservations';
 import { handleHealthHtml, handleHealthJson } from './routes/health';
 import { handleLineWebhook } from './routes/notifications';
 import { handleGetSlipImage } from './routes/slip';
+import { handleGetPromoImage } from './routes/promo';
 import { processPendingNotifications } from './services/notifications';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -141,6 +142,13 @@ app.post('/api/reservations/revert-payment', async (c) =>
 app.get('/api/slip/image', async (c) => {
   const user = await resolveAuthUser(c.env, c.req.raw, queryToBody(c.req.raw));
   const res = await handleGetSlipImage(c.env, new URL(c.req.url), Boolean(user));
+  Object.entries(makeCorsHeaders(c.req.raw, c.env)).forEach(([k, v]) => res.headers.set(k, v));
+  return res;
+});
+// Advert images are public by design and immutable per id, so they are served
+// with a long shared cache — unlike slips, there is no token to check.
+app.get('/api/promo/image', async (c) => {
+  const res = await handleGetPromoImage(c.env, new URL(c.req.url));
   Object.entries(makeCorsHeaders(c.req.raw, c.env)).forEach(([k, v]) => res.headers.set(k, v));
   return res;
 });

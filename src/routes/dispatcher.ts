@@ -52,6 +52,7 @@ import {
 import { handleLogin, handleChangePassword, handleRefresh } from './auth';
 import { handleGeneratePromptPayQr } from './promptpay';
 import { handleGenerateSlipVerifyQr } from './slipQr';
+import { handleUploadPromoImage, handleDeletePromoImage } from './promo';
 import {
   handleNotify,
   handleLinkLine,
@@ -152,7 +153,7 @@ const GET_ROUTES: Record<string, Route> = {
   testConnection: { auth: false, handler: async (ctx) => handleTestConnection(ctx.env) },
   getSheetInfo: { auth: true, handler: async (ctx) => handleGetSheetInfo(ctx.env) },
   getSettings: { auth: true, handler: async (ctx) => handleGetSettings(ctx.env) },
-  getPublicSettings: { auth: false, handler: async (ctx) => handleGetPublicSettings(ctx.env) },
+  getPublicSettings: { auth: false, handler: async (ctx) => handleGetPublicSettings(ctx.env, originOf(ctx)) },
   getPushPublicKey: { auth: false, handler: async (ctx) => getPushPublicKeyHandler(ctx.env) },
   recheckPrisoner: { auth: true, handler: async (ctx) => handleRecheckPrisoner(ctx.env, ctx.body) },
   generatePromptPayQr: {
@@ -269,6 +270,11 @@ const POST_ROUTES: Record<string, Route> = {
   updateBooking: { auth: true, handler: async (ctx) => handleUpdateBooking(ctx.env, ctx.body, ctx.user!) },
   saveSettings: { auth: true, handler: async (ctx) => handleSaveSettings(ctx.env, ctx.body, ctx.user!) },
   getSettings: { auth: true, handler: async (ctx) => handleGetSettings(ctx.env) },
+  uploadPromoImage: {
+    auth: true,
+    handler: async (ctx) => handleUploadPromoImage(ctx.env, ctx.body, ctx.user!, originOf(ctx)),
+  },
+  deletePromoImage: { auth: true, handler: async (ctx) => handleDeletePromoImage(ctx.env, ctx.body, ctx.user!) },
   addNote: { auth: true, handler: async (ctx) => handleAddNote(ctx.env, ctx.body, ctx.user!) },
   importPrisoners: { auth: true, handler: async (ctx) => handleImportPrisoners(ctx.env, ctx.body, ctx.user!) },
   syncPrisonerWings: { auth: true, handler: async (ctx) => handleSyncPrisonerWings(ctx.env, ctx.body, ctx.user!) },

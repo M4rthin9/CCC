@@ -365,9 +365,15 @@ export function releaseExpiredTableHolds(db: D1Database, nowIso: string, visitDa
     .then((res) => Number(res.meta?.changes ?? 0));
 }
 
+/**
+ * Every ref in use, live or archived, for picking a new one. Checking the live
+ * table alone let a new booking reuse an archived booking's ref: the dashboard
+ * then showed only one of the two, and archiving the new one replaced the old.
+ * (reservations_backup is left out on purpose: nothing reads it by ref.)
+ */
 export function getAllRefs(db: D1Database): Promise<string[]> {
   return db
-    .prepare(`SELECT ref FROM ${TABLES.reservations}`)
+    .prepare(`SELECT ref FROM ${TABLES.reservations} UNION SELECT ref FROM ${TABLES.archive}`)
     .all<{ ref: string }>()
     .then((res) => (res.results ?? []).map((r) => r.ref));
 }
@@ -456,7 +462,23 @@ export function deleteArchivedReservation(db: D1Database, ref: string): Promise<
 // Rows whose visitDateISO is not a well-formed date are never archived: there
 // is no way to tell how old they are, and dropping them out of the live table
 // would hide them from the dashboard entirely.
-const ARCHIVABLE_WHERE = `visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND visitDateISO < ?`;
+const ARCHIVABLE_DATE = `visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND visitDateISO < ?`;
+// A live row whose ref is already in the archive is a different, later booking
+// that reused an archived ref. It is never archived, since that would replace
+// the older booking; it stays live and visible, and the sweep reports it.
+const ARCHIVABLE_WHERE = `${ARCHIVABLE_DATE} AND ref NOT IN (SELECT ref FROM ${TABLES.archive})`;
+
+/** Live rows past the cutoff that stay put because their ref is already archived. */
+export function countArchiveConflicts(db: D1Database, cutoffISO: string): Promise<number> {
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM ${TABLES.reservations}
+        WHERE ${ARCHIVABLE_DATE} AND ref IN (SELECT ref FROM ${TABLES.archive})`
+    )
+    .bind(cutoffISO)
+    .first<{ n: number }>()
+    .then((r) => Number(r?.n ?? 0));
+}
 
 /** How many live rows sit older than the cutoff (oldest visit date first). */
 export function countArchivableReservations(db: D1Database, cutoffISO: string): Promise<number> {
@@ -488,24 +510,38 @@ export function getArchivableRefs(db: D1Database, cutoffISO: string, limit: numb
  * into JS and writing them back would silently drop the columns the list
  * queries leave out.
  *
+ * Never overwrites an archived booking: a ref that is already in the archive is
+ * not copied, and a live row is deleted only once its own copy is there (same
+ * ref and createdAt, stamped with this sweep's archivedAt). Returns the number
+ * of rows actually moved.
+ *
  * Keep `refs` small: D1 allows at most 100 bound parameters per statement.
  */
 export async function archiveReservationsByRef(db: D1Database, refs: string[], archivedAt: string): Promise<number> {
   if (refs.length === 0) return 0;
   const cols = RESERVATION_WRITABLE_COLUMNS;
   const placeholders = refs.map(() => '?').join(', ');
+  const live = TABLES.reservations;
 
-  await db.batch([
+  const [, removed] = await db.batch([
     db
       .prepare(
-        `INSERT OR REPLACE INTO ${TABLES.archive} (${cols.join(', ')}, archivedAt)
-         SELECT ${cols.join(', ')}, ? FROM ${TABLES.reservations} WHERE ref IN (${placeholders})`
+        `INSERT INTO ${TABLES.archive} (${cols.join(', ')}, archivedAt)
+         SELECT ${cols.join(', ')}, ? FROM ${live}
+          WHERE ref IN (${placeholders}) AND ref NOT IN (SELECT ref FROM ${TABLES.archive})`
       )
       .bind(archivedAt, ...refs),
-    db.prepare(`DELETE FROM ${TABLES.reservations} WHERE ref IN (${placeholders})`).bind(...refs),
+    db
+      .prepare(
+        `DELETE FROM ${live}
+          WHERE ref IN (${placeholders})
+            AND EXISTS (SELECT 1 FROM ${TABLES.archive} a
+                         WHERE a.ref = ${live}.ref AND a.createdAt = ${live}.createdAt AND a.archivedAt = ?)`
+      )
+      .bind(...refs, archivedAt),
   ]);
 
-  return refs.length;
+  return Number(removed?.meta?.changes ?? 0);
 }
 
 // ── Reports (VIS / TBL separated) ──────────────────────────────────

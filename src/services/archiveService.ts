@@ -1,6 +1,11 @@
 import { ARCHIVE_FLOOR_ISO, ARCHIVE_MONTHS } from '../constants';
 import { formatBangkok } from '../config';
-import { archiveReservationsByRef, countArchivableReservations, getArchivableRefs } from '../db/queries/reservations';
+import {
+  archiveReservationsByRef,
+  countArchivableReservations,
+  countArchiveConflicts,
+  getArchivableRefs,
+} from '../db/queries/reservations';
 import { Env } from '../types';
 import { invalidateArchivedCache, invalidateReservationsCache } from '../cache/invalidation';
 
@@ -18,6 +23,8 @@ export interface ArchiveResult {
   archived: number;
   /** Rows still older than the cutoff when the sweep stopped. */
   remaining: number;
+  /** Rows older than the cutoff left live because their ref is already archived. */
+  skipped: number;
   /** Visit dates strictly before this stay out of the live table. */
   cutoff: string;
 }
@@ -50,7 +57,8 @@ export async function archiveOldReservations(env: Env, maxRows = DEFAULT_MAX_ROW
   const cutoff = archiveCutoffISO();
 
   const due = await countArchivableReservations(db, cutoff);
-  if (due === 0) return { status: 'ok', archived: 0, remaining: 0, cutoff };
+  const skipped = await countArchiveConflicts(db, cutoff);
+  if (due === 0) return { status: 'ok', archived: 0, remaining: 0, skipped, cutoff };
 
   const budget = Math.max(Math.min(maxRows, due), 0);
   const archivedAt = formatBangkok(new Date());
@@ -59,7 +67,10 @@ export async function archiveOldReservations(env: Env, maxRows = DEFAULT_MAX_ROW
   while (archived < budget) {
     const refs = await getArchivableRefs(db, cutoff, Math.min(BATCH_SIZE, budget - archived));
     if (refs.length === 0) break;
-    archived += await archiveReservationsByRef(db, refs, archivedAt);
+    const moved = await archiveReservationsByRef(db, refs, archivedAt);
+    // Nothing could move: stop rather than fetch the same refs again.
+    if (moved === 0) break;
+    archived += moved;
   }
 
   if (archived > 0) {
@@ -67,5 +78,5 @@ export async function archiveOldReservations(env: Env, maxRows = DEFAULT_MAX_ROW
     await invalidateReservationsCache(env);
   }
 
-  return { status: 'ok', archived, remaining: Math.max(due - archived, 0), cutoff };
+  return { status: 'ok', archived, remaining: Math.max(due - archived, 0), skipped, cutoff };
 }

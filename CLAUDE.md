@@ -115,7 +115,12 @@ is a no-op from 2027-01-01, when it can be deleted. Rows move by ref in batches 
 50 via `archiveReservationsByRef` — `INSERT ... SELECT` then `DELETE` in one D1 batch, so
 every column travels and an interrupted sweep leaves untouched rows alone; never rebuild
 the table to archive. Superadmins can force a sweep with the `archiveOldReservations`
-action.
+action. Refs must be unique across the live table AND the archive: `getAllRefs` reads
+both, and the sweep never overwrites an archived row (a live row whose ref is already
+archived stays live and is reported as `skipped`). An earlier `INSERT OR REPLACE` let
+reused refs overwrite eight old bookings on 2026-10-01; migration `0018` restored them as
+`VIS-xxxxx-A` from `data/backup-pre-import.sql` and renamed five archived refs that live
+bookings were hiding. Never go back to `OR REPLACE` in the sweep.
 
 **`reservations_backup` (October 2026 reset)**: migration `0016` moved every booking with a
 visit date in October 2026 (any status) out of `reservations` into `reservations_backup` so

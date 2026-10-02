@@ -33,7 +33,7 @@ import { getPublicBookingConfig, visitsFullMessage } from '../services/publicCap
 import { bookingWindowError, getBookingWindow } from '../services/bookingWindow';
 import { BOOKING_TYPE_PRISONER, BOOKING_TYPE_TABLE, TABLE_REF_PREFIX } from '../constants';
 import { normalizeVisitDateISO } from '../config';
-import { applyServerPricing } from '../services/pricing';
+import { applyServerPricing, parseExtraPrisoners } from '../services/pricing';
 import { getPrisonerDiscipline } from '../services/disciplineService';
 import { notify } from '../services/notifications';
 import { Env, Reservation } from '../types';
@@ -410,7 +410,12 @@ export async function handleLookupByRef(env: Env, params: Record<string, unknown
   if (matches.length === 0) {
     const archived = await getArchivedReservations(env.DB);
     if (ref) matches = archived.filter((r) => String(r.ref).toUpperCase() === ref.toUpperCase());
-    else matches = archived.filter((r) => String(r.prisonerId).trim() === prisonerId);
+    else
+      matches = archived.filter(
+        (r) =>
+          String(r.prisonerId).trim() === prisonerId ||
+          parseExtraPrisoners(r.extraPrisoners).some((p) => p.id === prisonerId)
+      );
   }
 
   const masked = matches.map(maskRowForPublic);

@@ -197,12 +197,17 @@ export function getReservationsByRefs(db: D1Database, ref: string): Promise<Rese
     .then((res) => (res.results ?? []).map(reservationRowToObject));
 }
 
+/** True when the bound prisoner id is one of the row's extraPrisoners (`name|id|wing` rows joined by `;;`). */
+const IN_EXTRA_PRISONERS = `'|' || REPLACE(extraPrisoners, ';;', '|') || '|' LIKE '%|' || ? || '|%'`;
+
+/** Bookings for a prisoner, including tables where he sits as an extra prisoner. */
 export function getReservationsByPrisonerId(db: D1Database, prisonerId: string): Promise<Reservation[]> {
   return db
     .prepare(
-      `SELECT ${RESERVATION_COLUMNS.join(', ')} FROM ${TABLES.reservations} WHERE prisonerId = ? ORDER BY rowid DESC`
+      `SELECT ${RESERVATION_COLUMNS.join(', ')} FROM ${TABLES.reservations}
+        WHERE prisonerId = ? OR ${IN_EXTRA_PRISONERS} ORDER BY rowid DESC`
     )
-    .bind(prisonerId)
+    .bind(prisonerId, prisonerId)
     .all<Record<string, unknown>>()
     .then((res) => (res.results ?? []).map(reservationRowToObject));
 }
@@ -217,7 +222,7 @@ export function findDuplicateActiveBooking(
   const placeholders = active.map(() => '?').join(', ');
   // A prisoner seated at someone else's table (extraPrisoners `name|id|wing`) is booked too.
   let sql = `SELECT ref FROM ${TABLES.reservations}
-              WHERE (prisonerId = ? OR '|' || REPLACE(extraPrisoners, ';;', '|') || '|' LIKE '%|' || ? || '|%')
+              WHERE (prisonerId = ? OR ${IN_EXTRA_PRISONERS})
                 AND visitDateISO = ? AND status IN (${placeholders})`;
   const params: unknown[] = [prisonerId, prisonerId, visitDateISO, ...active];
   if (excludeRef) {

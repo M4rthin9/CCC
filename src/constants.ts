@@ -326,6 +326,7 @@ export const PUBLIC_LOOKUP_FIELDS = [
   'prisonerName',
   'prisonerId',
   'wing',
+  'extraPrisoners',
   'visitorName',
   'visitorApproved',
   'extraVisitorNames',

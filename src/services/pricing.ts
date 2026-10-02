@@ -5,6 +5,8 @@
 //       age < 5  -> free (0)
 //       age <= 8 -> 500 THB
 //   - extra visitor: 1000 THB each, same child ladder.
+//   - extra prisoner (Superadmin-added, e.g. father and son at one table):
+//                   1000 THB each, like the main prisoner. Not a visitor.
 // Server-authoritative: totals are recomputed from persisted inputs on every
 // write path instead of trusting client-supplied numerics.
 
@@ -74,10 +76,32 @@ export function parseExtraVisitorNames(raw: unknown): ExtraVisitorFields[] {
     .filter((e) => e.name);
 }
 
+export interface ExtraPrisoner {
+  name: string;
+  id: string;
+  wing: string;
+}
+
+/** Parse the `name|prisonerId|wing` rows joined by `;;` in `extraPrisoners`. */
+export function parseExtraPrisoners(raw: unknown): ExtraPrisoner[] {
+  return String(raw || '')
+    .split(';;')
+    .map((e) => {
+      const p = e.split('|');
+      return { name: (p[0] || '').trim(), id: (p[1] || '').trim(), wing: (p[2] || '').trim() };
+    })
+    .filter((e) => e.id);
+}
+
+export function formatExtraPrisoners(list: ExtraPrisoner[]): string {
+  return list.map((p) => `${p.name}|${p.id}|${p.wing}`).join(';;');
+}
+
 export interface BookingCostInput {
   relation?: string;
   visitorAge?: string;
   extraVisitorNames?: string;
+  extraPrisoners?: string;
   /**
    * False for a no-prisoner "table" booking: the visitor ladder is identical,
    * but there is no prisoner to charge the PRISONER_FEE line item for.
@@ -88,6 +112,8 @@ export interface BookingCostInput {
 export interface BookingCost {
   total: number;
   visitorCount: number;
+  /** Prisoners at the table (main + extra); 0 on a table booking. */
+  prisonerCount: number;
   adultCount: number;
   child5to8Count: number;
   childUnder5Count: number;
@@ -99,8 +125,10 @@ export function computeBookingCost({
   relation,
   visitorAge,
   extraVisitorNames,
+  extraPrisoners,
   includePrisonerFee = true,
 }: BookingCostInput): BookingCost {
+  const prisoners = includePrisonerFee ? 1 + parseExtraPrisoners(extraPrisoners).length : 0;
   const mainFee = mainVisitorFee(relation ?? '', visitorAge ?? '');
 
   let extraFees = 0;
@@ -129,8 +157,9 @@ export function computeBookingCost({
 
   const visitorCount = 1 + extras.length;
   return {
-    total: (includePrisonerFee ? PRISONER_FEE : 0) + mainFee + extraFees,
+    total: prisoners * PRISONER_FEE + mainFee + extraFees,
     visitorCount,
+    prisonerCount: prisoners,
     adultCount: adults,
     child5to8Count: kids5_8,
     childUnder5Count: kidsUnder5,
@@ -154,6 +183,7 @@ export function applyServerPricing(
     relation: String(data.relation || ''),
     visitorAge: String(data.visitorAge || ''),
     extraVisitorNames: String(data.extraVisitorNames || ''),
+    extraPrisoners: String(data.extraPrisoners || ''),
     includePrisonerFee,
   });
 
@@ -162,8 +192,8 @@ export function applyServerPricing(
   data.adultCount = cost.adultCount;
   data.child5to8Count = cost.child5to8Count;
   data.childUnder5Count = cost.childUnder5Count;
-  // The prisoner occupies a seat on a visit booking but not on a table booking.
-  data.totalPersons = includePrisonerFee ? cost.visitorCount + 1 : cost.visitorCount;
+  // Prisoners occupy seats on a visit booking; a table booking has none.
+  data.totalPersons = cost.visitorCount + cost.prisonerCount;
 
   return { clientTotal, serverTotal: cost.total };
 }
@@ -188,16 +218,18 @@ export function computeApprovalTotals(
   extraVisitorApproved: string | undefined,
   extraVisitorNames: string | undefined,
   mainRelation = '',
-  mainAge = ''
+  mainAge = '',
+  extraPrisoners = ''
 ): ApprovalTotals {
+  const prisonerFees = (1 + parseExtraPrisoners(extraPrisoners).length) * PRISONER_FEE;
   // Rejecting the main visitor auto-cancels the whole booking (the route sets
   // status to ไม่อนุมัติ), so nobody attends and only the prisoner fee remains.
   if (!mainApproved) {
-    return { visitorCount: 0, total: PRISONER_FEE, adultCount: 0, child5to8Count: 0, childUnder5Count: 0 };
+    return { visitorCount: 0, total: prisonerFees, adultCount: 0, child5to8Count: 0, childUnder5Count: 0 };
   }
 
   const mainFee = mainVisitorFee(mainRelation, mainAge);
-  let total = PRISONER_FEE + mainFee;
+  let total = prisonerFees + mainFee;
   let adultCount = 0;
   let child5to8Count = 0;
   let childUnder5Count = 0;

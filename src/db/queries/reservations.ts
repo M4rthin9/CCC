@@ -25,6 +25,7 @@ const RESERVATION_COLUMNS = [
   'prisonerName',
   'prisonerId',
   'wing',
+  'extraPrisoners',
   'visitDate',
   'visitDateISO',
   'visitorCount',
@@ -214,8 +215,11 @@ export function findDuplicateActiveBooking(
 ): Promise<string | null> {
   const active = ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย', 'รอชำระเงิน', 'ชำระแล้ว', 'เสร็จสิ้น'];
   const placeholders = active.map(() => '?').join(', ');
-  let sql = `SELECT ref FROM ${TABLES.reservations} WHERE prisonerId = ? AND visitDateISO = ? AND status IN (${placeholders})`;
-  const params: unknown[] = [prisonerId, visitDateISO, ...active];
+  // A prisoner seated at someone else's table (extraPrisoners `name|id|wing`) is booked too.
+  let sql = `SELECT ref FROM ${TABLES.reservations}
+              WHERE (prisonerId = ? OR '|' || REPLACE(extraPrisoners, ';;', '|') || '|' LIKE '%|' || ? || '|%')
+                AND visitDateISO = ? AND status IN (${placeholders})`;
+  const params: unknown[] = [prisonerId, prisonerId, visitDateISO, ...active];
   if (excludeRef) {
     sql += ' AND ref != ?';
     params.push(excludeRef);

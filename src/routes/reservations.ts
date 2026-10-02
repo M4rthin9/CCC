@@ -44,12 +44,19 @@ import {
   invalidatePrisonerLookupCache,
   invalidateReservationsCache,
 } from '../cache/invalidation';
-import { computeApprovalTotals, applyServerPricing } from '../services/pricing';
+import {
+  computeApprovalTotals,
+  applyServerPricing,
+  parseExtraPrisoners,
+  formatExtraPrisoners,
+  ExtraPrisoner,
+} from '../services/pricing';
 import { logEvent } from '../services/logger';
 import { deleteSlipsForRef } from '../services/slipStorage';
 import { archiveOldReservations } from '../services/archiveService';
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
+import { getPrisonerById } from '../db/queries/prisoners';
 import {
   checkTableCapacity,
   checkTableSeats,
@@ -792,7 +799,8 @@ export async function handleUpdateVisitorApproval(
     extraVisitorApproved,
     extraVisitorNames,
     mainRelation,
-    mainAge
+    mainAge,
+    String(rows[0]!.extraPrisoners || '')
   );
 
   const cols: Array<[string, unknown]> = [];
@@ -893,6 +901,14 @@ export async function handleUpdateBooking(
     if (seatsError) return { status: 'error', message: seatsError, seatsPerTable };
   }
 
+  if (changes.extraPrisoners !== undefined) {
+    const checked = await resolveExtraPrisoners(env, current, changes, ref, isTableBooking || fromArchive);
+    if (typeof checked !== 'string') return checked;
+    changes.extraPrisoners = checked;
+    const i = cols.findIndex(([c]) => c === 'extraPrisoners');
+    if (i >= 0) cols[i] = ['extraPrisoners', checked];
+  }
+
   const touchesKeyFields =
     !fromArchive && !isTableBooking && (changes.prisonerId !== undefined || changes.visitDateISO !== undefined);
   if (touchesKeyFields) {
@@ -924,7 +940,7 @@ export async function handleUpdateBooking(
   // Server-authoritative pricing: recompute whenever a pricing input changed
   // or any pricing numeric was supplied, and drop the client-supplied
   // numerics from cols in favor of the authoritative ones.
-  const pricingInputs = ['relation', 'visitorAge', 'extraVisitorNames'];
+  const pricingInputs = ['relation', 'visitorAge', 'extraVisitorNames', 'extraPrisoners'];
   const pricingNumerics = ['total', 'visitorCount', 'adultCount', 'child5to8Count', 'childUnder5Count', 'totalPersons'];
   const touchedPricingInput = pricingInputs.some((f) => changes[f] !== undefined);
   const suppliedNumeric = pricingNumerics.some((f) => changes[f] !== undefined);
@@ -972,6 +988,48 @@ export async function handleUpdateBooking(
   await invalidateLookupCache(env, ref);
   if (fromArchive) await invalidateArchivedCache(env);
   return { status: 'ok', message: 'แก้ไขการจองสำเร็จ', archived: fromArchive };
+}
+
+/**
+ * Validate the prisoners a Superadmin seats at an existing visit booking (e.g. a
+ * father and son held in the same prison). Ids come from the client; names and
+ * wings are re-read from the prisoners table. Each must not be the main
+ * prisoner, under discipline, or booked elsewhere that day. Returns the
+ * normalised `name|id|wing;;...` string, or an error response.
+ */
+async function resolveExtraPrisoners(
+  env: Env,
+  current: Reservation,
+  changes: Record<string, unknown>,
+  ref: string,
+  skipBookingChecks: boolean
+): Promise<string | Record<string, unknown>> {
+  const ids = [...new Set(parseExtraPrisoners(changes.extraPrisoners).map((p) => p.id))];
+  if (ids.length === 0) return '';
+  if (String(current.bookingType || 'prisoner') === 'table') {
+    return { status: 'error', message: 'การจองโต๊ะ (ไม่มีผู้ต้องขัง) เพิ่มผู้ต้องขังร่วมโต๊ะไม่ได้' };
+  }
+  const mainId = String(changes.prisonerId ?? current.prisonerId ?? '').trim();
+  const date = normalizeVisitDateISO(changes.visitDateISO ?? current.visitDateISO);
+  const out: ExtraPrisoner[] = [];
+  for (const id of ids) {
+    if (id === mainId) return { status: 'error', message: `ผู้ต้องขัง ${id} เป็นผู้ต้องขังหลักของการจองนี้อยู่แล้ว` };
+    const p = await getPrisonerById(env.DB, id);
+    if (!p) return { status: 'error', message: `ไม่พบผู้ต้องขังหมายเลข ${id} ในฐานข้อมูล` };
+    if (!skipBookingChecks) {
+      const discipline = await getPrisonerDiscipline(env, id);
+      if (discipline.restricted) return { status: 'error', message: discipline.message };
+      const dupRef = await findDuplicateActive(env, id, date, ref);
+      if (dupRef !== null) {
+        return {
+          status: 'error',
+          message: `⚠️ ผู้ต้องขังหมายเลข "${id}" มีการจองในวันนี้อยู่แล้ว` + (dupRef ? ` (Ref: ${dupRef})` : ''),
+        };
+      }
+    }
+    out.push({ name: String(p.prisonerName || ''), id, wing: String(p.wing || '') });
+  }
+  return formatExtraPrisoners(out);
 }
 
 export async function handleCreateBooking(

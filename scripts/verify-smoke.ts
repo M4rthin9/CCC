@@ -9,7 +9,7 @@ import UPNG from 'upng-js';
 import { encode as encodeJpeg } from 'jpeg-js';
 import { verifySlipBytes } from '../src/services/slipverify';
 import { buildPromptPayBillPayment, renderPromptPayCardSvg } from '../src/services/promptpay';
-import { computeApprovalTotals } from '../src/services/pricing';
+import { applyServerPricing, computeApprovalTotals } from '../src/services/pricing';
 import { buildSlipVerifyPayload, renderSlipVerifyMiniQr } from '../src/services/slipQr';
 import { importPrisonersBulk, type PrisonerImportRow } from '../src/db/queries/prisoners';
 import { PROMPTPAY_DEFAULTS } from '../src/services/promptpayConfig';
@@ -347,6 +347,24 @@ const mainRejected = computeApprovalTotals(false, 'yes', 'B|2|บุตร / ธ
 check('approve main rejected total', String(mainRejected.total), '1000');
 check('approve main rejected visitorCount', String(mainRejected.visitorCount), '0');
 check('approve main rejected no children counted', String(mainRejected.child5to8Count), '0');
+
+// Extra prisoners (father and son at one table): +1 prisoner fee and +1 seat
+// each, never counted as visitors.
+const withSon: Record<string, unknown> = {
+  relation: 'บิดา / มารดา',
+  visitorAge: '40',
+  extraVisitorNames: 'A|1|พี่ / น้อง|30',
+  extraPrisoners: 'ลูก|6850000001|1',
+};
+applyServerPricing(withSon);
+check('extra prisoner total', String(withSon.total), '4000');
+check('extra prisoner not a visitor', String(withSon.visitorCount), '2');
+check('extra prisoner totalPersons', String(withSon.totalPersons), '4');
+check(
+  'approve keeps extra prisoner fee',
+  String(computeApprovalTotals(true, 'yes', 'A|1|พี่ / น้อง|30', 'บิดา / มารดา', '40', 'ลูก|6850000001|1').total),
+  '4000'
+);
 
 // --- prisoner import full-replace semantics ---
 type CapturedStmt = { sql: string; params: unknown[] };

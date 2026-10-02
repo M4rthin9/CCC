@@ -130,8 +130,11 @@ export const TABLE_BOOKING_SETTING_KEY = 'tableBooking';
 // The normal (no-prisoner-free) visit path sells a fixed number of public
 // bookings per day. Unlike table bookings there is no hold window: every
 // public submission consumes a slot, rejected or cancelled included, so the
-// public page locks at `perDay/perDay`. Overridable via admin_settings.publicBooking.
+// public page locks at `perDay/perDay` — except a cancel made at least
+// CANCEL_RELEASE_DAYS before the visit date, which frees the slot for rebooking.
+// Overridable via admin_settings.publicBooking.
 export const PUBLIC_BOOKING_SETTING_KEY = 'publicBooking';
+export const CANCEL_RELEASE_DAYS = 4;
 export const DEFAULT_PUBLIC_VISITS_PER_DAY = 20;
 // ── Booking window (admin_settings.bookingWindow) ─────────────────
 // One switch that closes every public booking path, plus per-date overrides:

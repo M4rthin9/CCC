@@ -310,7 +310,11 @@ export async function handleCancelBooking(
   }
 
   const prevStatus = String(rows[0]!.status || '');
-  await updateReservationColumns(env.DB, ref, [['status', 'ยกเลิก']]);
+  // cancelAt decides whether the cancel frees the day's public slot.
+  await updateReservationColumns(env.DB, ref, [
+    ['status', 'ยกเลิก'],
+    ['cancelAt', new Date().toISOString()],
+  ]);
   if (body.reason) {
     await updateReservationColumns(env.DB, ref, [['cancelReason', sanitizeStr(body.reason, 2000)]]);
   }

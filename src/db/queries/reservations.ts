@@ -1,4 +1,11 @@
-import { ACTIVE_STATUSES, AWAITING_PAYMENT, CANCELLED, HOLD_EXPIRED_REASON, TABLES } from '../../constants';
+import {
+  ACTIVE_STATUSES,
+  AWAITING_PAYMENT,
+  CANCELLED,
+  CANCEL_RELEASE_DAYS,
+  HOLD_EXPIRED_REASON,
+  TABLES,
+} from '../../constants';
 import { Env, Reservation } from '../../types';
 
 const RESERVATION_COLUMNS = [
@@ -263,10 +270,15 @@ export function findReservationBySlipFingerprint(
 /**
  * Per-date used counts for the public prisoner-visit calendar.
  *
- * A public submission consumes its slot permanently: every status counts,
- * rejected or cancelled included, and only admin-created rows (source='admin')
- * are skipped so dashboard overrides do not inflate (or fool) the public count.
+ * A public submission consumes its slot: every status counts, rejected
+ * included, except a booking cancelled at least CANCEL_RELEASE_DAYS before its
+ * visit date (Bangkok calendar), which gives the slot back. Admin-created rows
+ * (source='admin') are skipped so dashboard overrides do not inflate (or fool)
+ * the public count.
  */
+const NOT_RELEASED = `NOT (status = ? AND cancelAt != ''
+  AND visitDateISO >= date(cancelAt, '+7 hours', '+${CANCEL_RELEASE_DAYS} days'))`;
+
 export function countReservationsByDate(db: D1Database): Promise<Record<string, number>> {
   return db
     .prepare(
@@ -274,8 +286,10 @@ export function countReservationsByDate(db: D1Database): Promise<Record<string, 
      WHERE visitDateISO LIKE '____-__-__'
        AND bookingType != 'table'
        AND source != 'admin'
+       AND ${NOT_RELEASED}
      GROUP BY visitDateISO`
     )
+    .bind(CANCELLED)
     .all<{ visitDateISO: string; c: number }>()
     .then((res) => {
       const counts: Record<string, number> = {};
@@ -291,9 +305,10 @@ export function countPublicPrisonerBookings(db: D1Database, visitDateISO: string
       `SELECT COUNT(*) AS n FROM ${TABLES.reservations}
         WHERE bookingType != 'table'
           AND visitDateISO = ?
-          AND source != 'admin'`
+          AND source != 'admin'
+          AND ${NOT_RELEASED}`
     )
-    .bind(visitDateISO)
+    .bind(visitDateISO, CANCELLED)
     .first<{ n: number }>()
     .then((r) => Number(r?.n ?? 0));
 }

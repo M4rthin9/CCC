@@ -58,7 +58,7 @@ export async function handleGetPublicSettings(env: Env, origin: string): Promise
   // the calendar and to tell the visitor how long their slot is held.
   const tableBooking = await getTableBookingConfig(env);
   // Same story for the daily cap on the normal visit path (held in a key the
-  // booking page reads, rejected/cancelled bookings keep their slot).
+  // booking page reads; rejected bookings keep their slot, early cancels free it).
   const publicBooking = await getPublicBookingConfig(env);
   // Global open/close plus per-date overrides, so the calendar can grey out
   // exactly what the server would refuse.

@@ -162,7 +162,7 @@ export async function handleSaveReservation(
   }
 
   // Hard daily cap on public bookings: every submission for the date consumes a
-  // slot, rejected or cancelled included, so the page stays at perDay/perDay.
+  // slot, rejected or cancelled included, unless cancelled CANCEL_RELEASE_DAYS+ ahead.
   const { perDay } = await getPublicBookingConfig(env);
   const used = await countPublicPrisonerBookings(env.DB, String(data.visitDateISO || ''));
   if (used >= perDay) {

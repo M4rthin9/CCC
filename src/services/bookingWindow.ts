@@ -1,4 +1,4 @@
-import { BOOKING_WINDOW_SETTING_KEY } from '../constants';
+import { BOOKING_MAX_DAYS_AHEAD, BOOKING_WINDOW_SETTING_KEY } from '../constants';
 import { isValidISODate, sanitizeStr } from '../config';
 import { getSettings } from '../db/queries/settings';
 import { Env } from '../types';
@@ -59,9 +59,19 @@ export async function getBookingWindow(env: Env): Promise<BookingWindowConfig> {
   }
 }
 
+/**
+ * Last visit date the public may book. The window rolls at 07:00 Bangkok
+ * (UTC+7, no DST), which is UTC midnight — so it counts from the UTC date.
+ */
+export function lastOpenDateISO(now: Date = new Date()): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + BOOKING_MAX_DAYS_AHEAD));
+  return d.toISOString().slice(0, 10);
+}
+
 /** Why a public booking for `visitDateISO` is refused, or null when it may go ahead. */
 export function bookingWindowError(cfg: BookingWindowConfig, visitDateISO: string): string | null {
   if (!cfg.open) return cfg.closedMessage || DEFAULT_CLOSED_MESSAGE;
+  if (visitDateISO > lastOpenDateISO()) return '⚠️ วันที่เลือกยังไม่เปิดรับจอง (เปิดจองวันใหม่ทุกวันเวลา 07:00 น.)';
   const note = cfg.closedDates[visitDateISO];
   if (note !== undefined) {
     return `⚠️ วันที่เลือกปิดรับจอง${note ? ` (${note})` : ''} กรุณาเลือกวันอื่น`;

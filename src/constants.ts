@@ -142,9 +142,10 @@ export const DEFAULT_PUBLIC_VISITS_PER_DAY = 20;
 // `closedDates` shuts a date that would otherwise be bookable, `openDates`
 // opens one the booking calendar blocks by default (a weekend or holiday).
 export const BOOKING_WINDOW_SETTING_KEY = 'bookingWindow';
-// Public bookings reach this many days ahead; the next date opens at 07:00
-// Bangkok. Mirrors BOOKING_MAX_DAYS_AHEAD in the frontend's calendar.ts.
-export const BOOKING_MAX_DAYS_AHEAD = 16;
+// Public bookings reach this many weekdays ahead (Sat/Sun not counted); the
+// next date opens at 07:00 Bangkok. Mirrors BOOKING_MAX_DAYS_AHEAD in the
+// frontend's calendar.ts.
+export const BOOKING_MAX_DAYS_AHEAD = 14;
 
 // ── Home-page promo (admin_settings.promo) ─────────────────────────
 // Advert images shown as a popup carousel plus a free-text notice. Images live

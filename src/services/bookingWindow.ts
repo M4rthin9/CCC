@@ -60,11 +60,16 @@ export async function getBookingWindow(env: Env): Promise<BookingWindowConfig> {
 }
 
 /**
- * Last visit date the public may book. The window rolls at 07:00 Bangkok
- * (UTC+7, no DST), which is UTC midnight — so it counts from the UTC date.
+ * Last visit date the public may book: BOOKING_MAX_DAYS_AHEAD weekdays ahead,
+ * weekends not counted. The window rolls at 07:00 Bangkok (UTC+7, no DST),
+ * which is UTC midnight — so it counts from the UTC date.
  */
 export function lastOpenDateISO(now: Date = new Date()): string {
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + BOOKING_MAX_DAYS_AHEAD));
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  for (let n = 0; n < BOOKING_MAX_DAYS_AHEAD;) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) n++;
+  }
   return d.toISOString().slice(0, 10);
 }
 

@@ -19,13 +19,18 @@ TURNSTILE_ALLOWED_HOSTNAMES = "cida.dpdns.org,dashboard.cida.dpdns.org,cafe.dpdn
 
 # ── Notifications (Web Push + LINE) ────────────────────────────────
 # Feature switches (set to "true" to enable).
-NOTIFY_PUSH_ENABLED = "false"
+NOTIFY_PUSH_ENABLED = "true"
 NOTIFY_LINE_ENABLED = "false"
 # Fallback LINE monthly push-message cap (an admin-overridable setting wins).
 LINE_MONTHLY_CAP = "200"
 # Only these events may spend quota. notify() drops everything else before a
-# row is queued — widen the list to send more.
-NOTIFY_EVENT_ALLOWLIST = "payment_due"
+# row is queued — widen the list to send more. Every visitor-facing event is on:
+# Web Push is free, and LINE is off. Narrow this before turning LINE on.
+NOTIFY_EVENT_ALLOWLIST = "payment_due,payment_confirmed,visitor_approved,visitor_rejected,booking_cancelled,status_changed"
+# Web Push VAPID identity. The public key is public by design (the browser
+# needs it to subscribe); VAPID_PRIVATE_KEY is a secret (wrangler secret put).
+VAPID_PUBLIC_KEY = "BLK0t-ZAXELgpSi-ZweeWuKJAifs4fG78ejIHF5sequXIXPHEl6kr7c06PdmXYITbrzc-6TcnvfS9ww0skXjwm0"
+VAPID_SUBJECT = "https://cida.dpdns.org"
 # Web Push is free and unlimited; LINE is capped. When "true", a booking that
 # already has a browser subscription never costs a LINE message.
 NOTIFY_LINE_FALLBACK_ONLY = "true"

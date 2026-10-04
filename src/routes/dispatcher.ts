@@ -309,8 +309,16 @@ const POST_ROUTES: Record<string, Route> = {
     auth: true,
     handler: async (ctx) => handleReverifySlip(ctx.env, ctx.body, ctx.user?.username || ''),
   },
-  subscribe: { auth: false, handler: async (ctx) => handleSubscribe(ctx.env, ctx.body) },
-  unsubscribe: { auth: false, handler: async (ctx) => handleUnsubscribe(ctx.env, ctx.body) },
+  subscribe: {
+    auth: false,
+    handler: async (ctx) => handleSubscribe(ctx.env, ctx.body),
+    rateLimit: { ns: 'subscribe', ...PUBLIC_REF_LIMIT },
+  },
+  unsubscribe: {
+    auth: false,
+    handler: async (ctx) => handleUnsubscribe(ctx.env, ctx.body),
+    rateLimit: { ns: 'unsubscribe', ...PUBLIC_REF_LIMIT },
+  },
   linkLine: { auth: false, handler: async (ctx) => handleLinkLine(ctx.env, ctx.body) },
   notify: { auth: true, handler: async (ctx) => handleNotify(ctx.env, ctx.body) },
   getPushPublicKey: { auth: false, handler: async (ctx) => getPushPublicKeyHandler(ctx.env) },

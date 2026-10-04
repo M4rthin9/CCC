@@ -4,6 +4,7 @@ import { jsonResponse } from '../middleware/http';
 import { hasPermission } from '../db/queries/roles';
 import { addLineFriend, deletePushSubscription, upsertPushSubscription } from '../db/queries/notifications';
 import { getLineMonthlyCap, setLineMonthlyCap } from '../db/queries/settings';
+import { getReservationsByRefs } from '../db/queries/reservations';
 import { notify, getNotificationLogs, processPendingNotifications } from '../services/notifications';
 import { replyLine, verifyLineSignature } from '../services/line';
 import { logEvent } from '../services/logger';
@@ -30,9 +31,13 @@ export async function handleSubscribe(env: Env, body: Record<string, unknown>): 
   if (!endpoint || !p256dh || !auth || !ref) {
     return { status: 'error', message: 'Missing endpoint, p256dh, auth, or ref' };
   }
-  if (!/^https?:\/\//.test(endpoint)) {
+  if (!/^https:\/\//.test(endpoint)) {
     return { status: 'error', message: 'Invalid endpoint' };
   }
+  // Only a live booking can be followed — no rows parked under made-up refs.
+  const rows = await getReservationsByRefs(env.DB, ref);
+  if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  // ponytail: one browser follows one booking (endpoint is the key); the latest subscribe wins.
   await upsertPushSubscription(env.DB, {
     endpoint,
     ref,

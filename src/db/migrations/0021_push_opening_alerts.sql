@@ -7,3 +7,8 @@ ALTER TABLE push_subscriptions ADD COLUMN openingAlerts INTEGER NOT NULL DEFAULT
 
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_opening_alerts
   ON push_subscriptions(openingAlerts) WHERE openingAlerts = 1;
+
+-- Pushes carry no payload: the service worker asks for the newest message
+-- addressed to its endpoint (GET /api/notify/message).
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient
+  ON notifications(recipient, id);

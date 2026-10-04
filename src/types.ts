@@ -20,6 +20,8 @@ export interface Env {
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
   NOTIFY_PUSH_ENABLED?: string;
+  /** Push delivery queue: each message sends one batch (free plan: 50 subrequests). */
+  PUSH_QUEUE?: Queue<{ drain: true }>;
   NOTIFY_LINE_ENABLED?: string;
   /** Comma-separated notification events allowed to spend quota. */
   NOTIFY_EVENT_ALLOWLIST?: string;

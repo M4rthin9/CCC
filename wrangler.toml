@@ -88,9 +88,23 @@ binding = "AI"
 # table between runs, so the dashboard's month filter kept growing. It is part
 # of the daily job now — a sweep with nothing to move is a single indexed COUNT.
 [triggers]
-# 17:00 UTC = 00:00 Bangkok housekeeping; 23:50 and 00:00 UTC = 06:50 and 07:00
-# Bangkok "booking opens" push alerts (silent on mornings nothing opens).
-crons = ["0 17 * * *", "50 23 * * *", "0 0 * * *"]
+# Two triggers — the Workers Free plan allows five per account (see runCron):
+# 17:00 UTC daily housekeeping + 00:00 UTC (07:00 Bangkok) "booking is open",
+# and 23:50 UTC (06:50 Bangkok) "booking opens in 10 minutes".
+crons = ["0 0,17 * * *", "50 23 * * *"]
+
+# ── Push delivery queue (Queues are on the Workers Free plan) ─────
+# A broadcast is written as pending rows; each queue message sends one batch of
+# 40 pushes (free plan: 50 subrequests per invocation) and queues the next.
+# Create once with: wrangler queues create ccc-push
+[[queues.producers]]
+binding = "PUSH_QUEUE"
+queue = "ccc-push"
+
+[[queues.consumers]]
+queue = "ccc-push"
+max_batch_size = 1
+max_retries = 3
 
 # ── Observability ──────────────────────────────────────────────────
 [observability]

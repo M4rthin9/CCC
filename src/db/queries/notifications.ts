@@ -52,16 +52,50 @@ export function upsertPushSubscription(
     .then(() => undefined);
 }
 
-/** Browsers that asked to hear when booking opens. */
-export function pushSubscriptionsForOpeningAlerts(db: D1Database, limit: number): Promise<PushSubscriptionRow[]> {
+/**
+ * Queue one pending push row per browser that asked for "booking opens" alerts,
+ * in a single statement. `ref` tags the broadcast (e.g. OPEN-2026-10-26), so the
+ * dedupe index drops a second run for the same date and type.
+ */
+export function queueOpeningAlertRows(
+  db: D1Database,
+  r: { ref: string; type: string; subject: string; body: string; now: string }
+): Promise<number> {
   return db
     .prepare(
-      `SELECT endpoint, ref, p256dh, auth, createdAt, lastActiveAt FROM push_subscriptions
-        WHERE openingAlerts = 1 ORDER BY createdAt LIMIT ?`
+      `INSERT OR IGNORE INTO notifications (ref, type, channel, recipient, subject, body, status, attempts, error, createdAt, sentAt)
+       SELECT ?, ?, 'push', endpoint, ?, ?, 'pending', 0, '', ?, '' FROM push_subscriptions WHERE openingAlerts = 1`
+    )
+    .bind(r.ref, r.type, r.subject, r.body, r.now)
+    .run()
+    .then((res) => Number(res.meta?.changes ?? 0));
+}
+
+/** Oldest pending push rows — what one delivery run works through. */
+export function getPendingPushNotifications(db: D1Database, limit: number): Promise<NotificationRow[]> {
+  return db
+    .prepare(
+      `SELECT id, ref, type, channel, recipient, subject, body, status, attempts, error, createdAt, sentAt
+       FROM notifications WHERE status = 'pending' AND channel = 'push' ORDER BY id ASC LIMIT ?`
     )
     .bind(limit)
-    .all<PushSubscriptionRow>()
+    .all<NotificationRow>()
     .then((res) => res.results ?? []);
+}
+
+/** The newest push message for a browser since `sinceIso` — what its service worker shows. */
+export function latestPushMessage(
+  db: D1Database,
+  endpoint: string,
+  sinceIso: string
+): Promise<Pick<NotificationRow, 'ref' | 'type' | 'subject' | 'body'> | null> {
+  return db
+    .prepare(
+      `SELECT ref, type, subject, body FROM notifications
+        WHERE channel = 'push' AND recipient = ? AND createdAt >= ? ORDER BY id DESC LIMIT 1`
+    )
+    .bind(endpoint, sinceIso)
+    .first();
 }
 
 export function deletePushSubscription(db: D1Database, endpoint: string): Promise<void> {

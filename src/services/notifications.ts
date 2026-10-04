@@ -16,9 +16,11 @@ import {
   markNotification,
   markPendingRetry,
   NotificationRow,
+  getPendingPushNotifications,
+  latestPushMessage,
   pushSubscriptionByEndpoint,
   pushSubscriptionsByRef,
-  pushSubscriptionsForOpeningAlerts,
+  queueOpeningAlertRows,
 } from '../db/queries/notifications';
 import { datesOpenedBetween, getBookingWindow } from './bookingWindow';
 import { getLineMonthlyCap } from '../db/queries/settings';
@@ -82,11 +84,8 @@ async function deliverPushRow(env: Env, row: NotificationRow): Promise<DeliveryO
     await markNotification(env.DB, row.id, 'failed', 'max_attempts', now);
     return 'failed';
   }
-  const res: PushResult = await sendPush(env, sub, {
-    title: row.subject,
-    body: row.body,
-    data: { ref: row.ref, type: row.type },
-  });
+  // No payload: the service worker fetches this row's subject/body itself.
+  const res: PushResult = await sendPush(env, sub);
   if (res.ok) {
     await markNotification(env.DB, row.id, 'sent', '', now);
     return 'sent';
@@ -237,8 +236,43 @@ export async function notify(env: Env, input: Record<string, unknown>): Promise<
   return base;
 }
 
-/** Cap per broadcast: each push is one subrequest. */
-const OPENING_ALERT_MAX = 500;
+/** Pushes per invocation: the Workers Free plan allows 50 external subrequests. */
+const PUSH_BATCH = 40;
+
+/**
+ * Send up to PUSH_BATCH pending push rows. When a full batch went out there may
+ * be more, so it queues another run — each queue invocation gets its own
+ * subrequest budget, which is how a broadcast reaches every subscriber on the
+ * free plan. Without the queue binding (dev) it stops after one batch.
+ */
+export async function drainPushes(env: Env): Promise<Record<string, unknown>> {
+  const rows = await getPendingPushNotifications(env.DB, PUSH_BATCH);
+  let sent = 0;
+  let failed = 0;
+  for (const row of rows) {
+    const outcome = await deliverPushRow(env, row);
+    if (outcome === 'sent') sent++;
+    else if (outcome === 'failed') failed++;
+  }
+  const more = rows.length === PUSH_BATCH;
+  if (more) await env.PUSH_QUEUE?.send({ drain: true });
+  return { status: 'ok', sent, failed, more };
+}
+
+/** Kick delivery of queued push rows: through the queue when bound, else inline. */
+async function startDrain(env: Env): Promise<void> {
+  if (env.PUSH_QUEUE) await env.PUSH_QUEUE.send({ drain: true });
+  else await drainPushes(env);
+}
+
+/** What a woken service worker shows: the newest message for its endpoint. */
+export async function getPushMessage(env: Env, endpoint: string): Promise<Record<string, unknown>> {
+  const since = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+  const row = endpoint ? await latestPushMessage(env.DB, endpoint, since) : null;
+  if (!row) return { status: 'ok', title: 'CC Cafe', body: 'มีการแจ้งเตือนใหม่ แตะเพื่อดูรายละเอียด', url: '/' };
+  const url = row.type.startsWith('booking_open') ? '/#/booking' : `/#/status?ref=${encodeURIComponent(row.ref)}`;
+  return { status: 'ok', title: row.subject, body: row.body, url, tag: row.ref || row.type };
+}
 
 function thaiDate(iso: string): string {
   return new Intl.DateTimeFormat('th-TH', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' }).format(
@@ -251,36 +285,38 @@ function thaiDate(iso: string): string {
  * Bangkok) or has just opened ('open', 07:00). Silent on mornings that open
  * nothing bookable (weekends, holidays, closed dates) or while booking is off.
  */
-export async function broadcastOpening(env: Env, kind: 'soon' | 'open'): Promise<Record<string, unknown>> {
+export async function broadcastOpening(
+  env: Env,
+  kind: 'soon' | 'open',
+  scheduledTime: number
+): Promise<Record<string, unknown>> {
   if (!pushEnabled(env)) return { status: 'ok', skipped: 'push_disabled' };
   const cfg = await getBookingWindow(env);
   if (!cfg.open) return { status: 'ok', skipped: 'booking_closed' };
 
-  // The window rolls at 00:00 UTC; the cron may fire a little late, never early.
-  const now = Date.now();
-  const roll = kind === 'soon' ? now + 10 * 60_000 : now;
+  // The window rolls at 00:00 UTC: the 23:50 run looks 10 minutes ahead. Timed
+  // from the schedule, so a late-running cron still names the right date.
+  const roll = kind === 'soon' ? scheduledTime + 10 * 60_000 : scheduledTime;
   const dates = datesOpenedBetween(new Date(roll - 60 * 60_000), new Date(roll), cfg);
   if (dates.length === 0) return { status: 'ok', skipped: 'nothing_opens' };
 
   const when = dates.map(thaiDate).join(', ');
   const message =
     kind === 'soon'
-      ? { title: 'อีก 10 นาทีเปิดจอง', body: `วัน${when} จะเปิดให้จองเวลา 07:00 น.` }
-      : { title: 'เปิดจองแล้ว', body: `วัน${when} เปิดให้จองแล้ว จำนวนจำกัด จองได้เลย` };
+      ? { title: 'อีก 10 นาทีเปิดจอง', body: `${when} จะเปิดให้จองเวลา 07:00 น.` }
+      : { title: 'เปิดจองแล้ว', body: `${when} เปิดให้จองแล้ว จำนวนจำกัด จองได้เลย` };
 
-  // ponytail: sequential, capped at OPENING_ALERT_MAX; batch with Promise.all or a Queue if opt-ins grow past it.
-  const subs = await pushSubscriptionsForOpeningAlerts(env.DB, OPENING_ALERT_MAX);
-  let sent = 0;
-  let removed = 0;
-  for (const s of subs) {
-    const res = await sendPush(env, s, { ...message, data: { url: '/#/booking', type: 'booking_open' } });
-    if (res.ok) sent++;
-    else if (res.remove) {
-      await deletePushSubscription(env.DB, s.endpoint);
-      removed++;
-    }
-  }
-  const summary = { status: 'ok', kind, dates, subscribers: subs.length, sent, removed };
+  // One row per opted-in browser, written in a single statement; the queue
+  // then delivers them PUSH_BATCH at a time.
+  const queued = await queueOpeningAlertRows(env.DB, {
+    ref: 'OPEN-' + dates[0],
+    type: kind === 'soon' ? 'booking_open_soon' : 'booking_open',
+    subject: message.title,
+    body: message.body,
+    now: new Date().toISOString(),
+  });
+  if (queued > 0) await startDrain(env);
+  const summary = { status: 'ok', kind, dates, queued };
   await logEvent(env, 'system', 'opening_alert_broadcast', '', summary, 'success');
   return summary;
 }

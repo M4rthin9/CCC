@@ -5,7 +5,7 @@ import { hasPermission } from '../db/queries/roles';
 import { addLineFriend, deletePushSubscription, upsertPushSubscription } from '../db/queries/notifications';
 import { getLineMonthlyCap, setLineMonthlyCap } from '../db/queries/settings';
 import { getReservationsByRefs } from '../db/queries/reservations';
-import { notify, getNotificationLogs, processPendingNotifications } from '../services/notifications';
+import { notify, getNotificationLogs, getPushMessage, processPendingNotifications } from '../services/notifications';
 import { replyLine, verifyLineSignature } from '../services/line';
 import { logEvent } from '../services/logger';
 import { Env } from '../types';
@@ -50,6 +50,12 @@ export async function handleSubscribe(env: Env, body: Record<string, unknown>): 
     openingAlerts,
   });
   return { status: 'ok' };
+}
+
+// GET /api/notify/message?endpoint= (public) — the message a woken service
+// worker shows. The endpoint URL is the browser's own unguessable capability.
+export async function handleGetPushMessage(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return getPushMessage(env, sanitizeStr(body.endpoint, 500));
 }
 
 // POST /api/notify/unsubscribe (public) — removes a Push subscription.

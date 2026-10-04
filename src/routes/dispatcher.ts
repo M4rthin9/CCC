@@ -61,6 +61,7 @@ import {
   handleUnsubscribe,
   getNotificationSettingsHandler,
   getPushPublicKeyHandler,
+  handleGetPushMessage,
   setLineMonthlyCapHandler,
   getNotificationLogsHandler,
   processPendingHandler,
@@ -156,6 +157,13 @@ const GET_ROUTES: Record<string, Route> = {
   getSettings: { auth: true, handler: async (ctx) => handleGetSettings(ctx.env) },
   getPublicSettings: { auth: false, handler: async (ctx) => handleGetPublicSettings(ctx.env, originOf(ctx)) },
   getPushPublicKey: { auth: false, handler: async (ctx) => getPushPublicKeyHandler(ctx.env) },
+  // A woken service worker asks what to show. Broadcasts wake every subscriber at
+  // once and phones share carrier IPs, so the budget is wider than other public reads.
+  getPushMessage: {
+    auth: false,
+    handler: async (ctx) => handleGetPushMessage(ctx.env, ctx.body),
+    rateLimit: { ns: 'pushmsg', max: 120, ttl: 60 },
+  },
   recheckPrisoner: { auth: true, handler: async (ctx) => handleRecheckPrisoner(ctx.env, ctx.body) },
   generatePromptPayQr: {
     auth: false,

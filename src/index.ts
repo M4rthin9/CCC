@@ -15,7 +15,7 @@ import { handleHealthHtml, handleHealthJson } from './routes/health';
 import { handleLineWebhook } from './routes/notifications';
 import { handleGetSlipImage } from './routes/slip';
 import { handleGetPromoImage } from './routes/promo';
-import { broadcastOpening, processPendingNotifications } from './services/notifications';
+import { broadcastOpening, drainPushes, processPendingNotifications } from './services/notifications';
 import { purgeOldCookieConsents } from './services/pdpa';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -193,6 +193,10 @@ app.post('/api/notify/settings', async (c) =>
 );
 // The browser needs this before it can call pushManager.subscribe.
 app.get('/api/notify/publicKey', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getPushPublicKey' }));
+// Pushes carry no payload; the service worker fetches its message here.
+app.get('/api/notify/message', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getPushMessage', ...queryToBody(c.req.raw) })
+);
 app.post('/api/notify/cap', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'setLineMonthlyCap', ...(await bodyToObj(c.req.raw)) })
 );
@@ -274,13 +278,26 @@ export default {
   fetch: app.fetch,
 
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runCron(event.cron, env));
+    ctx.waitUntil(runCron(event.cron, event.scheduledTime, env));
+  },
+
+  // Push delivery runs: each message sends one batch and queues the next.
+  async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
+    for (const msg of batch.messages) {
+      console.log('[Queue] push drain:', JSON.stringify(await drainPushes(env)));
+      msg.ack();
+    }
   },
 };
 
-async function runCron(cron: string, env: Env): Promise<void> {
+// Two triggers (the Workers Free plan allows five per account):
+//   "0 0,17 * * *" — 17:00 UTC daily housekeeping, 00:00 UTC "booking is open" alert
+//   "50 23 * * *"  — 23:50 UTC "booking opens in 10 minutes" alert
+// 00:00 / 23:50 UTC are 07:00 / 06:50 Bangkok.
+async function runCron(cron: string, scheduledTime: number, env: Env): Promise<void> {
+  const job = cron === '50 23 * * *' ? 'soon' : new Date(scheduledTime).getUTCHours() === 0 ? 'open' : 'daily';
   try {
-    if (cron === '0 17 * * *') {
+    if (job === 'daily') {
       const result = await cleanupExpiredDiscipline(env);
       await deleteExpiredRefreshTokens(env);
       // Housekeeping only: countActiveTableBookings already ignores lapsed holds,
@@ -313,12 +330,8 @@ async function runCron(cron: string, env: Env): Promise<void> {
       } catch (e) {
         console.error('[Cron] archive error:', String(e));
       }
-    } else if (cron === '50 23 * * *' || cron === '0 0 * * *') {
-      // 06:50 / 07:00 Bangkok: "booking opens soon" / "booking is open" alerts.
-      const result = await broadcastOpening(env, cron === '0 0 * * *' ? 'open' : 'soon');
-      console.log('[Cron] opening alert:', JSON.stringify(result));
     } else {
-      console.log('[Cron] unknown schedule:', cron);
+      console.log('[Cron] opening alert:', JSON.stringify(await broadcastOpening(env, job, scheduledTime)));
     }
   } catch (e) {
     console.error('[Cron] error:', String(e));

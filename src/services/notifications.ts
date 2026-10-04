@@ -18,7 +18,9 @@ import {
   NotificationRow,
   pushSubscriptionByEndpoint,
   pushSubscriptionsByRef,
+  pushSubscriptionsForOpeningAlerts,
 } from '../db/queries/notifications';
+import { datesOpenedBetween, getBookingWindow } from './bookingWindow';
 import { getLineMonthlyCap } from '../db/queries/settings';
 import { Env } from '../types';
 import { sendPush, PushResult } from './push';
@@ -233,6 +235,54 @@ export async function notify(env: Env, input: Record<string, unknown>): Promise<
   }
 
   return base;
+}
+
+/** Cap per broadcast: each push is one subrequest. */
+const OPENING_ALERT_MAX = 500;
+
+function thaiDate(iso: string): string {
+  return new Intl.DateTimeFormat('th-TH', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' }).format(
+    new Date(iso + 'T00:00:00Z')
+  );
+}
+
+/**
+ * Cron: tell opted-in browsers a bookable date is about to open ('soon', 06:50
+ * Bangkok) or has just opened ('open', 07:00). Silent on mornings that open
+ * nothing bookable (weekends, holidays, closed dates) or while booking is off.
+ */
+export async function broadcastOpening(env: Env, kind: 'soon' | 'open'): Promise<Record<string, unknown>> {
+  if (!pushEnabled(env)) return { status: 'ok', skipped: 'push_disabled' };
+  const cfg = await getBookingWindow(env);
+  if (!cfg.open) return { status: 'ok', skipped: 'booking_closed' };
+
+  // The window rolls at 00:00 UTC; the cron may fire a little late, never early.
+  const now = Date.now();
+  const roll = kind === 'soon' ? now + 10 * 60_000 : now;
+  const dates = datesOpenedBetween(new Date(roll - 60 * 60_000), new Date(roll), cfg);
+  if (dates.length === 0) return { status: 'ok', skipped: 'nothing_opens' };
+
+  const when = dates.map(thaiDate).join(', ');
+  const message =
+    kind === 'soon'
+      ? { title: 'อีก 10 นาทีเปิดจอง', body: `วัน${when} จะเปิดให้จองเวลา 07:00 น.` }
+      : { title: 'เปิดจองแล้ว', body: `วัน${when} เปิดให้จองแล้ว จำนวนจำกัด จองได้เลย` };
+
+  // ponytail: sequential, capped at OPENING_ALERT_MAX; batch with Promise.all or a Queue if opt-ins grow past it.
+  const subs = await pushSubscriptionsForOpeningAlerts(env.DB, OPENING_ALERT_MAX);
+  let sent = 0;
+  let removed = 0;
+  for (const s of subs) {
+    const res = await sendPush(env, s, { ...message, data: { url: '/#/booking', type: 'booking_open' } });
+    if (res.ok) sent++;
+    else if (res.remove) {
+      await deletePushSubscription(env.DB, s.endpoint);
+      removed++;
+    }
+  }
+  const summary = { status: 'ok', kind, dates, subscribers: subs.length, sent, removed };
+  await logEvent(env, 'system', 'opening_alert_broadcast', '', summary, 'success');
+  return summary;
 }
 
 // Cron entry point: retries anything left 'pending' (network hiccups).

@@ -15,7 +15,7 @@ import { handleHealthHtml, handleHealthJson } from './routes/health';
 import { handleLineWebhook } from './routes/notifications';
 import { handleGetSlipImage } from './routes/slip';
 import { handleGetPromoImage } from './routes/promo';
-import { processPendingNotifications } from './services/notifications';
+import { broadcastOpening, processPendingNotifications } from './services/notifications';
 import { purgeOldCookieConsents } from './services/pdpa';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -313,6 +313,10 @@ async function runCron(cron: string, env: Env): Promise<void> {
       } catch (e) {
         console.error('[Cron] archive error:', String(e));
       }
+    } else if (cron === '50 23 * * *' || cron === '0 0 * * *') {
+      // 06:50 / 07:00 Bangkok: "booking opens soon" / "booking is open" alerts.
+      const result = await broadcastOpening(env, cron === '0 0 * * *' ? 'open' : 'soon');
+      console.log('[Cron] opening alert:', JSON.stringify(result));
     } else {
       console.log('[Cron] unknown schedule:', cron);
     }

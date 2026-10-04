@@ -31,23 +31,37 @@ export interface NotificationRow {
   sentAt: string;
 }
 
+/** A blank `ref` keeps the booking already followed; opening alerts, once on, stay on. */
 export function upsertPushSubscription(
   db: D1Database,
-  sub: { endpoint: string; ref: string; p256dh: string; auth: string; now: string }
+  sub: { endpoint: string; ref: string; p256dh: string; auth: string; now: string; openingAlerts?: boolean }
 ): Promise<void> {
   return db
     .prepare(
-      `INSERT INTO push_subscriptions (endpoint, ref, p256dh, auth, createdAt, lastActiveAt)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO push_subscriptions (endpoint, ref, p256dh, auth, createdAt, lastActiveAt, openingAlerts)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(endpoint) DO UPDATE SET
-         ref = excluded.ref,
+         ref = CASE WHEN excluded.ref <> '' THEN excluded.ref ELSE push_subscriptions.ref END,
          p256dh = excluded.p256dh,
          auth = excluded.auth,
-         lastActiveAt = excluded.lastActiveAt`
+         lastActiveAt = excluded.lastActiveAt,
+         openingAlerts = MAX(push_subscriptions.openingAlerts, excluded.openingAlerts)`
     )
-    .bind(sub.endpoint, sub.ref, sub.p256dh, sub.auth, sub.now, sub.now)
+    .bind(sub.endpoint, sub.ref, sub.p256dh, sub.auth, sub.now, sub.now, sub.openingAlerts ? 1 : 0)
     .run()
     .then(() => undefined);
+}
+
+/** Browsers that asked to hear when booking opens. */
+export function pushSubscriptionsForOpeningAlerts(db: D1Database, limit: number): Promise<PushSubscriptionRow[]> {
+  return db
+    .prepare(
+      `SELECT endpoint, ref, p256dh, auth, createdAt, lastActiveAt FROM push_subscriptions
+        WHERE openingAlerts = 1 ORDER BY createdAt LIMIT ?`
+    )
+    .bind(limit)
+    .all<PushSubscriptionRow>()
+    .then((res) => res.results ?? []);
 }
 
 export function deletePushSubscription(db: D1Database, endpoint: string): Promise<void> {

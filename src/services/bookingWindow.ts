@@ -73,6 +73,60 @@ export function lastOpenDateISO(now: Date = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Public holidays the booking calendar blocks — a copy of HOLIDAYS in the
+ * frontend's calendar.ts (from 2026-10 on; earlier dates can never open again).
+ * ponytail: duplicated list; serve it from admin_settings if it starts changing often.
+ */
+const HOLIDAYS = new Set([
+  '2026-10-13',
+  '2026-10-16',
+  '2026-10-23',
+  '2026-12-05',
+  '2026-12-07',
+  '2026-12-10',
+  '2026-12-31',
+  '2027-01-01',
+  '2027-02-21',
+  '2027-02-22',
+  '2027-04-06',
+  '2027-04-13',
+  '2027-04-14',
+  '2027-04-15',
+  '2027-05-01',
+  '2027-05-03',
+  '2027-05-04',
+  '2027-05-20',
+  '2027-06-03',
+  '2027-07-18',
+  '2027-07-19',
+  '2027-07-28',
+  '2027-08-12',
+  '2027-10-13',
+  '2027-10-23',
+  '2027-10-25',
+  '2027-12-05',
+  '2027-12-06',
+  '2027-12-10',
+  '2027-12-31',
+]);
+
+/** Bookable dates that open between two instants: the window's new tail, minus
+ *  weekends, holidays and admin-closed dates (admin-opened dates count). */
+export function datesOpenedBetween(from: Date, to: Date, cfg: BookingWindowConfig): string[] {
+  const out: string[] = [];
+  const last = lastOpenDateISO(to);
+  const d = new Date(lastOpenDateISO(from) + 'T00:00:00Z');
+  for (d.setUTCDate(d.getUTCDate() + 1); d.toISOString().slice(0, 10) <= last; d.setUTCDate(d.getUTCDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    const weekendOrHoliday = d.getUTCDay() === 0 || d.getUTCDay() === 6 || HOLIDAYS.has(iso);
+    if (iso in cfg.closedDates) continue;
+    if (weekendOrHoliday && !cfg.openDates.includes(iso)) continue;
+    out.push(iso);
+  }
+  return out;
+}
+
 /** Why a public booking for `visitDateISO` is refused, or null when it may go ahead. */
 export function bookingWindowError(cfg: BookingWindowConfig, visitDateISO: string): string | null {
   if (!cfg.open) return cfg.closedMessage || DEFAULT_CLOSED_MESSAGE;

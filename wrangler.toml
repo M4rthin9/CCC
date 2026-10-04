@@ -24,9 +24,9 @@ NOTIFY_LINE_ENABLED = "false"
 # Fallback LINE monthly push-message cap (an admin-overridable setting wins).
 LINE_MONTHLY_CAP = "200"
 # Only these events may spend quota. notify() drops everything else before a
-# row is queued — widen the list to send more. Every visitor-facing event is on:
-# Web Push is free, and LINE is off. Narrow this before turning LINE on.
-NOTIFY_EVENT_ALLOWLIST = "payment_due,payment_confirmed,visitor_approved,visitor_rejected,booking_cancelled,status_changed"
+# row is queued — widen the list to send more. Visitors hear when to pay and that
+# the payment went through. (The "booking opens" alerts are a separate cron.)
+NOTIFY_EVENT_ALLOWLIST = "payment_due,payment_confirmed"
 # Web Push VAPID identity. The public key is public by design (the browser
 # needs it to subscribe); VAPID_PRIVATE_KEY is a secret (wrangler secret put).
 VAPID_PUBLIC_KEY = "BLK0t-ZAXELgpSi-ZweeWuKJAifs4fG78ejIHF5sequXIXPHEl6kr7c06PdmXYITbrzc-6TcnvfS9ww0skXjwm0"
@@ -88,7 +88,9 @@ binding = "AI"
 # table between runs, so the dashboard's month filter kept growing. It is part
 # of the daily job now — a sweep with nothing to move is a single indexed COUNT.
 [triggers]
-crons = ["0 17 * * *"]
+# 17:00 UTC = 00:00 Bangkok housekeeping; 23:50 and 00:00 UTC = 06:50 and 07:00
+# Bangkok "booking opens" push alerts (silent on mornings nothing opens).
+crons = ["0 17 * * *", "50 23 * * *", "0 0 * * *"]
 
 # ── Observability ──────────────────────────────────────────────────
 [observability]

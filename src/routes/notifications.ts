@@ -21,22 +21,25 @@ export async function handleNotify(env: Env, body: Record<string, unknown>): Pro
 }
 
 // POST /api/notify/subscribe (public) — saves a browser Push subscription for
-// a booking ref. Called right after a successful booking so status changes
-// can reach the visitor.
+// a booking ref (status changes reach the visitor), and/or opts the browser in
+// to the "booking opens" alerts (`openingAlerts: true`, no ref needed).
 export async function handleSubscribe(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const endpoint = sanitizeStr(body.endpoint, 500);
   const p256dh = sanitizeStr(body.p256dh, 500);
   const auth = sanitizeStr(body.auth, 200);
   const ref = sanitizeStr(body.ref, 64);
-  if (!endpoint || !p256dh || !auth || !ref) {
+  const openingAlerts = body.openingAlerts === true;
+  if (!endpoint || !p256dh || !auth || (!ref && !openingAlerts)) {
     return { status: 'error', message: 'Missing endpoint, p256dh, auth, or ref' };
   }
   if (!/^https:\/\//.test(endpoint)) {
     return { status: 'error', message: 'Invalid endpoint' };
   }
   // Only a live booking can be followed — no rows parked under made-up refs.
-  const rows = await getReservationsByRefs(env.DB, ref);
-  if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  if (ref) {
+    const rows = await getReservationsByRefs(env.DB, ref);
+    if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  }
   // ponytail: one browser follows one booking (endpoint is the key); the latest subscribe wins.
   await upsertPushSubscription(env.DB, {
     endpoint,
@@ -44,6 +47,7 @@ export async function handleSubscribe(env: Env, body: Record<string, unknown>): 
     p256dh,
     auth,
     now: new Date().toISOString(),
+    openingAlerts,
   });
   return { status: 'ok' };
 }

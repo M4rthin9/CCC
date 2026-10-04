@@ -3,6 +3,7 @@ import {
   AWAITING_PAYMENT,
   CANCELLED,
   CANCEL_RELEASE_DAYS,
+  COMPLETED,
   HOLD_EXPIRED_REASON,
   TABLES,
 } from '../../constants';
@@ -632,12 +633,13 @@ function aggregateRows(rows: ReportRow[]): ReportByType {
  * past that would come back empty if it queried `reservations` alone — moving a
  * booking out of the dashboard's month filter must not erase it from the books.
  * A ref lives in exactly one of the two tables, so UNION ALL cannot double-count.
+ * Only completed visits are reported, so revenue matches the bank statement.
  *
  * `where` is applied to both halves and must bind the same parameters in the
  * same order, so callers bind their parameter list twice.
  */
 function reportUnionSql(where: string): string {
-  const half = (table: string) => `SELECT ${REPORT_COLUMNS} FROM ${table} WHERE ${where}`;
+  const half = (table: string) => `SELECT ${REPORT_COLUMNS} FROM ${table} WHERE status = '${COMPLETED}' AND ${where}`;
   return `${half(TABLES.reservations)} UNION ALL ${half(TABLES.archive)} ORDER BY visitDateISO ASC`;
 }
 

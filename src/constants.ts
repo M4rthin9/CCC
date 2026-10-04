@@ -110,6 +110,7 @@ export const ACTIVE_STATUSES = ['รอตรวจสอบผู้เข้�
 // without re-typing Thai string literals that must match VALID_STATUSES exactly.
 export const AWAITING_PAYMENT = 'รอชำระเงิน';
 export const PAID_STATUS = 'ชำระแล้ว';
+export const COMPLETED = 'เสร็จสิ้น';
 export const CANCELLED = 'ยกเลิก';
 export const HOLD_EXPIRED_REASON = 'หมดเวลาชำระเงิน';
 

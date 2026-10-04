@@ -88,6 +88,10 @@ export const PERMISSIONS: Record<string, readonly Permission[]> = {
 
 export const CACHE_TTL = 60;
 export const PUBLIC_CACHE_TTL = 300;
+// The prisoner list changes only on import or a discipline update, and both clear
+// it (invalidatePrisonersCache) — so it can live a day. At 300 s the ~1,100-row
+// scan ran ~900 times a day, a fifth of the account's free D1 read budget.
+export const PRISONERS_CACHE_TTL = 24 * 60 * 60;
 export const LOOKUP_CACHE_TTL = 60;
 export const LOGIN_RATE_LIMIT_TTL = 300;
 export const MAX_LOGIN_ATTEMPTS = 5;

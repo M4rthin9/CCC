@@ -1,4 +1,4 @@
-import { PUBLIC_CACHE_TTL } from '../constants';
+import { PRISONERS_CACHE_TTL } from '../constants';
 import { sanitizeStr } from '../config';
 import { cacheKeyPrisoners } from '../cache/keys';
 import { d1CacheGet, d1CachePut, d1CacheRemove } from '../cache/d1Cache';
@@ -33,7 +33,7 @@ export async function handleGetPrisoners(env: Env): Promise<Record<string, unkno
   }
 
   const prisoners = await getMinifiedPrisoners(env.DB);
-  await d1CachePut(env.DB, key, JSON.stringify(prisoners), PUBLIC_CACHE_TTL);
+  await d1CachePut(env.DB, key, JSON.stringify(prisoners), PRISONERS_CACHE_TTL);
   return { status: 'ok', prisoners };
 }
 

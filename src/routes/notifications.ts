@@ -2,7 +2,13 @@ import { sanitizeInt, sanitizeStr } from '../config';
 import { LINE_MESSAGE_CAP } from '../constants';
 import { jsonResponse } from '../middleware/http';
 import { hasPermission } from '../db/queries/roles';
-import { addLineFriend, deletePushSubscription, upsertPushSubscription } from '../db/queries/notifications';
+import {
+  addLineFriend,
+  countPushSubscribers,
+  deletePushSubscription,
+  listPushSubscribers,
+  upsertPushSubscription,
+} from '../db/queries/notifications';
 import { getLineMonthlyCap, setLineMonthlyCap } from '../db/queries/settings';
 import { getReservationsByRefs } from '../db/queries/reservations';
 import { notify, getNotificationLogs, getPushMessage, processPendingNotifications } from '../services/notifications';
@@ -176,6 +182,49 @@ export async function getNotificationLogsHandler(
 ): Promise<Record<string, unknown>> {
   const limit = Math.min(Math.max(sanitizeInt(body.limit, 50), 1), 200);
   return getNotificationLogs(env, limit);
+}
+
+/** The push service behind an endpoint, as a browser name — the URL itself is never sent. */
+function pushService(endpoint: string): string {
+  let host: string;
+  try {
+    host = new URL(endpoint).hostname;
+  } catch {
+    return 'อื่น ๆ';
+  }
+  if (host.endsWith('googleapis.com')) return 'Chrome / Android';
+  if (host.endsWith('mozilla.com')) return 'Firefox';
+  if (host.endsWith('push.apple.com')) return 'Safari / iPhone';
+  if (host.endsWith('notify.windows.com')) return 'Edge';
+  return 'อื่น ๆ';
+}
+
+// getPushSubscribers (authed, manage_users) — who receives Web Push, for the
+// dashboard. Endpoints are bearer capabilities, so only the service name leaves.
+export async function getPushSubscribersHandler(
+  env: Env,
+  body: Record<string, unknown>,
+  user: AuthenticatedUser
+): Promise<Record<string, unknown>> {
+  if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
+    return { status: 'error', message: 'ไม่มีสิทธิ์ดูผู้รับการแจ้งเตือน' };
+  }
+  const limit = Math.min(Math.max(sanitizeInt(body.limit, 100), 1), 200);
+  const [summary, rows] = await Promise.all([countPushSubscribers(env.DB), listPushSubscribers(env.DB, limit)]);
+  return {
+    status: 'ok',
+    summary,
+    rows: rows.map((s) => ({
+      service: pushService(s.endpoint),
+      ref: s.ref,
+      visitorName: s.visitorName ?? '',
+      visitDateISO: s.visitDateISO ?? '',
+      bookingStatus: s.status ?? '',
+      openingAlerts: s.openingAlerts === 1,
+      createdAt: s.createdAt,
+      lastActiveAt: s.lastActiveAt,
+    })),
+  };
 }
 
 // POST /api/notify/processPending (authed) — manual cron trigger for testing.

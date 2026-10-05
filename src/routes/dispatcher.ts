@@ -64,6 +64,7 @@ import {
   handleGetPushMessage,
   setLineMonthlyCapHandler,
   getNotificationLogsHandler,
+  getPushSubscribersHandler,
   processPendingHandler,
 } from './notifications';
 
@@ -336,6 +337,7 @@ const POST_ROUTES: Record<string, Route> = {
     handler: async (ctx) => setLineMonthlyCapHandler(ctx.env, ctx.body, ctx.user!),
   },
   getNotificationLogs: { auth: true, handler: async (ctx) => getNotificationLogsHandler(ctx.env, ctx.body) },
+  getPushSubscribers: { auth: true, handler: async (ctx) => getPushSubscribersHandler(ctx.env, ctx.body, ctx.user!) },
   processPendingNotifications: {
     auth: true,
     handler: async (ctx) => processPendingHandler(ctx.env, ctx.user!),

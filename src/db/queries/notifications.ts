@@ -71,6 +71,44 @@ export function queueOpeningAlertRows(
     .then((res) => Number(res.meta?.changes ?? 0));
 }
 
+export interface PushSubscriberRow {
+  endpoint: string;
+  ref: string;
+  openingAlerts: number;
+  createdAt: string;
+  lastActiveAt: string;
+  visitorName: string | null;
+  visitDateISO: string | null;
+  status: string | null;
+}
+
+/** Newest subscriptions with the booking each follows (live table only). */
+export function listPushSubscribers(db: D1Database, limit: number): Promise<PushSubscriberRow[]> {
+  return db
+    .prepare(
+      `SELECT p.endpoint, p.ref, p.openingAlerts, p.createdAt, p.lastActiveAt,
+              r.visitorName, r.visitDateISO, r.status
+         FROM push_subscriptions p LEFT JOIN reservations r ON r.ref = p.ref AND p.ref <> ''
+        ORDER BY p.lastActiveAt DESC LIMIT ?`
+    )
+    .bind(limit)
+    .all<PushSubscriberRow>()
+    .then((res) => res.results ?? []);
+}
+
+export function countPushSubscribers(
+  db: D1Database
+): Promise<{ total: number; openingAlerts: number; bookings: number }> {
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS total, COALESCE(SUM(openingAlerts), 0) AS openingAlerts,
+              COALESCE(SUM(CASE WHEN ref <> '' THEN 1 ELSE 0 END), 0) AS bookings
+         FROM push_subscriptions`
+    )
+    .first<{ total: number; openingAlerts: number; bookings: number }>()
+    .then((r) => r ?? { total: 0, openingAlerts: 0, bookings: 0 });
+}
+
 /** Oldest pending push rows — what one delivery run works through. */
 export function getPendingPushNotifications(db: D1Database, limit: number): Promise<NotificationRow[]> {
   return db

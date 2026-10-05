@@ -1,4 +1,4 @@
-import { BOOKING_MAX_DAYS_AHEAD, BOOKING_WINDOW_SETTING_KEY } from '../constants';
+import { BOOKING_MAX_DAYS_AHEAD, BOOKING_WINDOW_SETTING_KEY, SCHEDULED_OPENINGS_SETTING_KEY } from '../constants';
 import { isValidISODate, sanitizeStr } from '../config';
 import { getSettings } from '../db/queries/settings';
 import { Env } from '../types';
@@ -12,6 +12,12 @@ export interface BookingWindowConfig {
   closedDates: Record<string, string>;
   /** Dates the calendar blocks by default (weekend, holiday) that are opened anyway. */
   openDates: string[];
+  /**
+   * Dates that open only from a set instant (ISO, UTC), e.g. a Sunday opened at
+   * 12:00 Bangkok. Read from admin_settings.scheduledOpenings — a sibling key, so
+   * the dashboard booking-window card (which rebuilds bookingWindow) keeps it.
+   */
+  openAt: Record<string, string>;
 }
 
 /** A year of overrides is far more than anyone keeps; bounds the public payload. */
@@ -23,7 +29,7 @@ const DEFAULT_CLOSED_MESSAGE = '⚠️ ขณะนี้ปิดรับจ�
  * Sanitise `admin_settings.bookingWindow`. A missing or malformed key means
  * OPEN with no overrides — a bad settings save must never shut the site.
  */
-export function parseBookingWindow(raw: unknown): BookingWindowConfig {
+export function parseBookingWindow(raw: unknown, scheduled?: unknown): BookingWindowConfig {
   const cfg = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 
   const closedDates: Record<string, string> = {};
@@ -42,18 +48,29 @@ export function parseBookingWindow(raw: unknown): BookingWindowConfig {
       )
     : [];
 
+  const openAt: Record<string, string> = {};
+  if (scheduled && typeof scheduled === 'object' && !Array.isArray(scheduled)) {
+    for (const [date, at] of Object.entries(scheduled as Record<string, unknown>)) {
+      if (Object.keys(openAt).length >= MAX_DATES) break;
+      const t = Date.parse(String(at));
+      if (isValidISODate(date) && !isNaN(t)) openAt[date] = new Date(t).toISOString();
+    }
+  }
+
   return {
     open: cfg.open !== false,
     closedMessage: sanitizeStr(cfg.closedMessage, 500),
     closedDates,
     openDates,
+    openAt,
   };
 }
 
 export async function getBookingWindow(env: Env): Promise<BookingWindowConfig> {
   try {
     const settings = await getSettings(env.DB);
-    return parseBookingWindow((settings as Record<string, unknown>)[BOOKING_WINDOW_SETTING_KEY]);
+    const all = settings as Record<string, unknown>;
+    return parseBookingWindow(all[BOOKING_WINDOW_SETTING_KEY], all[SCHEDULED_OPENINGS_SETTING_KEY]);
   } catch {
     return parseBookingWindow(undefined);
   }
@@ -111,20 +128,37 @@ const HOLIDAYS = new Set([
   '2027-12-31',
 ]);
 
-/** Bookable dates that open between two instants: the window's new tail, minus
- *  weekends, holidays and admin-closed dates (admin-opened dates count). */
+/** Weekend, holiday or admin-closed, unless an admin opened it. */
+function isShut(iso: string, cfg: BookingWindowConfig): boolean {
+  if (iso in cfg.closedDates) return true;
+  if (cfg.openDates.includes(iso)) return false;
+  const day = new Date(iso + 'T00:00:00Z').getUTCDay();
+  return day === 0 || day === 6 || HOLIDAYS.has(iso);
+}
+
+/**
+ * Bookable dates that open in (from, to]: the window's new tail at the 07:00
+ * roll, plus scheduled openings whose time falls in the range. A date with a
+ * scheduled time opens then, not at the roll.
+ */
 export function datesOpenedBetween(from: Date, to: Date, cfg: BookingWindowConfig): string[] {
-  const out: string[] = [];
+  const out = new Set<string>();
   const last = lastOpenDateISO(to);
   const d = new Date(lastOpenDateISO(from) + 'T00:00:00Z');
   for (d.setUTCDate(d.getUTCDate() + 1); d.toISOString().slice(0, 10) <= last; d.setUTCDate(d.getUTCDate() + 1)) {
     const iso = d.toISOString().slice(0, 10);
-    const weekendOrHoliday = d.getUTCDay() === 0 || d.getUTCDay() === 6 || HOLIDAYS.has(iso);
-    if (iso in cfg.closedDates) continue;
-    if (weekendOrHoliday && !cfg.openDates.includes(iso)) continue;
-    out.push(iso);
+    if (!isShut(iso, cfg) && !cfg.openAt[iso]) out.add(iso);
   }
-  return out;
+  for (const [iso, at] of Object.entries(cfg.openAt)) {
+    const t = Date.parse(at);
+    if (t > from.getTime() && t <= to.getTime() && iso <= last && !isShut(iso, cfg)) out.add(iso);
+  }
+  return [...out].sort();
+}
+
+/** HH:MM in Bangkok time, e.g. "12:00". */
+export function bangkokTime(at: Date): string {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' }).format(at);
 }
 
 /** Why a public booking for `visitDateISO` is refused, or null when it may go ahead. */
@@ -134,6 +168,10 @@ export function bookingWindowError(cfg: BookingWindowConfig, visitDateISO: strin
   const note = cfg.closedDates[visitDateISO];
   if (note !== undefined) {
     return `⚠️ วันที่เลือกปิดรับจอง${note ? ` (${note})` : ''} กรุณาเลือกวันอื่น`;
+  }
+  const at = cfg.openAt[visitDateISO];
+  if (at && Date.now() < Date.parse(at)) {
+    return `⚠️ วันที่เลือกจะเปิดรับจองเวลา ${bangkokTime(new Date(at))} น. กรุณารอสักครู่`;
   }
   return null;
 }

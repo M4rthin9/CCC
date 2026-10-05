@@ -291,13 +291,20 @@ export default {
 };
 
 // Two triggers (the Workers Free plan allows five per account):
-//   "0 0,17 * * *" — 17:00 UTC daily housekeeping, 00:00 UTC "booking is open" alert
-//   "50 23 * * *"  — 23:50 UTC "booking opens in 10 minutes" alert
-// 00:00 / 23:50 UTC are 07:00 / 06:50 Bangkok.
+//   "0 * * * *"  — every hour: "booking is open" alert for anything opening now
+//                  (07:00 Bangkok roll, or a scheduled opening such as 12:00);
+//                  at 17:00 UTC also the daily housekeeping.
+//   "50 * * * *" — every hour: "booking opens in 10 minutes" alert.
+// An hour with nothing opening reads one settings row and stops.
 async function runCron(cron: string, scheduledTime: number, env: Env): Promise<void> {
-  const job = cron === '50 23 * * *' ? 'soon' : new Date(scheduledTime).getUTCHours() === 0 ? 'open' : 'daily';
+  const job = cron === '50 * * * *' ? 'soon' : 'open';
   try {
-    if (job === 'daily') {
+    console.log('[Cron] opening alert:', JSON.stringify(await broadcastOpening(env, job, scheduledTime)));
+  } catch (e) {
+    console.error('[Cron] opening alert error:', String(e));
+  }
+  try {
+    if (job === 'open' && new Date(scheduledTime).getUTCHours() === 17) {
       const result = await cleanupExpiredDiscipline(env);
       await deleteExpiredRefreshTokens(env);
       // Housekeeping only: countActiveTableBookings already ignores lapsed holds,
@@ -330,8 +337,6 @@ async function runCron(cron: string, scheduledTime: number, env: Env): Promise<v
       } catch (e) {
         console.error('[Cron] archive error:', String(e));
       }
-    } else {
-      console.log('[Cron] opening alert:', JSON.stringify(await broadcastOpening(env, job, scheduledTime)));
     }
   } catch (e) {
     console.error('[Cron] error:', String(e));

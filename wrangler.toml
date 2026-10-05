@@ -89,9 +89,9 @@ binding = "AI"
 # of the daily job now — a sweep with nothing to move is a single indexed COUNT.
 [triggers]
 # Two triggers — the Workers Free plan allows five per account (see runCron):
-# 17:00 UTC daily housekeeping + 00:00 UTC (07:00 Bangkok) "booking is open",
-# and 23:50 UTC (06:50 Bangkok) "booking opens in 10 minutes".
-crons = ["0 0,17 * * *", "50 23 * * *"]
+# on the hour, "booking is open" alerts (07:00 Bangkok roll or a scheduled
+# opening) plus 17:00 UTC housekeeping; at :50, "opens in 10 minutes" alerts.
+crons = ["0 * * * *", "50 * * * *"]
 
 # ── Push delivery queue (Queues are on the Workers Free plan) ─────
 # A broadcast is written as pending rows; each queue message sends one batch of

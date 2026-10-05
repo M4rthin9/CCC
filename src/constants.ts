@@ -146,6 +146,9 @@ export const DEFAULT_PUBLIC_VISITS_PER_DAY = 20;
 // `closedDates` shuts a date that would otherwise be bookable, `openDates`
 // opens one the booking calendar blocks by default (a weekend or holiday).
 export const BOOKING_WINDOW_SETTING_KEY = 'bookingWindow';
+// Dates that open at a set instant instead of the 07:00 roll: { "2026-10-11": "2026-10-05T05:00:00Z" }.
+// Its own key so the dashboard's booking-window card cannot drop it on save.
+export const SCHEDULED_OPENINGS_SETTING_KEY = 'scheduledOpenings';
 // Public bookings reach this many weekdays ahead (Sat/Sun not counted); the
 // next date opens at 07:00 Bangkok. Mirrors BOOKING_MAX_DAYS_AHEAD in the
 // frontend's calendar.ts.

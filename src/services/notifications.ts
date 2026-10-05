@@ -22,7 +22,7 @@ import {
   pushSubscriptionsByRef,
   queueOpeningAlertRows,
 } from '../db/queries/notifications';
-import { datesOpenedBetween, getBookingWindow } from './bookingWindow';
+import { bangkokTime, datesOpenedBetween, getBookingWindow } from './bookingWindow';
 import { getLineMonthlyCap } from '../db/queries/settings';
 import { Env } from '../types';
 import { sendPush, PushResult } from './push';
@@ -303,7 +303,7 @@ export async function broadcastOpening(
   const when = dates.map(thaiDate).join(', ');
   const message =
     kind === 'soon'
-      ? { title: 'อีก 10 นาทีเปิดจอง', body: `${when} จะเปิดให้จองเวลา 07:00 น.` }
+      ? { title: 'อีก 10 นาทีเปิดจอง', body: `${when} จะเปิดให้จองเวลา ${bangkokTime(new Date(roll))} น.` }
       : { title: 'เปิดจองแล้ว', body: `${when} เปิดให้จองแล้ว จำนวนจำกัด จองได้เลย` };
 
   // One row per opted-in browser, written in a single statement; the queue

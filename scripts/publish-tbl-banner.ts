@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { AwsClient } from 'aws4fetch';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -81,25 +82,35 @@ async function main(): Promise<void> {
     console.log('TBL promotion banner is already registered; existing settings preserved.');
     return;
   }
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID || '';
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID || '';
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '';
+  if (!/^[0-9a-f]{32}$/.test(account) || !accessKeyId || !secretAccessKey) {
+    throw new Error('Set CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY for the S3 upload.');
+  }
+  // Bucket-scoped R2 credentials use SigV4 through S3, not Wrangler's REST API.
+  const client = new AwsClient({ accessKeyId, secretAccessKey, service: 's3', region: 'auto' });
+  const uploaded = await client.fetch(`https://${account}.r2.cloudflarestorage.com/ccc-slips/promo/${AD.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable' },
+    body: new Uint8Array(bytes).buffer,
+  });
+  if (!uploaded.ok)
+    throw new Error(`R2 S3 banner upload failed (HTTP ${uploaded.status}). Check the bucket-scoped credentials.`);
+  // Verify storage before publishing its ID in settings; failed uploads cannot leave a broken advert.
+  const stored = await client.fetch(`https://${account}.r2.cloudflarestorage.com/ccc-slips/promo/${AD.id}`);
+  if (
+    !stored.ok ||
+    createHash('sha256')
+      .update(Buffer.from(await stored.arrayBuffer()))
+      .digest('hex') !== SHA256
+  ) {
+    throw new Error('Stored banner checksum verification failed; promotion settings were not changed.');
+  }
   const temp = mkdtempSync(join(tmpdir(), 'ccc-tbl-promo-'));
-  const imagePath = join(temp, 'banner.png');
   const sqlPath = join(temp, 'settings.sql');
   const quote = (value: string) => `'${value.replace(/'/g, "''")}'`;
   try {
-    writeFileSync(imagePath, bytes);
-    wrangler([
-      'r2',
-      'object',
-      'put',
-      `ccc-slips/promo/${AD.id}`,
-      '--remote',
-      '--file',
-      imagePath,
-      '--content-type',
-      'image/png',
-      '--cache-control',
-      'public, max-age=31536000, immutable',
-    ]);
     const now = new Date().toISOString();
     writeFileSync(
       sqlPath,
@@ -124,11 +135,10 @@ async function main(): Promise<void> {
       throw new Error('Published banner was not found.');
     console.log(`Published TBL banner ${AD.id}. Existing banners and reservation controls preserved.`);
   } finally {
-    unlinkSync(imagePath);
     try {
       unlinkSync(sqlPath);
     } catch {
-      /* no SQL file if upload failed */
+      /* no SQL file if writing failed */
     }
     rmdirSync(temp);
   }

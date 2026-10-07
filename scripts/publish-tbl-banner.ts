@@ -36,7 +36,8 @@ function wrangler(args: string[]): string {
     const output = String(failure.stderr ?? '') + String(failure.stdout ?? '');
     const codes = Array.from(output.matchAll(/\[code:\s*(\d+)\]/g), (match) => match[1]);
     throw new Error(
-      `Cloudflare ${args[0]} ${args[1]} failed (exit ${failure.status ?? 'unknown'}${codes.length ? `, API code ${codes.join(',')}` : ''}). Check workflow credentials and resource permissions.`
+      `Cloudflare ${args[0]} ${args[1]} failed (exit ${failure.status ?? 'unknown'}${codes.length ? `, API code ${codes.join(',')}` : ''}). Check workflow credentials and resource permissions.`,
+      { cause: error }
     );
   }
 }

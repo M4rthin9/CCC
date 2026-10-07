@@ -30,9 +30,14 @@ function wrangler(args: string[]): string {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-  } catch {
+  } catch (error) {
     // CLI exceptions include arguments; never log SQL containing private settings.
-    throw new Error('Cloudflare operation failed. Check workflow credentials and resource permissions.');
+    const failure = error as { status?: number; stderr?: string; stdout?: string };
+    const output = String(failure.stderr ?? '') + String(failure.stdout ?? '');
+    const codes = Array.from(output.matchAll(/\[code:\s*(\d+)\]/g), (match) => match[1]);
+    throw new Error(
+      `Cloudflare ${args[0]} ${args[1]} failed (exit ${failure.status ?? 'unknown'}${codes.length ? `, API code ${codes.join(',')}` : ''}). Check workflow credentials and resource permissions.`
+    );
   }
 }
 

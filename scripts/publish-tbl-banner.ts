@@ -34,6 +34,8 @@ function wrangler(args: string[]): string {
     // CLI exceptions include arguments; never log SQL containing private settings.
     const failure = error as { status?: number; stderr?: string; stdout?: string };
     const output = String(failure.stderr ?? '') + String(failure.stdout ?? '');
+    // Image-upload output contains only the public object path, never settings SQL.
+    if (args[0] === 'r2') console.error(output.slice(-2000));
     const codes = Array.from(output.matchAll(/\[code:\s*(\d+)\]/g), (match) => match[1]);
     throw new Error(
       `Cloudflare ${args[0]} ${args[1]} failed (exit ${failure.status ?? 'unknown'}${codes.length ? `, API code ${codes.join(',')}` : ''}). Check workflow credentials and resource permissions.`,

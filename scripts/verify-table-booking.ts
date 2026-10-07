@@ -6,7 +6,22 @@ import { handleGetPublicSettings, handleSetTableBookingStatus } from '../src/rou
 import type { Env } from '../src/types';
 import { lastOpenDateISO } from '../src/services/bookingWindow';
 import { handlePublicCancelBooking } from '../src/routes/reservations';
-import { withTableBanner } from './publish-tbl-banner';
+import { parseWranglerJson, withTableBanner } from './publish-tbl-banner';
+
+const d1Result = [{ results: [], meta: { changes: 1 } }];
+assert.deepEqual(parseWranglerJson(JSON.stringify(d1Result)), d1Result);
+assert.deepEqual(
+  parseWranglerJson(
+    `├ Checking if the file needs uploading\n├ Upload complete\n${JSON.stringify(d1Result, null, 2)}\n`
+  ),
+  d1Result
+);
+assert.deepEqual(parseWranglerJson('\r\n[]\r\n'), []);
+assert.throws(() => parseWranglerJson('Missing result'), /did not return/);
+assert.throws(
+  () => parseWranglerJson('[{"private":"broken JSON'),
+  /^Error: Could not parse the Wrangler D1 JSON result\.$/
+);
 
 const promoSettings = {
   tableBooking: { enabled: false, maintenance: true, opensAt: '' },

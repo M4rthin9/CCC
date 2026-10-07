@@ -16,6 +16,23 @@ const AD = {
   active: true,
 };
 
+interface D1CommandResult {
+  results?: Array<{ value?: unknown }>;
+  meta?: { changes?: number };
+}
+
+/** File execution may prepend upload progress even with Wrangler's --json flag. */
+export function parseWranglerJson(output: string): D1CommandResult[] {
+  const start = output.search(/^\s*\[\s*(?:\{|\])/m);
+  if (start < 0) throw new Error('Wrangler did not return a D1 JSON result.');
+  try {
+    return JSON.parse(output.slice(start)) as D1CommandResult[];
+  } catch (error) {
+    // JSON may contain private settings; never include it in an error message.
+    throw new Error('Could not parse the Wrangler D1 JSON result.', { cause: error });
+  }
+}
+
 /** Append only the advert; keep existing banners, popup, notice and booking controls. */
 export function withTableBanner(settings: Record<string, unknown>): Record<string, unknown> {
   const promo = settings.promo as { ads?: Array<{ id: string }> } | undefined;
@@ -46,7 +63,7 @@ function wrangler(args: string[]): string {
 }
 
 function readSettings(): string {
-  const result = JSON.parse(
+  const result = parseWranglerJson(
     wrangler([
       'd1',
       'execute',
@@ -60,6 +77,16 @@ function readSettings(): string {
   const raw = result[0]?.results?.[0]?.value;
   if (typeof raw !== 'string') throw new Error('Production settings were not found.');
   return raw;
+}
+
+function invalidateSettings(now: string): void {
+  const sql = ['data_version', 'data_version:settings']
+    .map(
+      (key) =>
+        `INSERT INTO settings (key,value,savedBy,savedAt) VALUES ('${key}','${Math.floor(Date.now() / 1000)}','system','${now}') ON CONFLICT(key) DO UPDATE SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT),savedAt=excluded.savedAt;`
+    )
+    .join('\n');
+  wrangler(['d1', 'execute', 'ccc-reservations', '--remote', '--command', sql, '--yes']);
 }
 
 async function main(): Promise<void> {
@@ -79,6 +106,8 @@ async function main(): Promise<void> {
   const current = JSON.parse(raw);
   const updated = withTableBanner(current);
   if (updated === current) {
+    // A previous run may have saved the advert but stopped before invalidating caches.
+    invalidateSettings(new Date().toISOString());
     console.log('TBL promotion banner is already registered; existing settings preserved.');
     return;
   }
@@ -116,20 +145,11 @@ async function main(): Promise<void> {
       sqlPath,
       `UPDATE settings SET value=${quote(JSON.stringify(updated))}, savedBy='github-actions:tbl-banner', savedAt=${quote(now)} WHERE key='admin_settings' AND value=${quote(raw)};`
     );
-    const result = JSON.parse(
+    const result = parseWranglerJson(
       wrangler(['d1', 'execute', 'ccc-reservations', '--remote', '--json', '--file', sqlPath, '--yes'])
     );
     if (result[0]?.meta?.changes !== 1) throw new Error('Settings changed during upload; rerun to append safely.');
-    writeFileSync(
-      sqlPath,
-      ['data_version', 'data_version:settings']
-        .map(
-          (key) =>
-            `INSERT INTO settings (key,value,savedBy,savedAt) VALUES (${quote(key)},${quote(String(Math.floor(Date.now() / 1000)))},'system',${quote(now)}) ON CONFLICT(key) DO UPDATE SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT),savedAt=excluded.savedAt;`
-        )
-        .join('\n')
-    );
-    wrangler(['d1', 'execute', 'ccc-reservations', '--remote', '--file', sqlPath, '--yes']);
+    invalidateSettings(now);
     const verified = JSON.parse(readSettings());
     if (!verified.promo.ads.some((ad: { id: string }) => ad.id === AD.id))
       throw new Error('Published banner was not found.');

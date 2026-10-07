@@ -333,6 +333,7 @@ export const PUBLIC_LOOKUP_FIELDS = [
   'timestamp',
   'status',
   'bookingType',
+  'tableAgreementVersion',
   'visitDate',
   'visitDateISO',
   'prisonerName',

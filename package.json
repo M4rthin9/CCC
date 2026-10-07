@@ -18,6 +18,7 @@
     "db:sanitize:dev": "wrangler d1 execute ccc-reservations-dev --remote --file=./scripts/sanitize-dev-db.sql",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/verify-smoke.ts",
+    "smoke:table": "tsx scripts/verify-table-booking.ts",
     "lint": "eslint src scripts",
     "lint:fix": "eslint src scripts --fix",
     "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\" \"*.{json,mjs}\" \"**/*.{md,yml,yaml}\" \"!data/**\" \"!node_modules/**\"",

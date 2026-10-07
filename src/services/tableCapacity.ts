@@ -14,6 +14,8 @@ export interface TableBookingConfig {
   enabled: boolean;
   /** True keeps the table-booking page behind a maintenance/coming-soon popup. */
   maintenance: boolean;
+  /** UTC instant at which public booking opens after the announcement countdown. */
+  opensAt: string;
   /** Tables sellable per visit date. */
   perDay: number;
   /** Minutes an unpaid booking keeps its slot. */
@@ -25,6 +27,7 @@ export interface TableBookingConfig {
 const DEFAULT_CONFIG: TableBookingConfig = {
   enabled: true,
   maintenance: true,
+  opensAt: '',
   perDay: DEFAULT_TABLES_PER_DAY,
   holdMinutes: DEFAULT_TABLE_HOLD_MINUTES,
   seatsPerTable: DEFAULT_TABLE_SEATS,
@@ -39,9 +42,33 @@ export function positiveInt(value: unknown, fallback: number, max: number): numb
 
 /**
  * Resolve the table-booking knobs from `admin_settings.tableBooking`, defaulting
- * to 10 tables/day on a 60-minute hold. A missing or malformed key must never
- * take the flow down, so every field falls back individually.
+ * to 10 tables/day on a 60-minute hold. Missing settings keep the maintenance
+ * gate closed; an invalid opening timestamp must also keep bookings closed.
  */
+export function parseTableBookingConfig(raw: unknown): TableBookingConfig {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_CONFIG };
+  const cfg = raw as Record<string, unknown>;
+  const timestamp = cfg.opensAt ? Date.parse(String(cfg.opensAt)) : NaN;
+  return {
+    enabled: cfg.enabled !== false,
+    maintenance: cfg.maintenance !== false || (!!cfg.opensAt && !Number.isFinite(timestamp)),
+    opensAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '',
+    perDay: positiveInt(cfg.perDay, DEFAULT_CONFIG.perDay, 500),
+    holdMinutes: positiveInt(cfg.holdMinutes, DEFAULT_CONFIG.holdMinutes, 60 * 24 * 7),
+    seatsPerTable: positiveInt(cfg.seatsPerTable, DEFAULT_CONFIG.seatsPerTable, 50),
+  };
+}
+
+export function tableBookingOpeningError(config: TableBookingConfig, now: Date = new Date()): string | null {
+  if (!config.enabled || config.maintenance) {
+    return '⚠️ ขณะนี้ปิดรับจองโต๊ะชั่วคราว กรุณาลองใหม่อีกครั้งภายหลัง';
+  }
+  if (config.opensAt && Date.parse(config.opensAt) > now.getTime()) {
+    return 'ยังไม่ถึงเวลาเปิดรับจองโต๊ะ (TBL) กรุณารอให้นับถอยหลังครบก่อนทำการจอง';
+  }
+  return null;
+}
+
 export async function getTableBookingConfig(env: Env): Promise<TableBookingConfig> {
   let raw: unknown;
   try {
@@ -50,15 +77,7 @@ export async function getTableBookingConfig(env: Env): Promise<TableBookingConfi
   } catch {
     return { ...DEFAULT_CONFIG };
   }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_CONFIG };
-  const cfg = raw as Record<string, unknown>;
-  return {
-    enabled: cfg.enabled !== false,
-    maintenance: cfg.maintenance !== false,
-    perDay: positiveInt(cfg.perDay, DEFAULT_CONFIG.perDay, 500),
-    holdMinutes: positiveInt(cfg.holdMinutes, DEFAULT_CONFIG.holdMinutes, 60 * 24 * 7),
-    seatsPerTable: positiveInt(cfg.seatsPerTable, DEFAULT_CONFIG.seatsPerTable, 50),
-  };
+  return parseTableBookingConfig(raw);
 }
 
 /** ISO instant at which a hold taken now lapses. */

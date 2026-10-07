@@ -57,6 +57,8 @@ const RESERVATION_COLUMNS = [
   'bookingType',
   'holdExpiresAt',
   'cancelAt',
+  'tableAgreementVersion',
+  'tableAgreementAcceptedAt',
 ];
 
 // slip_base64 holds multi-MB base64 slip uploads and is intentionally NOT part

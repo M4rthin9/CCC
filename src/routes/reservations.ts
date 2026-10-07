@@ -54,6 +54,7 @@ import {
 import { logEvent } from '../services/logger';
 import { deleteSlipsForRef } from '../services/slipStorage';
 import { archiveOldReservations } from '../services/archiveService';
+import { TABLE_NO_CHANGES_AGREEMENT_VERSIONS } from '../services/tableAgreement';
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
 import { getPrisonerById } from '../db/queries/prisoners';
@@ -207,7 +208,7 @@ export async function getTableCountsByDate(env: Env): Promise<Record<string, unk
         perDay: config.perDay,
         holdMinutes: config.holdMinutes,
         seatsPerTable: config.seatsPerTable,
-        enabled: config.enabled,
+        enabled: config.enabled && !config.maintenance,
       };
     }
   }
@@ -222,7 +223,7 @@ export async function getTableCountsByDate(env: Env): Promise<Record<string, unk
     perDay: config.perDay,
     holdMinutes: config.holdMinutes,
     seatsPerTable: config.seatsPerTable,
-    enabled: config.enabled,
+    enabled: config.enabled && !config.maintenance,
   };
 }
 
@@ -529,6 +530,21 @@ export async function handlePublicCancelBooking(
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+
+  if (
+    rows.some(
+      (row) =>
+        (row.bookingType === BOOKING_TYPE_TABLE || row.ref.startsWith(TABLE_REF_PREFIX)) &&
+        TABLE_NO_CHANGES_AGREEMENT_VERSIONS.includes(String(row.tableAgreementVersion || ''))
+    )
+  ) {
+    return {
+      status: 'error',
+      message:
+        'ท่านได้ยอมรับข้อตกลงและยืนยันการจองโต๊ะ (TBL) แล้ว ไม่สามารถขอแก้ไข เปลี่ยนแปลง เลื่อนวัน หรือยกเลิกการจองได้',
+      changesLocked: true,
+    };
+  }
 
   // Same guard the staff path applies: a visit that has already happened cannot
   // be cancelled retroactively. Its absence here was an asymmetry, not a rule.

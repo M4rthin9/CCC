@@ -40,7 +40,13 @@ import { getUsersHandler, handleCreateUser, handleUpdateUser, handleDeleteUser }
 import { getRolesHandler, handleCreateRole } from './roles';
 import { handleGetEventLogs, handleLogClientEvent } from './eventlog';
 import { handleAddNote, handleGetNotes } from './notes';
-import { handleSaveSettings, handleGetSettings, handleGetPublicSettings, handleGetDataVersion } from './settings';
+import {
+  handleSaveSettings,
+  handleGetSettings,
+  handleGetPublicSettings,
+  handleGetDataVersion,
+  handleSetTableBookingStatus,
+} from './settings';
 import {
   handleUploadSlip,
   handleUpdateSlipAndStatus,
@@ -280,6 +286,10 @@ const POST_ROUTES: Record<string, Route> = {
   deleteUser: { auth: true, handler: async (ctx) => handleDeleteUser(ctx.env, ctx.body, ctx.user!) },
   updateBooking: { auth: true, handler: async (ctx) => handleUpdateBooking(ctx.env, ctx.body, ctx.user!) },
   saveSettings: { auth: true, handler: async (ctx) => handleSaveSettings(ctx.env, ctx.body, ctx.user!) },
+  setTableBookingStatus: {
+    auth: true,
+    handler: async (ctx) => handleSetTableBookingStatus(ctx.env, ctx.body, ctx.user!),
+  },
   getSettings: { auth: true, handler: async (ctx) => handleGetSettings(ctx.env) },
   uploadPromoImage: {
     auth: true,

@@ -64,6 +64,9 @@ export interface Prisoner {
 export interface Reservation {
   [key: string]: unknown;
   ref: string;
+  /** Server-recorded evidence of the TBL terms accepted before public booking. */
+  tableAgreementVersion?: string;
+  tableAgreementAcceptedAt?: string;
   timestamp?: string;
   visitorName?: string;
   visitorId?: string;

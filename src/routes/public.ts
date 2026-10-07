@@ -28,8 +28,10 @@ import {
   dayFullMessage,
   getTableBookingConfig,
   holdExpiryFrom,
+  tableBookingOpeningError,
 } from '../services/tableCapacity';
 import { getPublicBookingConfig, visitsFullMessage } from '../services/publicCapacity';
+import { TABLE_AGREEMENT_TEXT, TABLE_AGREEMENT_VERSION, tableAgreementError } from '../services/tableAgreement';
 import { bookingWindowError, getBookingWindow } from '../services/bookingWindow';
 import { BOOKING_TYPE_PRISONER, BOOKING_TYPE_TABLE, TABLE_REF_PREFIX } from '../constants';
 import { normalizeVisitDateISO } from '../config';
@@ -252,9 +254,11 @@ export async function handleSaveTableReservation(
   meta: { ip: string; userAgent: string }
 ): Promise<Record<string, unknown>> {
   const config = await getTableBookingConfig(env);
-  if (!config.enabled) {
-    return { status: 'error', message: '⚠️ ขณะนี้ปิดรับจองโต๊ะชั่วคราว กรุณาลองใหม่อีกครั้งภายหลัง' };
-  }
+  const openingError = tableBookingOpeningError(config);
+  if (openingError) return { status: 'error', message: openingError, closed: true, opensAt: config.opensAt };
+
+  const agreementError = tableAgreementError(body);
+  if (agreementError) return { status: 'error', message: agreementError, agreementRequired: true };
 
   // Unlike the legacy visit flow (whose frontend mints its own ref), a table
   // booking lets the server assign it — same '__AUTO__' sentinel handleCreateBooking uses.
@@ -325,6 +329,8 @@ export async function handleSaveTableReservation(
     version: 1,
     createdBy: 'public',
     source: 'public-table',
+    tableAgreementVersion: TABLE_AGREEMENT_VERSION,
+    tableAgreementAcceptedAt: now,
   };
 
   await insertReservation(env.DB, row);
@@ -345,7 +351,12 @@ export async function handleSaveTableReservation(
     'public',
     'table_booking_submitted',
     ref,
-    { visitorName: data.visitorName, visitDate: data.visitDate, total: data.total },
+    {
+      visitorName: data.visitorName,
+      visitDate: data.visitDate,
+      total: data.total,
+      agreement: { version: TABLE_AGREEMENT_VERSION, acceptedAt: now, text: TABLE_AGREEMENT_TEXT },
+    },
     'success',
     meta
   );

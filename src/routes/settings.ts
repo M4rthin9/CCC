@@ -8,6 +8,37 @@ import { getPromoConfig, promoImageUrl } from '../services/promo';
 import { getPdpaConfig } from '../services/pdpa';
 import { Env } from '../types';
 
+/** Opening is always preceded by two hours; closing also cancels a scheduled opening. */
+export async function handleSetTableBookingStatus(
+  env: Env,
+  body: Record<string, unknown>,
+  user: { username: string }
+): Promise<Record<string, unknown>> {
+  if (!(await hasPermission(env.DB, user.username, 'manage_users'))) {
+    return { status: 'error', message: 'ไม่มีสิทธิ์บันทึกตั้งค่า' };
+  }
+  if (typeof body.enabled !== 'boolean') return { status: 'error', message: 'กรุณาระบุ enabled เป็น boolean' };
+  const settings = await getSettings(env.DB);
+  const existing = settings.tableBooking;
+  const tableBooking = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
+  const now = new Date();
+  const opensAt = body.enabled ? new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString() : '';
+  await saveSettings(
+    env.DB,
+    {
+      ...settings,
+      tableBooking: { ...tableBooking, enabled: body.enabled, maintenance: !body.enabled, opensAt },
+      _savedBy: user.username,
+      _savedAt: now.toISOString(),
+    },
+    user.username,
+    now.toISOString()
+  );
+  await bumpDataVersion(env.DB, 'settings');
+  await logEvent(env, user.username, 'set_table_booking_status', '', { enabled: body.enabled, opensAt }, 'success');
+  return { status: 'ok', opensAt };
+}
+
 export async function handleSaveSettings(
   env: Env,
   body: Record<string, unknown>,
@@ -72,7 +103,7 @@ export async function handleGetPublicSettings(env: Env, origin: string): Promise
     status: 'ok',
     paymentEnabled: payment.enabled,
     paymentClosedMessage: payment.closedMessage,
-    tableBooking,
+    tableBooking: { ...tableBooking, serverTime: new Date().toISOString() },
     publicBooking,
     bookingWindow,
     promo: {

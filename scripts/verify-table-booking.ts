@@ -6,6 +6,31 @@ import { handleGetPublicSettings, handleSetTableBookingStatus } from '../src/rou
 import type { Env } from '../src/types';
 import { lastOpenDateISO } from '../src/services/bookingWindow';
 import { handlePublicCancelBooking } from '../src/routes/reservations';
+import { withTableBanner } from './publish-tbl-banner';
+
+const promoSettings = {
+  tableBooking: { enabled: false, maintenance: true, opensAt: '' },
+  payment: { enabled: false },
+  promo: {
+    popupEnabled: false,
+    notice: { enabled: true, body: 'Existing notice' },
+    ads: [{ id: 'existing', active: false }],
+  },
+};
+const publishedPromo = withTableBanner(promoSettings) as typeof promoSettings;
+assert.deepEqual(publishedPromo.tableBooking, promoSettings.tableBooking);
+assert.deepEqual(publishedPromo.payment, promoSettings.payment);
+assert.equal(publishedPromo.promo.popupEnabled, false);
+assert.deepEqual(publishedPromo.promo.notice, promoSettings.promo.notice);
+assert.deepEqual(publishedPromo.promo.ads[0], promoSettings.promo.ads[0]);
+assert.equal(publishedPromo.promo.ads.length, 2);
+assert.equal(promoSettings.promo.ads.length, 1, 'publishing does not mutate the original settings');
+assert.equal(withTableBanner(publishedPromo), publishedPromo, 'reruns do not duplicate the banner');
+assert.throws(
+  () => withTableBanner({ promo: { ads: Array.from({ length: 10 }, (_, i) => ({ id: String(i) })) } }),
+  /limit/
+);
+assert.throws(() => withTableBanner({}), /required/);
 
 const opening = new Date('2026-10-07T05:00:00Z');
 const config = parseTableBookingConfig({ enabled: true, maintenance: false, opensAt: opening.toISOString() });

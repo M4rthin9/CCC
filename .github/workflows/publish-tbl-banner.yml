@@ -1,0 +1,32 @@
+name: Publish TBL promotion banner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/publish-tbl-banner.ts
+      - .github/workflows/publish-tbl-banner.yml
+  workflow_dispatch:
+
+concurrency:
+  group: publish-tbl-banner
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Upload and register existing TBL banner
+        run: npx tsx scripts/publish-tbl-banner.ts --publish
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}

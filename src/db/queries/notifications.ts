@@ -126,13 +126,16 @@ export function latestPushMessage(
   db: D1Database,
   endpoint: string,
   sinceIso: string
-): Promise<Pick<NotificationRow, 'ref' | 'type' | 'subject' | 'body'> | null> {
+): Promise<(Pick<NotificationRow, 'ref' | 'type' | 'subject' | 'body'> & { url?: string }) | null> {
   return db
     .prepare(
-      `SELECT ref, type, subject, body FROM notifications
-        WHERE channel = 'push' AND recipient = ? AND createdAt >= ? ORDER BY id DESC LIMIT 1`
+      `SELECT n.ref, n.type, n.subject, n.body, a.url FROM notifications n
+        LEFT JOIN push_announcements a ON n.type = 'announcement' AND a.id = n.ref
+        WHERE n.channel = 'push' AND n.recipient = ?
+          AND (n.createdAt >= ? OR (n.type = 'announcement' AND (n.status = 'pending' OR n.sentAt >= ?)))
+        ORDER BY n.id DESC LIMIT 1`
     )
-    .bind(endpoint, sinceIso)
+    .bind(endpoint, sinceIso, sinceIso)
     .first();
 }
 

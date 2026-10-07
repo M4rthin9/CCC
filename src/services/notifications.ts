@@ -260,7 +260,7 @@ export async function drainPushes(env: Env): Promise<Record<string, unknown>> {
 }
 
 /** Kick delivery of queued push rows: through the queue when bound, else inline. */
-async function startDrain(env: Env): Promise<void> {
+export async function startDrain(env: Env): Promise<void> {
   if (env.PUSH_QUEUE) await env.PUSH_QUEUE.send({ drain: true });
   else await drainPushes(env);
 }
@@ -270,7 +270,12 @@ export async function getPushMessage(env: Env, endpoint: string): Promise<Record
   const since = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
   const row = endpoint ? await latestPushMessage(env.DB, endpoint, since) : null;
   if (!row) return { status: 'ok', title: 'CC Cafe', body: 'มีการแจ้งเตือนใหม่ แตะเพื่อดูรายละเอียด', url: '/' };
-  const url = row.type.startsWith('booking_open') ? '/#/booking' : `/#/status?ref=${encodeURIComponent(row.ref)}`;
+  const url =
+    row.type === 'announcement'
+      ? row.url || '/'
+      : row.type.startsWith('booking_open')
+        ? '/#/booking'
+        : `/#/status?ref=${encodeURIComponent(row.ref)}`;
   return { status: 'ok', title: row.subject, body: row.body, url, tag: row.ref || row.type };
 }
 

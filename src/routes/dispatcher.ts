@@ -60,6 +60,7 @@ import { handleGeneratePromptPayQr } from './promptpay';
 import { handleGenerateSlipVerifyQr } from './slipQr';
 import { handleUploadPromoImage, handleDeletePromoImage } from './promo';
 import { handleRecordCookieConsent, handleGetCookieConsentStats } from './pdpa';
+import { getAnnouncementsHandler, sendAnnouncementHandler } from './announcements';
 import {
   handleNotify,
   handleLinkLine,
@@ -128,6 +129,7 @@ function originOf(ctx: RouteCtx): string {
 }
 
 const GET_ROUTES: Record<string, Route> = {
+  getPushAnnouncements: { auth: true, handler: async (ctx) => getAnnouncementsHandler(ctx.env, ctx.user!) },
   getBackendUrl: { auth: false, handler: async (ctx) => handleGetBackendUrl(ctx.request) },
   resolveUrl: { auth: false, handler: async (ctx) => handleResolveUrl(ctx.request) },
   getAll: { auth: true, handler: async (ctx) => getAllReservations(ctx.env) },
@@ -340,6 +342,8 @@ const POST_ROUTES: Record<string, Route> = {
   },
   linkLine: { auth: false, handler: async (ctx) => handleLinkLine(ctx.env, ctx.body) },
   notify: { auth: true, handler: async (ctx) => handleNotify(ctx.env, ctx.body) },
+  getPushAnnouncements: { auth: true, handler: async (ctx) => getAnnouncementsHandler(ctx.env, ctx.user!) },
+  sendPushAnnouncement: { auth: true, handler: async (ctx) => sendAnnouncementHandler(ctx.env, ctx.body, ctx.user!) },
   getPushPublicKey: { auth: false, handler: async (ctx) => getPushPublicKeyHandler(ctx.env) },
   getNotificationSettings: { auth: true, handler: async (ctx) => getNotificationSettingsHandler(ctx.env) },
   setLineMonthlyCap: {

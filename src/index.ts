@@ -191,6 +191,13 @@ app.get('/api/notify/settings', async (c) =>
 app.post('/api/notify/settings', async (c) =>
   runDispatch(c.req.raw, c.env, false, { action: 'setLineMonthlyCap', ...(await bodyToObj(c.req.raw)) })
 );
+// Staff composer and delivery history, restricted to notification managers.
+app.get('/api/notify/announcements', async (c) =>
+  runDispatch(c.req.raw, c.env, true, { action: 'getPushAnnouncements' })
+);
+app.post('/api/notify/announcements', async (c) =>
+  runDispatch(c.req.raw, c.env, false, { ...(await bodyToObj(c.req.raw)), action: 'sendPushAnnouncement' })
+);
 // The browser needs this before it can call pushManager.subscribe.
 app.get('/api/notify/publicKey', async (c) => runDispatch(c.req.raw, c.env, true, { action: 'getPushPublicKey' }));
 // Pushes carry no payload; the service worker fetches its message here.

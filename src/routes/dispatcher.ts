@@ -61,6 +61,7 @@ import { handleGenerateSlipVerifyQr } from './slipQr';
 import { handleUploadPromoImage, handleDeletePromoImage } from './promo';
 import { handleRecordCookieConsent, handleGetCookieConsentStats } from './pdpa';
 import { handleSaveFrontendContent } from './frontendContent';
+import { handleCompleteRefund, handleGetRefundEvidence } from './refundEvidence';
 import { getAnnouncementsHandler, sendAnnouncementHandler } from './announcements';
 import {
   handleNotify,
@@ -148,6 +149,10 @@ const GET_ROUTES: Record<string, Route> = {
     auth: true,
     handler: async (ctx) => handleGetSlipByRef(ctx.env, ctx.body, originOf(ctx)),
   },
+  getRefundEvidence: {
+    auth: true,
+    handler: async (ctx) => handleGetRefundEvidence(ctx.env, ctx.body, ctx.user!),
+  },
   getArchivedReservations: { auth: true, handler: async (ctx) => getArchivedReservationsHandler(ctx.env, ctx.body) },
   getDataVersion: { auth: true, quiet: true, handler: async (ctx) => handleGetDataVersion(ctx.env) },
   // The permission check must run against the AUTHENTICATED user, never against
@@ -197,6 +202,11 @@ const GET_ROUTES: Record<string, Route> = {
 };
 
 const POST_ROUTES: Record<string, Route> = {
+  completeRefund: { auth: true, handler: async (ctx) => handleCompleteRefund(ctx.env, ctx.body, ctx.user!, meta(ctx)) },
+  getRefundEvidence: {
+    auth: true,
+    handler: async (ctx) => handleGetRefundEvidence(ctx.env, ctx.body, ctx.user!),
+  },
   ping: { auth: false, handler: async () => handlePing() },
   login: { auth: false, handler: async (ctx) => handleLogin(ctx.env, ctx.body, meta(ctx)) },
   refresh: { auth: false, handler: async (ctx) => handleRefresh(ctx.env, ctx.body) },

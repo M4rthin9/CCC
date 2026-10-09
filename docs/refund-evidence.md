@@ -1,0 +1,17 @@
+# Refund evidence sheet
+
+In the dashboard, open a booking's **ดูรายละเอียด**, then **จัดทำเอกสารคืนเงิน**. Finance, Admin, and Superadmin can prepare the sheet. Finance can also view cancelled bookings for this purpose. VIS, TBL, and archived records are supported.
+
+Enter a full or partial refund amount, reason, recipient name, and optional bank/account details. The amount must be positive, have at most two decimal places, and not exceed the amount currently recorded on the booking. Account details may instead be completed by hand. The original uploaded slip must load successfully before the print preview opens.
+
+The A4 sheet contains the booking reference and customer details, visit date, current status and amount, booking/approval/slip-upload/payment-confirmation evidence, uploaded slip, refund request, and signature spaces for the preparer, approver, and finance. Long fields are scaled to fit one page without cropping the slip or other evidence. Browser printing also allows saving the document as PDF.
+
+An uploaded slip or the `ชำระแล้ว` status is not labelled as a confirmed payment. A recorded `เสร็จสิ้น` transition supplies payment confirmation history. An automatic slip verification event is labelled separately and does not imply finance has confirmed payment. Missing audit dates and staff names are explicitly marked; they are never reconstructed from a booking's last update time. TBL has no prerequisite approval step. The sheet describes the amount recorded in the booking; finance must compare it to the slip before processing the refund.
+
+`getRefundEvidence` is an authenticated GET/POST dispatcher action. It requires both `confirm_payment` and `view_slip`, resolves the booking in the live table then archive, and reads successful events for that exact reference rather than the global event-log viewer. Stored R2/D1 slips are embedded into the printout; legacy external slip images must load successfully. Preparing or printing the document does not change the booking or transfer money.
+
+After finance has actually returned the money, click **บันทึกว่าคืนเงินแล้ว** and confirm the amount. `completeRefund` requires the same permissions, payment status/history and an uploaded slip. It records the full or partial amount, reason, recipient, account, timestamp and authenticated staff member in `booking_refunded`, and sets the booking to **คืนเงินแล้ว** (Refunded). Status and audit record are committed together in a conditional D1 transaction; simultaneous retries, stale booking data and duplicate completion are rejected. A booking supports one completed refund record, which can be reprinted with its saved amount and details. Completed refunds preserve the original booking amount and uploaded payment slip, are excluded from active bookings, and are visible to Finance in current and archived lists. Ordinary booking/status/slip edits cannot overwrite a recorded refund. This action records an external transfer; it does not initiate a bank transfer.
+
+Deploy the backend before the dashboard. No migration or new permission is required.
+
+Verification: `npx tsx scripts/verify-refund-evidence.ts`, `npx tsx scripts/verify-refund-completion.ts` (Node 22.13+ SQLite), backend typecheck/lint/build, dashboard test/check/lint/build, and mocked browser checks including one-page A4 PDFs at desktop/mobile widths, long fields, finance access to cancelled/refunded bookings, missing slips, completion confirmation, immediate status refresh and persisted reprints. Browser checks do not call production APIs or change reservations.

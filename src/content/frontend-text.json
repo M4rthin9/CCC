@@ -4850,6 +4850,26 @@
     }
   },
   {
+    "key": "noticeRefunded",
+    "category": "general",
+    "defaults": {
+      "th": "คืนเงินแล้ว",
+      "en": "Refunded",
+      "zh": "已退款",
+      "vi": "Đã hoàn tiền"
+    }
+  },
+  {
+    "key": "noticeRefundedText",
+    "category": "general",
+    "defaults": {
+      "th": "ฝ่ายการเงินบันทึกการคืนเงินสำหรับการจองนี้แล้ว หากต้องการตรวจสอบยอดหรือรายละเอียดการคืนเงิน กรุณาติดต่อเจ้าหน้าที่",
+      "en": "Finance has recorded a refund for this booking. Contact staff to confirm the amount or refund details.",
+      "zh": "财务部门已记录此预约的退款。如需确认退款金额或详情，请联系工作人员。",
+      "vi": "Bộ phận tài chính đã ghi nhận hoàn tiền cho đặt chỗ này. Vui lòng liên hệ nhân viên để xác nhận số tiền hoặc chi tiết hoàn tiền."
+    }
+  },
+  {
     "key": "noticeRejected",
     "category": "general",
     "defaults": {
@@ -5857,6 +5877,16 @@
       "en": "⏳ Pending Review",
       "zh": "⏳ 待审核",
       "vi": "⏳ Chờ xét duyệt"
+    }
+  },
+  {
+    "key": "statusPillRefunded",
+    "category": "status",
+    "defaults": {
+      "th": "คืนเงินแล้ว",
+      "en": "Refunded",
+      "zh": "已退款",
+      "vi": "Đã hoàn tiền"
     }
   },
   {

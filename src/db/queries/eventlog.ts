@@ -1,6 +1,23 @@
 import { TABLES } from '../../constants';
 import { EventLog } from '../../types';
 
+/** Exact-reference evidence, independent of the global event viewer's 500-row cap. */
+export function getBookingEvidenceEvents(db: D1Database, ref: string): Promise<EventLog[]> {
+  return db
+    .prepare(
+      `SELECT timestamp, username, action, targetRef, details, result
+      FROM ${TABLES.eventLog} WHERE targetRef = ? AND result = 'success'
+      AND action IN ('booking_submitted', 'table_booking_submitted', 'booking_created_admin',
+        'table_booking_created_admin', 'status_changed', 'archived_status_changed',
+        'visitor_approval_updated', 'slip_uploaded', 'slip_and_status_updated',
+        'slip_auto_approved', 'booking_cancelled', 'update_booking', 'booking_refunded', 'booking_payment_reverted')
+      ORDER BY rowid ASC`
+    )
+    .bind(ref)
+    .all<EventLog>()
+    .then((res) => res.results ?? []);
+}
+
 export function insertEventLog(
   db: D1Database,
   entry: {

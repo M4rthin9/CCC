@@ -1,3 +1,4 @@
+import { REFUNDED_STATUS } from '../services/refundEvidence';
 import {
   PUBLIC_CACHE_TTL,
   VALID_STATUSES,
@@ -307,6 +308,8 @@ export async function handleCancelBooking(
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  if (rows.some((row) => row.status === REFUNDED_STATUS))
+    return { status: 'error', message: 'รายการคืนเงินแล้ว ไม่สามารถเปลี่ยนข้อมูลการชำระเงินหรือสถานะได้' };
 
   const today = formatDateISO(new Date());
   const allExpired = rows.every((row) => {
@@ -530,6 +533,8 @@ export async function handlePublicCancelBooking(
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  if (rows.some((row) => row.status === REFUNDED_STATUS))
+    return { status: 'error', message: 'รายการคืนเงินแล้ว ไม่สามารถเปลี่ยนข้อมูลการชำระเงินหรือสถานะได้' };
 
   if (
     rows.some(
@@ -661,6 +666,7 @@ export async function handleUpdateStatus(
     if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
   }
 
+  if (rows.some((row) => row.status === REFUNDED_STATUS)) return { status: 'error', message: 'รายการนี้คืนเงินแล้ว' };
   if (!isSuperForce && (status === 'ไม่อนุมัติ' || status === 'ยกเลิก')) {
     const today = formatDateISO(new Date());
     const allExpired = rows.every((row) => {
@@ -791,6 +797,8 @@ export async function handleUpdateVisitorApproval(
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  if (rows.some((row) => row.status === REFUNDED_STATUS))
+    return { status: 'error', message: 'รายการคืนเงินแล้ว ไม่สามารถเปลี่ยนข้อมูลการชำระเงินหรือสถานะได้' };
 
   // Same fallback as extraVisitorApproved below: a caller deciding only the
   // extra visitors omits visitorApproved, and reading that absence as "not
@@ -899,6 +907,8 @@ export async function handleUpdateBooking(
   const lookup = await resolveRefAnyTable(env, ref);
   const current = lookup.row;
   if (!current) return { status: 'error', message: 'ไม่พบการจองที่ระบุ' };
+  if (current.status === REFUNDED_STATUS || body.status === REFUNDED_STATUS)
+    return { status: 'error', message: 'รายการคืนเงินแล้ว ไม่สามารถแก้ไขข้อมูลการจองได้' };
   const fromArchive = lookup.archived;
 
   const { cols, changes, errors } = parseUpdateBookingFields(body);

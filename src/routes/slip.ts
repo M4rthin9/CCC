@@ -165,6 +165,8 @@ export async function handleUploadSlip(
   const dataUri = String(body.base64Data);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  if (rows.some((row) => row.status === 'คืนเงินแล้ว'))
+    return { status: 'error', message: 'รายการนี้คืนเงินแล้ว ไม่สามารถเปลี่ยนสลิปหรือสถานะได้' };
 
   const actor = String(body.username || 'public');
   try {
@@ -210,9 +212,12 @@ export async function handleUpdateSlipAndStatus(
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
+  if (rows.some((row) => row.status === 'คืนเงินแล้ว'))
+    return { status: 'error', message: 'รายการนี้คืนเงินแล้ว ไม่สามารถเปลี่ยนสลิปหรือสถานะได้' };
 
   const currentStatus = String(rows[0]?.status || '').trim();
   let status = sanitizeStr(body.status, 50) || PAID;
+  if (status === 'คืนเงินแล้ว') return { status: 'error', message: 'กรุณาบันทึกการคืนเงินผ่านแบบฟอร์มคืนเงิน' };
 
   if (isPublic) {
     // A visitor may only settle a booking that is actually awaiting payment.

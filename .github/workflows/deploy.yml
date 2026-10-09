@@ -89,6 +89,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Verify confirmed July visitor approval
+        if: github.ref_name == 'main'
+        run: npx tsx scripts/verify-booking-approval-evidence.ts
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       # Expand the schema before activating code that reads the new columns.
       # Additive migrations remain compatible with the currently live worker.
       - name: Apply D1 migrations (${{ steps.target.outputs.d1_name }})

@@ -109,6 +109,8 @@ export function formatExtraPrisoners(list: ExtraPrisoner[]): string {
 export interface BookingCostInput {
   relation?: string;
   visitorAge?: string;
+  /** Existing completed bookings may retain only approved extra visitors. */
+  visitorApproved?: string;
   extraVisitorNames?: string;
   /** Preserve explicit rejections when staff edit an existing guest list. */
   extraVisitorApproved?: string;
@@ -135,24 +137,28 @@ export interface BookingCost {
 export function computeBookingCost({
   relation,
   visitorAge,
+  visitorApproved,
   extraVisitorNames,
   extraVisitorApproved,
   extraPrisoners,
   includePrisonerFee = true,
 }: BookingCostInput): BookingCost {
   const prisoners = includePrisonerFee ? 1 + parseExtraPrisoners(extraPrisoners).length : 0;
-  const mainFee = mainVisitorFee(relation ?? '', visitorAge ?? '');
+  const includeMainVisitor =
+    String(visitorApproved || '')
+      .trim()
+      .toLowerCase() !== 'no';
+  const mainFee = includeMainVisitor ? mainVisitorFee(relation ?? '', visitorAge ?? '') : 0;
 
   let extraFees = 0;
   let adults = 0;
   let kids5_8 = 0;
   let kidsUnder5 = 0;
 
-  if (mainFee < MAIN_VISITOR_FEE) {
+  if (includeMainVisitor) {
     if (mainFee === 0) kidsUnder5 += 1;
-    else kids5_8 += 1;
-  } else {
-    adults += 1;
+    else if (mainFee < MAIN_VISITOR_FEE) kids5_8 += 1;
+    else adults += 1;
   }
 
   const approvals = String(extraVisitorApproved || '').split(';;');
@@ -170,7 +176,7 @@ export function computeBookingCost({
     }
   }
 
-  const visitorCount = 1 + extras.length;
+  const visitorCount = (includeMainVisitor ? 1 : 0) + extras.length;
   return {
     total: prisoners * PRISONER_FEE + mainFee + extraFees,
     visitorCount,
@@ -197,6 +203,7 @@ export function applyServerPricing(
   const cost = computeBookingCost({
     relation: String(data.relation || ''),
     visitorAge: String(data.visitorAge || ''),
+    visitorApproved: String(data.visitorApproved || ''),
     extraVisitorNames: String(data.extraVisitorNames || ''),
     extraVisitorApproved: String(data.extraVisitorApproved || ''),
     extraPrisoners: String(data.extraPrisoners || ''),

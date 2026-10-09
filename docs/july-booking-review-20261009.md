@@ -15,9 +15,12 @@ to completed-booking charges.
 | 23 July | VIS-37212 |         8 |                  3,000 |                 2,500 |
 | 24 July | VIS-81233 |         1 |                  3,000 |                 2,000 |
 
-July's recorded completed-booking total changes from 818,000 to 815,500 baht.
+The child corrections reduce July's recorded completed-booking charge by 2,500 baht.
+The operator also confirmed approving the additional adult on VIS-37459
+(20 July): its total changes from 2,000 to 3,000, with its 1-year-old child free.
+After both corrections, July's total is **816,500 baht** (previously 818,000).
 The affected daily totals are 34,500 on 1 July, 47,500 on 16 July, 45,000 on
-23 July, and 47,000 on 24 July. Other July daily totals stay unchanged.
+23 July, 47,000 on 24 July, and 44,500 on 20 July. Other July daily totals stay unchanged.
 
 Stored visitor counts are also reconciled where all approvals are recorded.
 226 July records qualify for a count or price correction; only the four listed
@@ -27,15 +30,16 @@ and slips, with old values retained for reversal.
 
 ## Records requiring booking review
 
-Fourteen completed July bookings have incomplete approval records:
-VIS-28540, VIS-30350, VIS-34685, VIS-36486, VIS-37459, VIS-42115,
-VIS-42579, VIS-58757, VIS-65622, VIS-70161, VIS-78623, VIS-80577,
+Twelve completed July bookings have approval/status records needing staff review:
+VIS-28540, VIS-30350, VIS-34685, VIS-36486, VIS-42115,
+VIS-42579, VIS-58757, VIS-70161, VIS-78623, VIS-80577,
 VIS-96481, and VIS-99085. Their totals are preserved. Missing approvals are
 not treated as a rejection or proof that a staff-added visitor did not attend.
 
-Two of these contain a child with a zero fee: VIS-37459 (20 July, age 1) and
-VIS-65622 (21 July, age 3). Whether the additional adult attended needs staff
-confirmation before deciding their final charge.
+VIS-65622 (21 July) was explicitly confirmed correct by the operator and is
+preserved at 2,000 baht. Its child aged 3 is free, its additional adult attends,
+and its rejected main visitor is not charged. VIS-37459's additional adult is
+approved by migration 0026, with the original approval/count/charge retained.
 
 VIS-57432 (4 July, previously 2,000 baht) is absent from the current database.
 The event log records an explicit archived-booking deletion on 26 August.

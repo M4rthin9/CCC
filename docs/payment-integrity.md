@@ -17,7 +17,10 @@ Migration 0025 reconciles 538 archived bookings with complete recorded approvals
 Nine prices change: seven child discounts and two bookings that have four
 approved visitors but had charged for two. Other corrections restore the stored
 adult/child counts used by reports. In July, four prices change by a combined
-minus 2,500 baht, giving a recorded completed-booking charge of 815,500 baht.
+minus 2,500 baht. Migration 0026 then approves the additional adult on
+VIS-37459 as explicitly instructed, adding 1,000 baht while its child stays free.
+July's final recorded completed-booking charge is 816,500 baht. VIS-65622 is
+explicitly confirmed correct at 2,000 baht and remains unchanged.
 
 `scripts/booking-charge-evidence.json` contains the audited references, versions,
 dates, prior totals/counts, expected totals/counts, and SHA-256 hashes of the

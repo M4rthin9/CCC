@@ -5,7 +5,7 @@ import { computeApprovalTotals, parseExtraVisitorNames } from '../src/services/p
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 const token = process.env.CLOUDFLARE_API_TOKEN;
 if (!account || !token) throw new Error('Configured production credentials are required');
-async function query(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {
+export async function query(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {
   if (!/^SELECT\s/i.test(sql)) throw new Error('Booking evidence verification is read only');
   const response = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/c24082d0-67dd-4c21-b460-d3c07e4f3651/query`,

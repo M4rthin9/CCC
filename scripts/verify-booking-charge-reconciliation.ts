@@ -5,6 +5,7 @@ import evidence from './booking-charge-evidence.json';
 import { computeBookingCost, alignExtraVisitorApprovals, parseExtraVisitorNames } from '../src/services/pricing';
 
 const migration = readFileSync('src/db/migrations/0025_reconcile_final_booking_charges.sql', 'utf8');
+const approvalMigration = readFileSync('src/db/migrations/0026_approve_july_added_visitor.sql', 'utf8');
 function fixture(): DatabaseSync {
   const db = new DatabaseSync(':memory:');
   for (const file of readdirSync('src/db/migrations')
@@ -102,4 +103,51 @@ for (const [age, amount] of [
   assert.equal(computeBookingCost({ relation: 'Partner', extraVisitorNames: `Child|C|Child|${age}` }).total, amount);
 console.log(
   '538 booking corrections, preserved added visitors and slips, atomic rollback, approval identity alignment, and child age boundaries passed.'
+);
+const rejectedMain = computeBookingCost({
+  visitorApproved: 'no',
+  relation: 'Partner',
+  extraVisitorNames: 'Child|C|Child|3;;Adult|A|Partner|40',
+  extraVisitorApproved: 'yes;;yes',
+});
+assert.equal(rejectedMain.total, 2000);
+assert.equal(rejectedMain.visitorCount, 2);
+assert.equal(rejectedMain.childUnder5Count, 1);
+function approvalFixture(): DatabaseSync {
+  const db = fixture();
+  db.exec(migration);
+  db.exec(`INSERT INTO reservations_archive(ref,visitDateISO,status,total,version,visitorApproved,extraVisitorApproved,visitorCount,adultCount,child5to8Count,childUnder5Count,extraVisitorNames)
+    VALUES('VIS-37459','2026-07-20','เสร็จสิ้น',2000,1,'yes','yes;;',2,0,0,0,'Child|C|Child|1;;Adult|A|Partner|40'),
+    ('VIS-65622','2026-07-21','เสร็จสิ้น',2000,1,'no','yes;;yes',2,0,0,0,'Child|C|Child|3;;Adult|A|Partner|40')`);
+  return db;
+}
+const approvalDb = approvalFixture();
+approvalDb.exec('BEGIN');
+approvalDb.exec(approvalMigration);
+approvalDb.exec('COMMIT');
+const approved = approvalDb
+  .prepare(
+    "SELECT total,visitorCount,extraVisitorApproved,childUnder5Count FROM reservations_archive WHERE ref='VIS-37459'"
+  )
+  .get()!;
+assert.equal(approved.total, 3000);
+assert.equal(approved.visitorCount, 3);
+assert.equal(approved.extraVisitorApproved, 'yes;;yes');
+assert.equal(approved.childUnder5Count, 1);
+assert.equal(approvalDb.prepare("SELECT total FROM reservations_archive WHERE ref='VIS-65622'").get()!.total, 2000);
+assert.equal(
+  approvalDb.prepare("SELECT total FROM reservation_payment_locks WHERE ref='VIS-37459'").get()!.total,
+  3000
+);
+const staleApproval = approvalFixture();
+staleApproval.exec("UPDATE reservations_archive SET extraVisitorApproved='yes;;no' WHERE ref='VIS-37459'");
+staleApproval.exec('BEGIN');
+assert.throws(() => staleApproval.exec(approvalMigration), /CHECK constraint/);
+staleApproval.exec('ROLLBACK');
+assert.equal(
+  staleApproval.prepare("SELECT total FROM reservation_payment_locks WHERE ref='VIS-37459'").get()!.total,
+  2000
+);
+console.log(
+  'Confirmed added adult approved with free child, other booking unchanged, and stale approval rollback passed.'
 );

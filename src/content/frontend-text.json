@@ -3463,10 +3463,10 @@
     "key": "guideArrivalDesc",
     "category": "home",
     "defaults": {
-      "th": "นำบัตรประชาชนตัวจริงมาแสดง ห้ามนำโทรศัพท์เข้าเขตเยี่ยม",
-      "en": "Bring your original ID card. Phones are not allowed in the visit area.",
-      "zh": "请携带身份证原件。探访区域禁止携带手机。",
-      "vi": "Mang theo căn cước bản gốc. Không được mang điện thoại vào khu vực thăm gặp."
+      "th": "สำหรับ VIS หลังชำระเงินแล้ว ลงทะเบียนที่ทัณฑสถานเวลา 08:00–10:30 น. เข้าเยี่ยมเวลา 11:00–13:00 น. นำบัตรประชาชนหรือหนังสือเดินทางตัวจริง ห้ามนำโทรศัพท์เข้าพื้นที่เยี่ยม",
+      "en": "For VIS, register at the prison after payment from 8:00–10:30 a.m. Visit from 11:00 a.m.–1:00 p.m. Bring your original national ID card or passport. No phones in the visiting area.",
+      "zh": "VIS 访客付款后，请在 08:00–10:30 到监狱登记，探视时间为 11:00–13:00。请携带身份证或护照原件，探视区域禁止携带手机。",
+      "vi": "Với VIS, sau khi thanh toán, đăng ký tại trại từ 08:00–10:30. Thăm gặp từ 11:00–13:00. Mang thẻ căn cước hoặc hộ chiếu bản gốc. Không mang điện thoại vào khu thăm gặp."
     }
   },
   {
@@ -4243,10 +4243,10 @@
     "key": "homeStep5D",
     "category": "home",
     "defaults": {
-      "th": "แสดงบัตรประชาชนตัวจริง และปฏิบัติตามข้อปฏิบัติของทัณฑสถาน",
-      "en": "Show your original ID card and follow the institution's rules.",
-      "zh": "出示身份证原件并遵守监狱规定。",
-      "vi": "Xuất trình CMND/CCCD bản gốc và tuân thủ nội quy của trại."
+      "th": "หลังชำระเงินแล้ว มาลงทะเบียนที่ทัณฑสถานเวลา 08:00–10:30 น. ในวันที่จอง เข้าเยี่ยมเวลา 11:00–13:00 น. นำบัตรประชาชนหรือหนังสือเดินทางตัวจริง และห้ามนำโทรศัพท์เข้าพื้นที่เยี่ยม",
+      "en": "After payment, register at the prison from 8:00–10:30 a.m. on your booked date. Visit from 11:00 a.m.–1:00 p.m. Bring your original national ID card or passport. No phones in the visiting area.",
+      "zh": "付款后，请于预约日期在 08:00–10:30 到监狱登记，探视时间为 11:00–13:00。请携带身份证或护照原件，禁止将手机带入探视区域。",
+      "vi": "Sau khi thanh toán, đến trại đăng ký từ 08:00–10:30 vào ngày đã đặt. Thăm gặp từ 11:00–13:00. Mang thẻ căn cước hoặc hộ chiếu bản gốc. Không mang điện thoại vào khu thăm gặp."
     }
   },
   {
@@ -4307,6 +4307,166 @@
       "en": "sec",
       "zh": "秒",
       "vi": "giây"
+    }
+  },
+  {
+    "key": "homeVisArrival",
+    "category": "home",
+    "defaults": {
+      "th": "หลังชำระเงินแล้ว กรุณามาลงทะเบียนที่ทัณฑสถานบำบัดพิเศษกลางในวันที่จอง เวลา 08:00–10:30 น. และเข้าเยี่ยมเวลา 11:00–13:00 น.",
+      "en": "After payment, come to Central Special Correctional Institution on your booked date to register from 8:00–10:30 a.m. Visitation is from 11:00 a.m.–1:00 p.m.",
+      "zh": "付款后，请于预约日期前往中央特殊惩教机构，在 08:00–10:30 办理登记。探视时间为 11:00–13:00。",
+      "vi": "Sau khi thanh toán, vui lòng đến Cơ sở Cải huấn Đặc biệt Trung ương vào ngày đã đặt để đăng ký từ 08:00–10:30. Giờ thăm gặp từ 11:00–13:00."
+    }
+  },
+  {
+    "key": "homeVisBook",
+    "category": "home",
+    "defaults": {
+      "th": "จองเยี่ยมญาติ (VIS)",
+      "en": "Reserve a family visit (VIS)",
+      "zh": "预约亲属探视（VIS）",
+      "vi": "Đặt lịch thăm người thân (VIS)"
+    }
+  },
+  {
+    "key": "homeVisDescription",
+    "category": "home",
+    "defaults": {
+      "th": "ใช้เวลาร่วมกับคนที่คุณคิดถึง ผ่านคอร์สอาหารไฟน์ไดนิ่งที่ Chance & Change Cafe จองเข้าร่วมกิจกรรมเยี่ยมญาติ (VIS) และร่วมรับประทานอาหารกับผู้ต้องขังในวันที่นัดหมาย",
+      "en": "Spend time with someone you miss over a fine dining course at Chance & Change Cafe. Make a VIS family visit reservation to dine with your loved one in prison on your booked date.",
+      "zh": "在 Chance & Change Cafe 与思念的亲人共享精致餐饮套餐。预约 VIS 亲属探视，在预约日期与服刑亲人一起用餐。",
+      "vi": "Dành thời gian bên người bạn nhớ thương qua thực đơn fine dining tại Chance & Change Cafe. Đặt lịch thăm gặp VIS để cùng dùng bữa với người thân đang ở trại vào ngày đã đặt."
+    }
+  },
+  {
+    "key": "homeVisId",
+    "category": "home",
+    "defaults": {
+      "th": "นำบัตรประชาชนตัวจริงหรือหนังสือเดินทางตัวจริงมาแสดงเพื่อลงทะเบียน",
+      "en": "Bring your original national ID card or passport for registration.",
+      "zh": "请携带身份证原件或护照原件办理登记。",
+      "vi": "Mang theo thẻ căn cước hoặc hộ chiếu bản gốc để đăng ký."
+    }
+  },
+  {
+    "key": "homeVisIdTitle",
+    "category": "home",
+    "defaults": {
+      "th": "เตรียมเอกสารลงทะเบียน",
+      "en": "Bring identification",
+      "zh": "准备身份证件",
+      "vi": "Chuẩn bị giấy tờ tùy thân"
+    }
+  },
+  {
+    "key": "homeVisImageAlt",
+    "category": "home",
+    "defaults": {
+      "th": "ภาพประกอบผู้ต้องขังชายสวมเสื้อสีฟ้าอ่อนและกางเกงขาสั้นสีดำ ร่วมรับประทานอาหารไฟน์ไดนิ่งกับญาติ สำหรับประชาสัมพันธ์การจองเยี่ยมญาติ VIS",
+      "en": "Warm illustration of a male prisoner in a light blue shirt and black shorts sharing a fine dining course with a relative, promoting VIS reservations.",
+      "zh": "身穿浅蓝色上衣和黑色短裤的男性服刑人员与亲属共享精致餐点的温馨插画，用于宣传 VIS 预约。",
+      "vi": "Tranh minh họa phạm nhân nam mặc áo xanh nhạt và quần đùi đen cùng dùng bữa fine dining với người thân, quảng bá đặt lịch VIS."
+    }
+  },
+  {
+    "key": "homeVisLabel",
+    "category": "home",
+    "defaults": {
+      "th": "จองเยี่ยมญาติ · VIS RESERVATION",
+      "en": "FAMILY VISITS · VIS RESERVATION",
+      "zh": "亲属探视 · VIS 预约",
+      "vi": "THĂM GẶP GIA ĐÌNH · ĐẶT LỊCH VIS"
+    }
+  },
+  {
+    "key": "homeVisPhone",
+    "category": "home",
+    "defaults": {
+      "th": "ไม่อนุญาตให้นำโทรศัพท์มือถือเข้าพื้นที่เยี่ยม กรุณาปฏิบัติตามข้อกำหนดของทัณฑสถาน",
+      "en": "Mobile phones are not permitted in the visiting area. Please follow the institution’s rules.",
+      "zh": "不得将手机带入探视区域，请遵守机构规定。",
+      "vi": "Điện thoại di động không được phép mang vào khu thăm gặp. Vui lòng tuân thủ quy định của trại."
+    }
+  },
+  {
+    "key": "homeVisPhoneTitle",
+    "category": "home",
+    "defaults": {
+      "th": "ห้ามนำโทรศัพท์เข้าพื้นที่เยี่ยม",
+      "en": "No phones in the visiting area",
+      "zh": "探视区域禁止携带手机",
+      "vi": "Không mang điện thoại vào khu thăm gặp"
+    }
+  },
+  {
+    "key": "homeVisRegistration",
+    "category": "home",
+    "defaults": {
+      "th": "ลงทะเบียนที่ทัณฑสถาน",
+      "en": "Registration at the prison",
+      "zh": "到监狱办理登记",
+      "vi": "Đăng ký tại trại"
+    }
+  },
+  {
+    "key": "homeVisRulesText",
+    "category": "home",
+    "defaults": {
+      "th": "หลังชำระเงินแล้ว กรุณามาลงทะเบียนที่ทัณฑสถานบำบัดพิเศษกลางในวันที่จอง เวลา 08:00–10:30 น. และเข้าเยี่ยมเวลา 11:00–13:00 น.\nนำบัตรประชาชนตัวจริงหรือหนังสือเดินทางตัวจริงมาแสดงเพื่อลงทะเบียน\nไม่อนุญาตให้นำโทรศัพท์มือถือเข้าพื้นที่เยี่ยม กรุณาปฏิบัติตามข้อกำหนดของทัณฑสถาน\nมี QR Wallet สำหรับซื้ออาหาร เบเกอรี และเครื่องดื่มที่ไม่รวมอยู่ในคอร์ส โดยชำระค่าใช้จ่ายเพิ่มเติมแยกจากค่าคอร์ส",
+      "en": "After payment, come to Central Special Correctional Institution on your booked date to register from 8:00–10:30 a.m. Visitation is from 11:00 a.m.–1:00 p.m.\nBring your original national ID card or passport for registration.\nMobile phones are not permitted in the visiting area. Please follow the institution’s rules.\nA QR Wallet will be available to buy food, bakery items, and drinks outside the course. These purchases are charged separately from the course fee.",
+      "zh": "付款后，请于预约日期前往中央特殊惩教机构，在 08:00–10:30 办理登记。探视时间为 11:00–13:00。\n请携带身份证原件或护照原件办理登记。\n不得将手机带入探视区域，请遵守机构规定。\n现场将提供 QR Wallet，用于购买套餐以外的食品、烘焙点心及饮料。这些商品需另外付费。",
+      "vi": "Sau khi thanh toán, vui lòng đến Cơ sở Cải huấn Đặc biệt Trung ương vào ngày đã đặt để đăng ký từ 08:00–10:30. Giờ thăm gặp từ 11:00–13:00.\nMang theo thẻ căn cước hoặc hộ chiếu bản gốc để đăng ký.\nĐiện thoại di động không được phép mang vào khu thăm gặp. Vui lòng tuân thủ quy định của trại.\nSẽ có QR Wallet để mua thêm thức ăn, bánh và đồ uống không nằm trong thực đơn trọn gói. Các món này được tính phí riêng."
+    }
+  },
+  {
+    "key": "homeVisRulesTitle",
+    "category": "home",
+    "defaults": {
+      "th": "ข้อปฏิบัติสำหรับการจองเยี่ยมญาติ (VIS)",
+      "en": "VIS reservation rules",
+      "zh": "VIS 探视预约须知",
+      "vi": "Quy định đặt lịch thăm gặp VIS"
+    }
+  },
+  {
+    "key": "homeVisTitle",
+    "category": "home",
+    "defaults": {
+      "th": "จองเยี่ยมญาติ พร้อมมื้ออาหารไฟน์ไดนิ่ง",
+      "en": "Reserve a family visit with a fine dining course",
+      "zh": "预约亲属探视，共享精致套餐",
+      "vi": "Đặt lịch thăm người thân với thực đơn fine dining"
+    }
+  },
+  {
+    "key": "homeVisVisit",
+    "category": "home",
+    "defaults": {
+      "th": "เวลาเข้าเยี่ยมและร่วมรับประทานอาหาร",
+      "en": "Visitation and shared meal",
+      "zh": "探视及共同用餐时间",
+      "vi": "Giờ thăm gặp và cùng dùng bữa"
+    }
+  },
+  {
+    "key": "homeVisWallet",
+    "category": "home",
+    "defaults": {
+      "th": "มี QR Wallet สำหรับซื้ออาหาร เบเกอรี และเครื่องดื่มที่ไม่รวมอยู่ในคอร์ส โดยชำระค่าใช้จ่ายเพิ่มเติมแยกจากค่าคอร์ส",
+      "en": "A QR Wallet will be available to buy food, bakery items, and drinks outside the course. These purchases are charged separately from the course fee.",
+      "zh": "现场将提供 QR Wallet，用于购买套餐以外的食品、烘焙点心及饮料。这些商品需另外付费。",
+      "vi": "Sẽ có QR Wallet để mua thêm thức ăn, bánh và đồ uống không nằm trong thực đơn trọn gói. Các món này được tính phí riêng."
+    }
+  },
+  {
+    "key": "homeVisWalletTitle",
+    "category": "home",
+    "defaults": {
+      "th": "ซื้อเพิ่มเติมด้วย QR Wallet",
+      "en": "Additional purchases with QR Wallet",
+      "zh": "使用 QR Wallet 购买额外商品",
+      "vi": "Mua thêm bằng QR Wallet"
     }
   },
   {
@@ -7863,10 +8023,10 @@
     "key": "uploadSlipNote",
     "category": "payment",
     "defaults": {
-      "th": "📋 หลังแนบสลิปแล้ว กรุณามาทำการลงทะเบียนในวันที่จอง ก่อนเวลาเข้าเยี่ยมในเวลา 9.00 ตามมาที่รับแขก",
-      "en": "📋 After attaching the slip, please come to register on the booking date before the visit time at 9.00 AM at the reception.",
-      "zh": "📋 附上凭证后，请在预订日 9:00 探视时间前到接待处登记。",
-      "vi": "📋 Sau khi đính kèm phiếu, vui lòng đến đăng ký vào ngày đặt trước 9:00 tại quầy tiếp đón."
+      "th": "หลังชำระเงินแล้ว กรุณามาลงทะเบียนที่ทัณฑสถานบำบัดพิเศษกลางในวันที่จอง เวลา 08:00–10:30 น. และเข้าเยี่ยมเวลา 11:00–13:00 น.\nนำบัตรประชาชนตัวจริงหรือหนังสือเดินทางตัวจริงมาแสดงเพื่อลงทะเบียน\nไม่อนุญาตให้นำโทรศัพท์มือถือเข้าพื้นที่เยี่ยม กรุณาปฏิบัติตามข้อกำหนดของทัณฑสถาน\nมี QR Wallet สำหรับซื้ออาหาร เบเกอรี และเครื่องดื่มที่ไม่รวมอยู่ในคอร์ส โดยชำระค่าใช้จ่ายเพิ่มเติมแยกจากค่าคอร์ส",
+      "en": "After payment, come to Central Special Correctional Institution on your booked date to register from 8:00–10:30 a.m. Visitation is from 11:00 a.m.–1:00 p.m.\nBring your original national ID card or passport for registration.\nMobile phones are not permitted in the visiting area. Please follow the institution’s rules.\nA QR Wallet will be available to buy food, bakery items, and drinks outside the course. These purchases are charged separately from the course fee.",
+      "zh": "付款后，请于预约日期前往中央特殊惩教机构，在 08:00–10:30 办理登记。探视时间为 11:00–13:00。\n请携带身份证原件或护照原件办理登记。\n不得将手机带入探视区域，请遵守机构规定。\n现场将提供 QR Wallet，用于购买套餐以外的食品、烘焙点心及饮料。这些商品需另外付费。",
+      "vi": "Sau khi thanh toán, vui lòng đến Cơ sở Cải huấn Đặc biệt Trung ương vào ngày đã đặt để đăng ký từ 08:00–10:30. Giờ thăm gặp từ 11:00–13:00.\nMang theo thẻ căn cước hoặc hộ chiếu bản gốc để đăng ký.\nĐiện thoại di động không được phép mang vào khu thăm gặp. Vui lòng tuân thủ quy định của trại.\nSẽ có QR Wallet để mua thêm thức ăn, bánh và đồ uống không nằm trong thực đơn trọn gói. Các món này được tính phí riêng."
     }
   },
   {

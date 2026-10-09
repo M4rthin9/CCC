@@ -126,6 +126,11 @@ export function getReservationByRef(db: D1Database, ref: string): Promise<Reserv
     .then((r) => (r ? reservationRowToObject(r) : null));
 }
 
+/** Survives status reversals and archiving; routine edits cannot reprice a payment. */
+export function getPaymentLock(db: D1Database, ref: string): Promise<{ total: number } | null> {
+  return db.prepare('SELECT total FROM reservation_payment_locks WHERE ref = ?').bind(ref).first<{ total: number }>();
+}
+
 export interface StoredSlip {
   /** R2 object key ('' when the row predates the R2 migration). */
   key: string;

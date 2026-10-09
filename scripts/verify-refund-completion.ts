@@ -185,7 +185,9 @@ assert.deepEqual(concurrent.map((result) => result.status).sort(), ['error', 'ok
 assert.equal(eventCount('VIS-RACE'), 1, 'only one completion is committed');
 seed('VIS-STALE');
 beforeBatch = () => {
-  sqlite.prepare('UPDATE reservations SET total = 1500 WHERE ref = ?').run('VIS-STALE');
+  // Paid totals are now locked; a concurrent metadata revision still makes
+  // the refund's version snapshot stale without bypassing financial safeguards.
+  sqlite.prepare('UPDATE reservations SET version = version + 1 WHERE ref = ?').run('VIS-STALE');
 };
 assert.equal((await handleCompleteRefund(env, body('VIS-STALE'), user)).status, 'error');
 assert.equal(eventCount('VIS-STALE'), 0);

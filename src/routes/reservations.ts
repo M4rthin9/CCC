@@ -23,6 +23,7 @@ import {
   getActiveReservations,
   getArchivedReservations,
   getArchivedReservationByRef,
+  getPaymentLock,
   getReservationsByRefs,
   updateReservationColumns,
   updateArchivedReservationColumns,
@@ -818,6 +819,24 @@ export async function handleUpdateVisitorApproval(
   const mainRelation = String(rows[0]!.relation || '');
   const mainAge = String(rows[0]!.visitorAge || '');
 
+  if (await getPaymentLock(env.DB, ref)) {
+    const changesApproval =
+      (body.visitorApproved !== undefined && String(body.visitorApproved) !== String(rows[0]!.visitorApproved || '')) ||
+      (body.extraVisitorApproved !== undefined &&
+        String(body.extraVisitorApproved) !== String(rows[0]!.extraVisitorApproved || ''));
+    if (changesApproval)
+      return { status: 'error', message: 'รายการชำระเงินแล้ว ต้องตรวจสอบหลักฐานการชำระเงินก่อนแก้ไขผู้เข้าร่วม' };
+    return {
+      status: 'ok',
+      noop: true,
+      visitorCount: rows[0]!.visitorCount,
+      total: rows[0]!.total,
+      adultCount: rows[0]!.adultCount,
+      child5to8Count: rows[0]!.child5to8Count,
+      childUnder5Count: rows[0]!.childUnder5Count,
+    };
+  }
+
   const { visitorCount, total, adultCount, child5to8Count, childUnder5Count } = computeApprovalTotals(
     mainApproved,
     extraVisitorApproved,
@@ -968,9 +987,16 @@ export async function handleUpdateBooking(
   // numerics from cols in favor of the authoritative ones.
   const pricingInputs = ['relation', 'visitorAge', 'extraVisitorNames', 'extraPrisoners'];
   const pricingNumerics = ['total', 'visitorCount', 'adultCount', 'child5to8Count', 'childUnder5Count', 'totalPersons'];
-  const touchedPricingInput = pricingInputs.some((f) => changes[f] !== undefined);
-  const suppliedNumeric = pricingNumerics.some((f) => changes[f] !== undefined);
-  if (touchedPricingInput || suppliedNumeric) {
+  const touchedPricingInput = pricingInputs.some(
+    (f) => changes[f] !== undefined && String(changes[f] || '') !== String(current[f] || '')
+  );
+  const suppliedNumeric = pricingNumerics.some(
+    (f) => changes[f] !== undefined && Number(changes[f]) !== Number(current[f] || 0)
+  );
+  const paymentLock = await getPaymentLock(env.DB, ref);
+  if (paymentLock && (touchedPricingInput || suppliedNumeric))
+    return { status: 'error', message: 'ยอดชำระเงินถูกล็อกแล้ว ต้องตรวจสอบหลักฐานการชำระเงินก่อนแก้ไขราคา' };
+  if (!paymentLock && (touchedPricingInput || suppliedNumeric)) {
     const merged: Record<string, unknown> = { ...current, ...changes };
     const clientTotal =
       merged.total !== undefined && merged.total !== null && merged.total !== '' ? Number(merged.total) : undefined;
@@ -980,6 +1006,9 @@ export async function handleUpdateBooking(
       if (i >= 0) cols.splice(i, 1);
     });
     pricingNumerics.forEach((f) => cols.push([f, merged[f]]));
+    pricingNumerics.forEach((f) => {
+      changes[f] = merged[f];
+    });
     if (clientTotal !== undefined && clientTotal !== pricing.serverTotal) {
       await logEvent(
         env,
@@ -989,6 +1018,12 @@ export async function handleUpdateBooking(
         { clientTotal, serverTotal: pricing.serverTotal },
         'success'
       );
+    }
+  } else {
+    // The editor submits unchanged numerics too. Preserve historical totals
+    // and approved attendance counts instead of recomputing the full guest list.
+    for (let i = cols.length - 1; i >= 0; i--) {
+      if (pricingNumerics.includes(cols[i]![0])) cols.splice(i, 1);
     }
   }
 

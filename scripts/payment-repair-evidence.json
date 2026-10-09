@@ -1,0 +1,65 @@
+[
+  {
+    "ref": "VIS-55903",
+    "visitDateISO": "2026-07-16",
+    "fromTotal": 2500,
+    "paidAmount": 3000,
+    "version": 1,
+    "slipSha256": "753ef4e981af0ff5e8da6ae5352d7574030bd0d08f07578fe99633bb7f7a587e",
+    "evidence": "Manually reviewed original stored bank payment slip; amount matches original pre-0020 booking total"
+  },
+  {
+    "ref": "VIS-97273",
+    "visitDateISO": "2026-06-18",
+    "fromTotal": 3500,
+    "paidAmount": 4000,
+    "version": 1,
+    "slipSha256": "32e009f80c8af269eeee9f6df9d8501dd3f8e2a7519fbf5f2c6967b373730215",
+    "evidence": "Manually reviewed original stored bank payment slip; amount matches original pre-0020 booking total"
+  },
+  {
+    "ref": "VIS-37212",
+    "visitDateISO": "2026-07-23",
+    "fromTotal": 2500,
+    "paidAmount": 3000,
+    "version": 1,
+    "slipSha256": "d791c99d77a77d93818660728b6e1cac517ce63640660a19e78026b192387823",
+    "evidence": "Manually reviewed original stored bank payment slip; amount matches original pre-0020 booking total"
+  },
+  {
+    "ref": "VIS-32602",
+    "visitDateISO": "2026-06-17",
+    "fromTotal": 2500,
+    "paidAmount": 3000,
+    "version": 1,
+    "slipSha256": "1e2fbdcb9bd8855e286b3fcbfeb9606a499a163c9f10e7a54ca8a959466cc6e5",
+    "evidence": "Manually reviewed original stored bank payment slip; amount matches original pre-0020 booking total"
+  },
+  {
+    "ref": "VIS-19649",
+    "visitDateISO": "2026-07-01",
+    "fromTotal": 2500,
+    "paidAmount": 3000,
+    "version": 1,
+    "slipSha256": "f393a4293677d071e760ffae5a29ad7f7b3686084bc4dbceefabdaaa7f8ac888",
+    "evidence": "Manually reviewed original stored bank payment slip; amount matches original pre-0020 booking total"
+  },
+  {
+    "ref": "VIS-81233",
+    "visitDateISO": "2026-07-24",
+    "fromTotal": 2000,
+    "paidAmount": 3000,
+    "version": 1,
+    "slipSha256": "93e375dbcded3a512b18e102ed0de4916fcf60e14701538e8b93abe65a04f02b",
+    "evidence": "Manually reviewed original stored bank payment slip; amount matches original pre-0020 booking total"
+  },
+  {
+    "ref": "VIS-62668",
+    "visitDateISO": "2026-08-19",
+    "fromTotal": 2000,
+    "paidAmount": 3000,
+    "version": 2,
+    "slipSha256": "b8aff978355463e1503767fa0772257b11a2cd86f157aae14b208978b12f366f",
+    "evidence": "Manually reviewed original stored bank payment slip; amount matches original pre-0020 booking total"
+  }
+]

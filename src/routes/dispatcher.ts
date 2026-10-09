@@ -60,6 +60,7 @@ import { handleGeneratePromptPayQr } from './promptpay';
 import { handleGenerateSlipVerifyQr } from './slipQr';
 import { handleUploadPromoImage, handleDeletePromoImage } from './promo';
 import { handleRecordCookieConsent, handleGetCookieConsentStats } from './pdpa';
+import { handleSaveFrontendContent } from './frontendContent';
 import { getAnnouncementsHandler, sendAnnouncementHandler } from './announcements';
 import {
   handleNotify,
@@ -288,6 +289,7 @@ const POST_ROUTES: Record<string, Route> = {
   deleteUser: { auth: true, handler: async (ctx) => handleDeleteUser(ctx.env, ctx.body, ctx.user!) },
   updateBooking: { auth: true, handler: async (ctx) => handleUpdateBooking(ctx.env, ctx.body, ctx.user!) },
   saveSettings: { auth: true, handler: async (ctx) => handleSaveSettings(ctx.env, ctx.body, ctx.user!) },
+  saveFrontendContent: { auth: true, handler: async (ctx) => handleSaveFrontendContent(ctx.env, ctx.body, ctx.user!) },
   setTableBookingStatus: {
     auth: true,
     handler: async (ctx) => handleSetTableBookingStatus(ctx.env, ctx.body, ctx.user!),

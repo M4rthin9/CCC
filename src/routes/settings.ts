@@ -6,6 +6,7 @@ import { getPublicBookingConfig } from '../services/publicCapacity';
 import { getBookingWindow } from '../services/bookingWindow';
 import { getPromoConfig, promoImageUrl } from '../services/promo';
 import { getPdpaConfig } from '../services/pdpa';
+import { publicFrontendContent } from '../services/frontendContent';
 import { Env } from '../types';
 
 /** Opening is always preceded by two hours; closing also cancels a scheduled opening. */
@@ -99,6 +100,7 @@ export async function handleGetPublicSettings(env: Env, origin: string): Promise
   const promo = await getPromoConfig(env);
   // Cookie-banner policy version (a bump re-asks everyone) and the DPO contact.
   const pdpa = await getPdpaConfig(env);
+  const settings = await getSettings(env.DB);
   return {
     status: 'ok',
     paymentEnabled: payment.enabled,
@@ -114,6 +116,7 @@ export async function handleGetPublicSettings(env: Env, origin: string): Promise
       notice: promo.notice.enabled ? promo.notice : { enabled: false, title: '', body: '' },
     },
     pdpa,
+    frontendContent: publicFrontendContent(settings.frontendContent),
   };
 }
 

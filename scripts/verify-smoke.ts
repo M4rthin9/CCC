@@ -498,8 +498,9 @@ const publicSettings = await handleGetPublicSettings(
 );
 check('public settings exposes paymentEnabled', String(publicSettings.paymentEnabled), 'false');
 check('public settings hides promptpay', String('promptpay' in publicSettings), 'false');
-// status + the two payment fields + tableBooking + publicBooking + bookingWindow + promo + pdpa.
-check('public settings key count', String(Object.keys(publicSettings).length), '8');
+// status + the two payment fields + tableBooking + publicBooking + bookingWindow + promo + pdpa + frontendContent.
+check('public settings key count', String(Object.keys(publicSettings).length), '9');
+check('public settings defaults frontend content to empty', JSON.stringify(publicSettings.frontendContent), '{}');
 check(
   'public settings exposes tableBooking perDay',
   String((publicSettings.tableBooking as { perDay?: number } | undefined)?.perDay),

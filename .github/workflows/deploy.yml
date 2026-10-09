@@ -35,6 +35,9 @@ jobs:
       - name: Verify paid total preservation
         run: npx tsx scripts/verify-paid-total-preservation.ts
 
+      - name: Verify final booking charge reconciliation
+        run: npx tsx scripts/verify-booking-charge-reconciliation.ts
+
       - name: Select target environment
         id: target
         run: |
@@ -75,6 +78,13 @@ jobs:
       - name: Verify historical payment repair evidence
         if: github.ref_name == 'main'
         run: npx tsx scripts/verify-payment-repair-evidence.ts
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify final booking charge evidence
+        if: github.ref_name == 'main'
+        run: npx tsx scripts/verify-booking-charge-evidence.ts
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}

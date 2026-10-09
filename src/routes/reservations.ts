@@ -24,6 +24,7 @@ import {
   getArchivedReservations,
   getArchivedReservationByRef,
   getPaymentLock,
+  updateBookingChargeColumns,
   getReservationsByRefs,
   updateReservationColumns,
   updateArchivedReservationColumns,
@@ -49,6 +50,7 @@ import {
 import {
   computeApprovalTotals,
   applyServerPricing,
+  alignExtraVisitorApprovals,
   parseExtraPrisoners,
   formatExtraPrisoners,
   ExtraPrisoner,
@@ -819,13 +821,12 @@ export async function handleUpdateVisitorApproval(
   const mainRelation = String(rows[0]!.relation || '');
   const mainAge = String(rows[0]!.visitorAge || '');
 
-  if (await getPaymentLock(env.DB, ref)) {
-    const changesApproval =
-      (body.visitorApproved !== undefined && String(body.visitorApproved) !== String(rows[0]!.visitorApproved || '')) ||
-      (body.extraVisitorApproved !== undefined &&
-        String(body.extraVisitorApproved) !== String(rows[0]!.extraVisitorApproved || ''));
-    if (changesApproval)
-      return { status: 'error', message: 'รายการชำระเงินแล้ว ต้องตรวจสอบหลักฐานการชำระเงินก่อนแก้ไขผู้เข้าร่วม' };
+  const paymentLock = await getPaymentLock(env.DB, ref);
+  const changesApproval =
+    (body.visitorApproved !== undefined && String(body.visitorApproved) !== String(rows[0]!.visitorApproved || '')) ||
+    (body.extraVisitorApproved !== undefined &&
+      String(body.extraVisitorApproved) !== String(rows[0]!.extraVisitorApproved || ''));
+  if (paymentLock && !changesApproval) {
     return {
       status: 'ok',
       noop: true,
@@ -855,6 +856,8 @@ export async function handleUpdateVisitorApproval(
   cols.push(['adultCount', adultCount]);
   cols.push(['child5to8Count', child5to8Count]);
   cols.push(['childUnder5Count', childUnder5Count]);
+  cols.push(['version', Number(rows[0]!.version || 1) + 1]);
+  cols.push(['updatedAt', new Date().toISOString()]);
 
   const mainRejected = body.visitorApproved !== undefined && !mainApproved;
   if (mainRejected) {
@@ -862,7 +865,20 @@ export async function handleUpdateVisitorApproval(
     cols.push(['cancelReason', 'ผู้เยี่ยมหลักถูกปฏิเสธการเข้าร่วม']);
   }
 
-  await updateReservationColumns(env.DB, ref, cols);
+  if (paymentLock) {
+    if (
+      !(await updateBookingChargeColumns(
+        env.DB,
+        ref,
+        false,
+        cols,
+        Number(rows[0]!.version || 1),
+        Number(rows[0]!.total),
+        user.username
+      ))
+    )
+      return { status: 'error', message: 'ข้อมูลการจองเปลี่ยนแล้ว กรุณาโหลดใหม่ก่อนบันทึก' };
+  } else await updateReservationColumns(env.DB, ref, cols);
 
   await logEvent(
     env,
@@ -985,7 +1001,7 @@ export async function handleUpdateBooking(
   // Server-authoritative pricing: recompute whenever a pricing input changed
   // or any pricing numeric was supplied, and drop the client-supplied
   // numerics from cols in favor of the authoritative ones.
-  const pricingInputs = ['relation', 'visitorAge', 'extraVisitorNames', 'extraPrisoners'];
+  const pricingInputs = ['relation', 'visitorAge', 'extraVisitorNames', 'extraPrisoners', 'extraVisitorApproved'];
   const pricingNumerics = ['total', 'visitorCount', 'adultCount', 'child5to8Count', 'childUnder5Count', 'totalPersons'];
   const touchedPricingInput = pricingInputs.some(
     (f) => changes[f] !== undefined && String(changes[f] || '') !== String(current[f] || '')
@@ -994,10 +1010,22 @@ export async function handleUpdateBooking(
     (f) => changes[f] !== undefined && Number(changes[f]) !== Number(current[f] || 0)
   );
   const paymentLock = await getPaymentLock(env.DB, ref);
-  if (paymentLock && (touchedPricingInput || suppliedNumeric))
-    return { status: 'error', message: 'ยอดชำระเงินถูกล็อกแล้ว ต้องตรวจสอบหลักฐานการชำระเงินก่อนแก้ไขราคา' };
-  if (!paymentLock && (touchedPricingInput || suppliedNumeric)) {
+  const unchangedEditorInputs = ['relation', 'visitorAge', 'extraVisitorNames'].every(
+    (field) => changes[field] !== undefined
+  );
+  if (paymentLock && suppliedNumeric && !touchedPricingInput && !unchangedEditorInputs)
+    return { status: 'error', message: 'กรุณาแก้ไขข้อมูลผู้เยี่ยมเพื่อคำนวณราคาการจอง ไม่สามารถกำหนดยอดเองได้' };
+  if (touchedPricingInput || (!paymentLock && suppliedNumeric)) {
     const merged: Record<string, unknown> = { ...current, ...changes };
+    if (changes.extraVisitorNames !== undefined && changes.extraVisitorApproved === undefined) {
+      merged.extraVisitorApproved = alignExtraVisitorApprovals(
+        current.extraVisitorNames,
+        current.extraVisitorApproved,
+        changes.extraVisitorNames
+      );
+      cols.push(['extraVisitorApproved', merged.extraVisitorApproved]);
+      changes.extraVisitorApproved = merged.extraVisitorApproved;
+    }
     const clientTotal =
       merged.total !== undefined && merged.total !== null && merged.total !== '' ? Number(merged.total) : undefined;
     const pricing = applyServerPricing(merged, { includePrisonerFee: !isTableBooking });
@@ -1030,7 +1058,20 @@ export async function handleUpdateBooking(
   if (cols.length > 0) {
     cols.push(['updatedAt', new Date().toISOString()]);
     cols.push(['version', Number(current.version || 1) + 1]);
-    if (fromArchive) {
+    if (paymentLock && touchedPricingInput) {
+      if (
+        !(await updateBookingChargeColumns(
+          env.DB,
+          ref,
+          fromArchive,
+          cols,
+          Number(current.version || 1),
+          Number(current.total),
+          user.username
+        ))
+      )
+        return { status: 'error', message: 'ข้อมูลการจองเปลี่ยนแล้ว กรุณาโหลดใหม่ก่อนบันทึก' };
+    } else if (fromArchive) {
       await updateArchivedReservationColumns(env.DB, ref, cols);
     } else {
       await updateReservationColumns(env.DB, ref, cols);

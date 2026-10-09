@@ -62,6 +62,15 @@ export interface ExtraVisitorFields {
 export function parseExtraVisitorNames(raw: unknown): ExtraVisitorFields[] {
   const str = String(raw || '');
   if (!str) return [];
+  if (!str.includes('|') && !str.includes(';;')) {
+    return str
+      .split(/,(?![^(]*\))/)
+      .map((entry) => {
+        const match = entry.trim().match(/^(.+?)\s*\((.*)\)$/);
+        return { name: (match?.[1] ?? entry).trim(), id: '', relation: (match?.[2] ?? '').trim(), age: '' };
+      })
+      .filter((entry) => entry.name);
+  }
   return str
     .split(';;')
     .map((e) => {
@@ -101,6 +110,8 @@ export interface BookingCostInput {
   relation?: string;
   visitorAge?: string;
   extraVisitorNames?: string;
+  /** Preserve explicit rejections when staff edit an existing guest list. */
+  extraVisitorApproved?: string;
   extraPrisoners?: string;
   /**
    * False for a no-prisoner "table" booking: the visitor ladder is identical,
@@ -125,6 +136,7 @@ export function computeBookingCost({
   relation,
   visitorAge,
   extraVisitorNames,
+  extraVisitorApproved,
   extraPrisoners,
   includePrisonerFee = true,
 }: BookingCostInput): BookingCost {
@@ -143,7 +155,10 @@ export function computeBookingCost({
     adults += 1;
   }
 
-  const extras = parseExtraVisitorNames(extraVisitorNames);
+  const approvals = String(extraVisitorApproved || '').split(';;');
+  const extras = parseExtraVisitorNames(extraVisitorNames).filter(
+    (_, i) => approvals[i]?.trim().toLowerCase() !== 'no'
+  );
   for (const e of extras) {
     const fee = extraVisitorFee(e.relation, e.age);
     extraFees += fee;
@@ -183,6 +198,7 @@ export function applyServerPricing(
     relation: String(data.relation || ''),
     visitorAge: String(data.visitorAge || ''),
     extraVisitorNames: String(data.extraVisitorNames || ''),
+    extraVisitorApproved: String(data.extraVisitorApproved || ''),
     extraPrisoners: String(data.extraPrisoners || ''),
     includePrisonerFee,
   });
@@ -196,6 +212,22 @@ export function applyServerPricing(
   data.totalPersons = cost.visitorCount + cost.prisonerCount;
 
   return { clientTotal, serverTotal: cost.total };
+}
+
+/** Approval belongs to a person, never to their old position in the list. */
+export function alignExtraVisitorApprovals(oldNames: unknown, oldApprovals: unknown, newNames: unknown): string {
+  const previous = parseExtraVisitorNames(oldNames);
+  const approvals = String(oldApprovals || '').split(';;');
+  const key = (visitor: ExtraVisitorFields) => (visitor.id ? `id:${visitor.id}` : `name:${visitor.name}`);
+  const used = new Set<number>();
+  return parseExtraVisitorNames(newNames)
+    .map((visitor) => {
+      const index = previous.findIndex((entry, i) => !used.has(i) && key(entry) === key(visitor));
+      if (index < 0) return '';
+      used.add(index);
+      return approvals[index] || '';
+    })
+    .join(';;');
 }
 
 export interface ApprovalTotals {

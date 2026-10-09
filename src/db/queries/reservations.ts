@@ -126,7 +126,7 @@ export function getReservationByRef(db: D1Database, ref: string): Promise<Reserv
     .then((r) => (r ? reservationRowToObject(r) : null));
 }
 
-/** Survives status reversals and archiving; routine edits cannot reprice a payment. */
+/** Settled booking charge snapshot; only audited pricing edits can advance it. */
 export function getPaymentLock(db: D1Database, ref: string): Promise<{ total: number } | null> {
   return db.prepare('SELECT total FROM reservation_payment_locks WHERE ref = ?').bind(ref).first<{ total: number }>();
 }
@@ -447,6 +447,47 @@ export function updateArchivedReservationColumns(
   cols: Array<[string, unknown]>
 ): Promise<void> {
   return updateColumnsIn(db, TABLES.archive, ref, cols);
+}
+
+/** Advance a settled booking charge and its guard in one transaction.
+ * A stale editor changes neither the booking nor the snapshot. */
+export async function updateBookingChargeColumns(
+  db: D1Database,
+  ref: string,
+  archived: boolean,
+  cols: Array<[string, unknown]>,
+  expectedVersion: number,
+  expectedTotal: number,
+  username: string
+): Promise<boolean> {
+  const table = archived ? TABLES.archive : TABLES.reservations;
+  const filtered = cols.filter(([column]) => RESERVATION_WRITABLE_COLUMNS.includes(column));
+  const total = filtered.find(([column]) => column === 'total')?.[1] ?? expectedTotal;
+  const condition = `ref = ? AND version = ? AND total = ?`;
+  const snapshot = [ref, expectedVersion, expectedTotal];
+  const results = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO event_log (timestamp,username,action,targetRef,details,result)
+      SELECT strftime('%Y-%m-%d %H:%M:%S','now','+7 hours'),?,'booking_charge_updated',ref,
+        json_object('from',total,'to',?,'via','authorized booking edit','archived',?), 'success'
+      FROM ${table} WHERE ${condition}`
+      )
+      .bind(username, total, archived ? 1 : 0, ...snapshot),
+    db
+      .prepare(
+        `UPDATE reservation_payment_locks SET total = ?
+      WHERE ref = ? AND total = ? AND EXISTS (SELECT 1 FROM ${table} WHERE ${condition})`
+      )
+      .bind(total, ref, expectedTotal, ...snapshot),
+    db
+      .prepare(
+        `UPDATE ${table} SET ${filtered.map(([column]) => `${column} = ?`).join(', ')}
+      WHERE ${condition}`
+      )
+      .bind(...filtered.map(([, value]) => value), ...snapshot),
+  ]);
+  return Number(results[2]?.meta.changes || 0) === 1;
 }
 
 export function deleteReservation(db: D1Database, ref: string): Promise<void> {

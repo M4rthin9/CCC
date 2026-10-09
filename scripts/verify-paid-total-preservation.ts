@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync } from 'node:fs';
 import evidence from './payment-repair-evidence.json';
-import { archiveReservationsByRef } from '../src/db/queries/reservations';
+import { archiveReservationsByRef, updateBookingChargeColumns } from '../src/db/queries/reservations';
 import { handleUpdateBooking, handleUpdateVisitorApproval } from '../src/routes/reservations';
 import type { Env } from '../src/types';
 
@@ -124,22 +124,104 @@ assert.equal(
   'ok'
 );
 assert.equal(sqlite.prepare("SELECT total FROM reservations WHERE ref='VIS-PAID'").get()!.total, 2000);
+assert.equal(
+  (
+    await handleUpdateBooking(
+      env,
+      {
+        ref: 'VIS-PAID',
+        relation: 'Partner',
+        visitorAge: '',
+        extraVisitorNames: 'Rejected|TEST|Partner|30',
+        visitorName: 'Unchanged guest list',
+        total: 3000,
+        visitorCount: 2,
+        adultCount: 2,
+        totalPersons: 3,
+      },
+      admin
+    )
+  ).status,
+  'ok'
+);
+assert.equal(sqlite.prepare("SELECT total FROM reservations WHERE ref='VIS-PAID'").get()!.total, 2000);
 assert.equal((await handleUpdateBooking(env, { ref: 'VIS-PAID', total: 3000 }, admin)).status, 'error');
-assert.equal((await handleUpdateBooking(env, { ref: 'VIS-PAID', extraVisitorNames: '' }, admin)).status, 'error');
+assert.equal(
+  (
+    await handleUpdateBooking(
+      env,
+      {
+        ref: 'VIS-PAID',
+        extraVisitorNames: 'Rejected|TEST|Partner|30;;Child|KID|Child|4',
+      },
+      admin
+    )
+  ).status,
+  'ok'
+);
+assert.equal(sqlite.prepare("SELECT total FROM reservations WHERE ref='VIS-PAID'").get()!.total, 2000);
+assert.equal(
+  sqlite.prepare("SELECT childUnder5Count FROM reservations WHERE ref='VIS-PAID'").get()!.childUnder5Count,
+  1
+);
+assert.equal(
+  (
+    await handleUpdateBooking(
+      env,
+      {
+        ref: 'VIS-PAID',
+        extraVisitorNames: 'Child|KID|Child|5;;Rejected|TEST|Partner|30',
+      },
+      admin
+    )
+  ).status,
+  'ok'
+);
+assert.equal(sqlite.prepare("SELECT total FROM reservations WHERE ref='VIS-PAID'").get()!.total, 2500);
+assert.equal(
+  sqlite.prepare("SELECT extraVisitorApproved FROM reservations WHERE ref='VIS-PAID'").get()!.extraVisitorApproved,
+  ';;no'
+);
 assert.equal(
   (
     await handleUpdateVisitorApproval(
       env,
-      { ref: 'VIS-PAID', visitorApproved: 'yes', extraVisitorApproved: 'no' },
+      { ref: 'VIS-PAID', visitorApproved: 'yes', extraVisitorApproved: ';;no' },
       admin
     )
   ).status,
   'ok'
 );
 assert.equal(
-  (await handleUpdateVisitorApproval(env, { ref: 'VIS-PAID', extraVisitorApproved: 'yes' }, admin)).status,
-  'error'
+  (await handleUpdateVisitorApproval(env, { ref: 'VIS-PAID', extraVisitorApproved: 'yes;;no' }, admin)).status,
+  'ok'
 );
+assert.equal(sqlite.prepare("SELECT total FROM reservations WHERE ref='VIS-PAID'").get()!.total, 2500);
+const staleVersion = Number(sqlite.prepare("SELECT version FROM reservations WHERE ref='VIS-PAID'").get()!.version) - 1;
+assert.equal(
+  await updateBookingChargeColumns(env.DB, 'VIS-PAID', false, [['total', 3500]], staleVersion, 2500, admin.username),
+  false
+);
+assert.equal(sqlite.prepare("SELECT total FROM reservation_payment_locks WHERE ref='VIS-PAID'").get()!.total, 2500);
+sqlite.exec(`CREATE TRIGGER test_charge_abort BEFORE UPDATE ON reservations WHEN NEW.visitorName='forced failure'
+  BEGIN SELECT RAISE(ABORT,'forced failure'); END;`);
+await assert.rejects(
+  updateBookingChargeColumns(
+    env.DB,
+    'VIS-PAID',
+    false,
+    [
+      ['total', 3500],
+      ['visitorName', 'forced failure'],
+    ],
+    staleVersion + 1,
+    2500,
+    admin.username
+  ),
+  /forced failure/
+);
+assert.equal(sqlite.prepare("SELECT total FROM reservation_payment_locks WHERE ref='VIS-PAID'").get()!.total, 2500);
+sqlite.exec('DROP TRIGGER test_charge_abort');
 assert.throws(() => sqlite.exec("UPDATE reservations SET total=3000 WHERE ref='VIS-PAID'"), /locked/);
 sqlite.exec("UPDATE reservations SET status='รอชำระเงิน' WHERE ref='VIS-PAID'");
 assert.throws(
@@ -162,5 +244,5 @@ assert.equal(sqlite.prepare("SELECT total FROM reservations WHERE ref='VIS-UNPAI
 sqlite.exec("UPDATE reservations SET status='ชำระแล้ว' WHERE ref='VIS-UNPAID'");
 assert.throws(() => sqlite.exec("UPDATE reservations SET total=2000 WHERE ref='VIS-UNPAID'"), /locked/);
 console.log(
-  'Seven slip-backed repairs, stale-data rollback, settled edit/approval locks, status reversal, archiving, and unpaid pricing passed.'
+  'Historical preservation, child additions and approval alignment, atomic charge changes, stale editors, rollback, and unpaid pricing passed.'
 );

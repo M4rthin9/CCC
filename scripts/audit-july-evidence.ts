@@ -31,10 +31,10 @@ for (const table of ['reservations', 'reservations_archive']) {
     ...(
       await query(`SELECT ref, timestamp, visitDateISO, total, visitorCount, status, visitorApproved,
     extraVisitorApproved, extraVisitorNames, visitorName, visitorId, prisonerId, prisonerName, relation,
-    visitorAge, adultCount, child5to8Count, childUnder5Count, totalPersons, createdAt, updatedAt,
+    visitorAge, extraPrisoners, bookingType, adultCount, child5to8Count, childUnder5Count, totalPersons, createdAt, updatedAt,
     version, slipImage, slip_key, slip_fingerprint, slip_image_hash, slip_ocr_json, slip_decision_json,
     cancelReason, ${table === 'reservations_archive' ? 'archivedAt' : "'' AS archivedAt"} FROM ${table}
-    WHERE visitDateISO LIKE '2026-07-%'`)
+    ORDER BY ref`)
     ).map((r) => ({ ...r, table }))
   );
   for (let offset = 0; ; offset += 300) {

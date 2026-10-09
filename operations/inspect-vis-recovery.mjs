@@ -44,7 +44,7 @@ try {
   console.log(JSON.stringify({ developmentCopies: snapshot.development.map(r => ({ ref: r.ref, status: r.status, visitDateISO: r.visitDateISO })) }));
 } catch (error) { console.log(`Development lookup: ${error.message}`); }
 snapshot.currentBookmark = await resource(`d1/database/${database}/time_travel/bookmark`);
-snapshot.recoveryBookmark = await resource(`d1/database/${database}/time_travel/bookmark?timestamp=${Math.floor(new Date('2026-10-07T16:59:00Z').getTime() / 1000)}`);
+snapshot.recoveryBookmark = await resource(`d1/database/${database}/time_travel/bookmark?timestamp=${encodeURIComponent('2026-10-07T16:59:00Z')}`);
 console.log(JSON.stringify({ currentBookmark: snapshot.currentBookmark, recoveryBookmark: snapshot.recoveryBookmark }));
 snapshot.databaseInfo = await resource(`d1/database/${database}`);
 try {

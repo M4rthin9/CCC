@@ -36,6 +36,10 @@ export async function recoverMissingVis({ api, checkpoint }) {
     if (Object.keys(before).join(',') !== Object.keys(after).join(',')) throw new Error('Database tables changed');
     for (const name of Object.keys(before)) {
       if (before[name].schema !== after[name].schema) throw new Error(`Database schema changed: ${name}`);
+      if (recovered && (name === 'notes' || name === 'event_log')) {
+        const preserved = new Set(after[name].rows.map(hash));
+        if (before[name].rows.some(row => !preserved.has(hash(row)))) throw new Error(`Existing history changed: ${name}`);
+      }
       const keep = row => !(recovered && (
         ((name === 'reservations' || name === 'notes') && REFS.includes(row.ref)) ||
         (name === 'event_log' && REFS.includes(row.targetRef)) ||

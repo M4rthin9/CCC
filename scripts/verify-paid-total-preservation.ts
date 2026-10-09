@@ -246,3 +246,40 @@ assert.throws(() => sqlite.exec("UPDATE reservations SET total=2000 WHERE ref='V
 console.log(
   'Historical preservation, child additions and approval alignment, atomic charge changes, stale editors, rollback, and unpaid pricing passed.'
 );
+// Staff confirmed that approved extras can attend a historical settled booking
+// even when its original main visitor was rejected (VIS-65622 pattern).
+sqlite.exec(`INSERT INTO reservations(ref,status,total,relation,visitorApproved,extraVisitorNames,extraVisitorApproved,
+ visitorCount,adultCount,childUnder5Count) VALUES('VIS-EXTRAS-ONLY','เสร็จสิ้น',2000,'Partner','no',
+ 'Child|C|Child|3;;Adult|A|Partner|40','yes;;yes',2,1,1)`);
+assert.equal(
+  (
+    await handleUpdateBooking(
+      env,
+      { ref: 'VIS-EXTRAS-ONLY', extraVisitorNames: 'Child|C|Child|3;;Adult|A|Partner|40;;Added|N|Child|5' },
+      admin
+    )
+  ).status,
+  'ok'
+);
+assert.equal(sqlite.prepare("SELECT total FROM reservations WHERE ref='VIS-EXTRAS-ONLY'").get()!.total, 2500);
+assert.equal(
+  (
+    await handleUpdateVisitorApproval(
+      env,
+      { ref: 'VIS-EXTRAS-ONLY', visitorApproved: 'no', extraVisitorApproved: 'yes;;yes;;yes' },
+      admin
+    )
+  ).status,
+  'ok'
+);
+const extrasOnly = sqlite
+  .prepare(
+    "SELECT total,status,visitorCount,childUnder5Count,child5to8Count FROM reservations WHERE ref='VIS-EXTRAS-ONLY'"
+  )
+  .get()!;
+assert.equal(extrasOnly.total, 2500);
+assert.equal(extrasOnly.status, 'เสร็จสิ้น');
+assert.equal(extrasOnly.visitorCount, 3);
+assert.equal(extrasOnly.childUnder5Count, 1);
+assert.equal(extrasOnly.child5to8Count, 1);
+console.log('Settled extra-only attendance and later child approval preserve the final booking charge.');

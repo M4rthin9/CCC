@@ -49,6 +49,7 @@ import {
 } from '../cache/invalidation';
 import {
   computeApprovalTotals,
+  computeBookingCost,
   applyServerPricing,
   alignExtraVisitorApprovals,
   parseExtraPrisoners,
@@ -838,14 +839,17 @@ export async function handleUpdateVisitorApproval(
     };
   }
 
-  const { visitorCount, total, adultCount, child5to8Count, childUnder5Count } = computeApprovalTotals(
-    mainApproved,
-    extraVisitorApproved,
-    extraVisitorNames,
-    mainRelation,
-    mainAge,
-    String(rows[0]!.extraPrisoners || '')
-  );
+  const { visitorCount, total, adultCount, child5to8Count, childUnder5Count } =
+    paymentLock && rows[0]!.visitorApproved === 'no' && !mainApproved
+      ? computeBookingCost({ ...rows[0]!, extraVisitorApproved })
+      : computeApprovalTotals(
+          mainApproved,
+          extraVisitorApproved,
+          extraVisitorNames,
+          mainRelation,
+          mainAge,
+          String(rows[0]!.extraPrisoners || '')
+        );
 
   const cols: Array<[string, unknown]> = [];
   if (body.visitorApproved !== undefined) cols.push(['visitorApproved', sanitizeStr(body.visitorApproved, 8)]);
@@ -859,7 +863,7 @@ export async function handleUpdateVisitorApproval(
   cols.push(['version', Number(rows[0]!.version || 1) + 1]);
   cols.push(['updatedAt', new Date().toISOString()]);
 
-  const mainRejected = body.visitorApproved !== undefined && !mainApproved;
+  const mainRejected = body.visitorApproved !== undefined && !mainApproved && rows[0]!.visitorApproved !== 'no';
   if (mainRejected) {
     cols.push(['status', 'ไม่อนุมัติ']);
     cols.push(['cancelReason', 'ผู้เยี่ยมหลักถูกปฏิเสธการเข้าร่วม']);

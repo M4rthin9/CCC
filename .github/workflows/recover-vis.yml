@@ -1,0 +1,27 @@
+name: Inspect missing VIS reservations
+
+on:
+  push:
+    branches: [recovery/vis-20261009]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Inspect only the three requested references
+        run: node operations/inspect-vis-recovery.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-vis-recovery
+          path: recovery-encrypted.json
+          retention-days: 1

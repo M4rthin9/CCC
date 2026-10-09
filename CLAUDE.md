@@ -106,8 +106,10 @@ plus vars from `wrangler.toml` `[vars]` (`CACHE_VERSION`, `PASSWORD_SALT`, `ALLO
 
 **Cron** (`wrangler.toml` `[triggers]`, handled in `index.ts` `scheduled()`): one daily
 job — expired-discipline cleanup, expired-refresh-token deletion, lapsed table holds,
-the notification outbox, cancelled-row cleanup, `d1_cache` purge, and the rolling-window
-archive sweep. `services/archiveService.ts` moves every reservation with a visit date
+the notification outbox, `d1_cache` purge, and the rolling-window
+archive sweep. Cancelled bookings keep their payment/slip evidence and use this same
+archive window; never hard-delete them just because their visit date has passed.
+`services/archiveService.ts` moves every reservation with a visit date
 older than `ARCHIVE_MONTHS` into `reservations_archive`, keeping the live table (and so
 the dashboard's month filter) to a rolling three months — but never earlier than
 `ARCHIVE_FLOOR_ISO` (2026-10-01): the dashboard starts from October 2026, and the floor

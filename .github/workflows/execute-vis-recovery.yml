@@ -1,0 +1,45 @@
+name: Recover three cancelled October 5 VIS reservations
+
+# Push this execution branch only after the user explicitly approves maintenance.
+on:
+  push:
+    branches: [recovery/vis-execute-20261009]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vis-recovery-production
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npx tsx scripts/verify-cancelled-retention.ts
+      - run: node operations/verify-vis-recovery.mjs
+      - name: Recover requested originals during approved maintenance
+        run: node operations/run-vis-recovery.mjs
+        env:
+          MAINTENANCE_APPROVED: 2026-10-09-three-cancelled-VIS
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: encrypted-vis-recovery-checkpoints
+          path: |
+            recovery-before.enc.json
+            recovery-originals.enc.json
+            recovery-state.json
+          retention-days: 1

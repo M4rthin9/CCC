@@ -405,26 +405,6 @@ export function getAllRefs(db: D1Database): Promise<string[]> {
     .then((res) => (res.results ?? []).map((r) => r.ref));
 }
 
-/**
- * Live allocations that have been cancelled (status 'ยกเลิก') are permanently
- * dropped only once the visit date is well past (2 days after visitDateISO) so
- * the reservation page stays clean. A cancelled booking must never free its
- * day's slot, so nothing is deleted while its visit date is still ahead.
- * Returns the refs removed, for downstream note/notification cleanup.
- */
-export async function listExpiredCancelledRefs(db: D1Database, nowIso: string, cancelAfterDays = 2): Promise<string[]> {
-  const res = await db
-    .prepare(
-      `SELECT ref FROM ${TABLES.reservations}
-        WHERE status = ?
-          AND visitDateISO GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-          AND visitDateISO < date(?, ?)`
-    )
-    .bind(CANCELLED, nowIso, '-' + cancelAfterDays + ' days')
-    .all<{ ref: string }>();
-  return (res.results ?? []).map((r) => r.ref);
-}
-
 export function insertReservation(db: D1Database, data: Record<string, unknown>): Promise<void> {
   const cols = RESERVATION_COLUMNS;
   const values = cols.map((c) => (data[c] !== undefined ? data[c] : ''));

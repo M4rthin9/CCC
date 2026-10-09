@@ -28,10 +28,12 @@ async function checkpoint(next) {
   console.log(JSON.stringify({ phase: state.phase, safeToResume: state.safeToResume }));
 }
 async function api(path, body) {
-  const response = await fetch(`${base}/${path}`, {
+  const restoring = path === 'time_travel/restore';
+  const url = `${base}/${path}${restoring ? `?${new URLSearchParams(body)}` : ''}`;
+  const response = await fetch(url, {
     method: body ? 'POST' : 'GET',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    ...(body ? { body: JSON.stringify(body) } : {}),
+    ...(body && !restoring ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(90_000),
   });
   const result = await response.json();

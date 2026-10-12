@@ -28,6 +28,7 @@ import { Env } from '../types';
 import { sendPush, PushResult } from './push';
 import { pushLine, LinePushResult } from './line';
 import { logEvent } from './logger';
+import { claimTablePushAttempt } from '../db/queries/tableAvailability';
 
 function pushEnabled(env: Env): boolean {
   return env.NOTIFY_PUSH_ENABLED === 'true';
@@ -59,7 +60,7 @@ function fillTemplate(template: string, vars: Record<string, unknown>): string {
   });
 }
 
-type DeliveryOutcome = 'sent' | 'failed' | 'retry' | 'skipped_cap';
+type DeliveryOutcome = 'sent' | 'failed' | 'retry' | 'skipped_cap' | 'budget_deferred';
 
 function isTransient(res: { ok: boolean; status?: number; error?: string }): boolean {
   if (res.status !== undefined) return res.status === 429 || res.status >= 500;
@@ -75,6 +76,9 @@ async function currentLineCap(env: Env): Promise<number> {
 async function deliverPushRow(env: Env, row: NotificationRow): Promise<DeliveryOutcome> {
   const now = new Date().toISOString();
   if (row.id === undefined) return 'failed';
+  if (row.type === 'table_available' && !(await claimTablePushAttempt(env.DB, now.slice(0, 10)))) {
+    return 'budget_deferred';
+  }
   const sub = await pushSubscriptionByEndpoint(env.DB, row.recipient);
   if (!sub) {
     await markNotification(env.DB, row.id, 'failed', 'subscription_gone', now);
@@ -236,8 +240,9 @@ export async function notify(env: Env, input: Record<string, unknown>): Promise<
   return base;
 }
 
-/** Pushes per invocation: the Workers Free plan allows 50 external subrequests. */
-const PUSH_BATCH = 40;
+/** Each push uses a subscription read plus an outbox update. Fifteen keeps
+ * delivery below D1 Free's 50-query limit, with room for queue bookkeeping. */
+const PUSH_BATCH = 15;
 
 /**
  * Send up to PUSH_BATCH pending push rows. When a full batch went out there may
@@ -249,12 +254,14 @@ export async function drainPushes(env: Env): Promise<Record<string, unknown>> {
   const rows = await getPendingPushNotifications(env.DB, PUSH_BATCH);
   let sent = 0;
   let failed = 0;
+  let budgetDeferred = false;
   for (const row of rows) {
     const outcome = await deliverPushRow(env, row);
     if (outcome === 'sent') sent++;
     else if (outcome === 'failed') failed++;
+    else if (outcome === 'budget_deferred') budgetDeferred = true;
   }
-  const more = rows.length === PUSH_BATCH;
+  const more = rows.length === PUSH_BATCH && !budgetDeferred;
   if (more) await env.PUSH_QUEUE?.send({ drain: true });
   return { status: 'ok', sent, failed, more };
 }
@@ -271,11 +278,13 @@ export async function getPushMessage(env: Env, endpoint: string): Promise<Record
   const row = endpoint ? await latestPushMessage(env.DB, endpoint, since) : null;
   if (!row) return { status: 'ok', title: 'CC Cafe', body: 'มีการแจ้งเตือนใหม่ แตะเพื่อดูรายละเอียด', url: '/' };
   const url =
-    row.type === 'announcement'
-      ? row.url || '/'
-      : row.type.startsWith('booking_open')
-        ? '/#/booking'
-        : `/#/status?ref=${encodeURIComponent(row.ref)}`;
+    row.type === 'table_available'
+      ? '/#/table-booking'
+      : row.type === 'announcement'
+        ? row.url || '/'
+        : row.type.startsWith('booking_open')
+          ? '/#/booking'
+          : `/#/status?ref=${encodeURIComponent(row.ref)}`;
   return { status: 'ok', title: row.subject, body: row.body, url, tag: row.ref || row.type };
 }
 
@@ -336,7 +345,7 @@ export async function processPendingNotifications(env: Env): Promise<Record<stri
     retried: 0,
   };
   try {
-    const pending = await getPendingNotifications(env.DB, 50);
+    const pending = await getPendingNotifications(env.DB, 10);
     summary.processed = pending.length;
     for (const row of pending) {
       try {

@@ -1,11 +1,7 @@
+import { reservationChanged } from '../services/reservationChanges';
 import { formatBangkok, sanitizeStr } from '../config';
 import { TABLES } from '../constants';
-import {
-  invalidateArchivedCache,
-  invalidateLookupCache,
-  invalidatePrisonerLookupCache,
-  invalidateReservationsCache,
-} from '../cache/invalidation';
+import { invalidateArchivedCache, invalidateLookupCache, invalidatePrisonerLookupCache } from '../cache/invalidation';
 import { getBookingEvidenceEvents } from '../db/queries/eventlog';
 import { getArchivedReservationByRef, getReservationByRef, getSlipRecordByRef } from '../db/queries/reservations';
 import { hasPermission } from '../db/queries/roles';
@@ -139,7 +135,7 @@ export async function handleCompleteRefund(
   ]);
   if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1)
     return { status: 'error', message: 'ข้อมูลเปลี่ยนแปลงหรือบันทึกคืนเงินแล้ว กรุณาโหลดข้อมูลใหม่' };
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
   if (row.prisonerId) await invalidatePrisonerLookupCache(env, row.prisonerId);
   if (!live) await invalidateArchivedCache(env);

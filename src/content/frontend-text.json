@@ -5183,20 +5183,20 @@
     "key": "pushAlertEnable",
     "category": "general",
     "defaults": {
-      "th": "แจ้งเตือนฉันก่อนเปิดจอง 10 นาที และเมื่อเปิดจองแล้ว",
-      "en": "Notify me 10 minutes before booking opens, and when it opens",
-      "zh": "开放预约前 10 分钟及开放时通知我",
-      "vi": "Thông báo cho tôi 10 phút trước khi mở đặt chỗ và khi đã mở"
+      "th": "แจ้งเตือนเปิดจองและเมื่อโต๊ะว่างอีกครั้ง",
+      "en": "Notify me when booking opens or a table becomes available again",
+      "zh": "预约开放或餐桌重新有空位时通知我",
+      "vi": "Báo khi mở đặt chỗ hoặc có bàn trống trở lại"
     }
   },
   {
     "key": "pushAlertOn",
     "category": "general",
     "defaults": {
-      "th": "เปิดการแจ้งเตือนแล้ว เราจะแจ้งก่อนเปิดจอง 10 นาที (06:50 น.) และเมื่อเปิดจอง (07:00 น.)",
-      "en": "Notifications are on. We will tell you 10 minutes before booking opens (6:50 a.m.) and when it opens (7:00 a.m., Thailand time).",
-      "zh": "已开启通知，我们会在开放预约前 10 分钟（早上 6:50）及开放时（早上 7:00，泰国时间）通知您。",
-      "vi": "Đã bật thông báo. Chúng tôi sẽ báo 10 phút trước khi mở đặt chỗ (6:50 sáng) và khi mở (7:00 sáng, giờ Thái Lan)."
+      "th": "เปิดการแจ้งเตือนแล้ว เราจะแจ้งก่อนเปิดจอง 10 นาที เมื่อเปิดจอง และเมื่อโต๊ะที่เต็มกลับมาว่างอีกครั้ง",
+      "en": "Notifications are on. We will notify you 10 minutes before booking opens, when it opens, and when a full table date becomes available again.",
+      "zh": "已开启通知。我们会在预约开放前10分钟、开放时，以及原已满的日期重新有空位时通知您。",
+      "vi": "Đã bật thông báo. Chúng tôi sẽ báo 10 phút trước khi mở đặt chỗ, khi mở và khi ngày đã kín có bàn trống trở lại."
     }
   },
   {

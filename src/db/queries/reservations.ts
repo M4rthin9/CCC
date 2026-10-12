@@ -336,35 +336,35 @@ export function countPublicPrisonerBookings(db: D1Database, visitDateISO: string
 // itself is what makes capacity correct the instant a hold lapses, without
 // depending on the housekeeping sweep below having run first.
 const TABLE_ACTIVE_STATUSES = ACTIVE_STATUSES;
+/** Shared by capacity enforcement, calendar counts and vacancy broadcasts. */
+export const TABLE_OCCUPANCY_WHERE = `bookingType = 'table'
+  AND status IN (${TABLE_ACTIVE_STATUSES.map(() => '?').join(', ')})
+  AND NOT (status = ? AND holdExpiresAt != '' AND holdExpiresAt < ?)`;
+
+export function tableOccupancyBinds(nowIso: string): unknown[] {
+  return [...TABLE_ACTIVE_STATUSES, AWAITING_PAYMENT, nowIso];
+}
 
 export function countActiveTableBookings(db: D1Database, visitDateISO: string, nowIso: string): Promise<number> {
-  const placeholders = TABLE_ACTIVE_STATUSES.map(() => '?').join(', ');
   return db
     .prepare(
       `SELECT COUNT(*) AS n FROM ${TABLES.reservations}
-        WHERE bookingType = 'table'
-          AND visitDateISO = ?
-          AND status IN (${placeholders})
-          AND NOT (status = ? AND holdExpiresAt != '' AND holdExpiresAt < ?)`
+        WHERE visitDateISO = ? AND ${TABLE_OCCUPANCY_WHERE}`
     )
-    .bind(visitDateISO, ...TABLE_ACTIVE_STATUSES, AWAITING_PAYMENT, nowIso)
+    .bind(visitDateISO, ...tableOccupancyBinds(nowIso))
     .first<{ n: number }>()
     .then((r) => Number(r?.n ?? 0));
 }
 
 /** Per-date used counts for the public availability calendar. */
 export function countActiveTableBookingsByDate(db: D1Database, nowIso: string): Promise<Record<string, number>> {
-  const placeholders = TABLE_ACTIVE_STATUSES.map(() => '?').join(', ');
   return db
     .prepare(
       `SELECT visitDateISO, COUNT(*) AS c FROM ${TABLES.reservations}
-        WHERE bookingType = 'table'
-          AND visitDateISO LIKE '____-__-__'
-          AND status IN (${placeholders})
-          AND NOT (status = ? AND holdExpiresAt != '' AND holdExpiresAt < ?)
+        WHERE visitDateISO LIKE '____-__-__' AND ${TABLE_OCCUPANCY_WHERE}
         GROUP BY visitDateISO`
     )
-    .bind(...TABLE_ACTIVE_STATUSES, AWAITING_PAYMENT, nowIso)
+    .bind(...tableOccupancyBinds(nowIso))
     .all<{ visitDateISO: string; c: number }>()
     .then((res) => {
       const counts: Record<string, number> = {};

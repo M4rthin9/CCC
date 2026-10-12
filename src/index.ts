@@ -16,6 +16,7 @@ import { handleGetSlipImage } from './routes/slip';
 import { handleGetPromoImage } from './routes/promo';
 import { broadcastOpening, drainPushes, processPendingNotifications } from './services/notifications';
 import { purgeOldCookieConsents } from './services/pdpa';
+import { broadcastTableAvailability } from './services/tableAvailability';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -296,13 +297,24 @@ export default {
   },
 };
 
-// Two triggers (the Workers Free plan allows five per account):
+// Three triggers: opening alerts plus a five-minute vacancy scan.
 //   "0 * * * *"  — every hour: "booking is open" alert for anything opening now
 //                  (07:00 Bangkok roll, or a scheduled opening such as 12:00);
 //                  at 17:00 UTC also the daily housekeeping.
 //   "50 * * * *" — every hour: "booking opens in 10 minutes" alert.
 // An hour with nothing opening reads one settings row and stops.
 async function runCron(cron: string, scheduledTime: number, env: Env): Promise<void> {
+  if (cron === '*/5 * * * *') {
+    try {
+      console.log(
+        '[Cron] table availability:',
+        JSON.stringify(await broadcastTableAvailability(env, new Date(), scheduledTime))
+      );
+    } catch (error) {
+      console.error('[Cron] table availability error:', String(error));
+    }
+    return;
+  }
   const job = cron === '50 * * * *' ? 'soon' : 'open';
   try {
     console.log('[Cron] opening alert:', JSON.stringify(await broadcastOpening(env, job, scheduledTime)));

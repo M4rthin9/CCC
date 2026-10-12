@@ -1,3 +1,4 @@
+import { reservationChanged } from '../services/reservationChanges';
 import { PRISONERS_CACHE_TTL } from '../constants';
 import { sanitizeStr } from '../config';
 import { cacheKeyPrisoners } from '../cache/keys';
@@ -12,7 +13,7 @@ import {
 } from '../db/queries/prisoners';
 import { getActiveReservations } from '../db/queries/reservations';
 import { hasPermission } from '../db/queries/roles';
-import { invalidatePrisonersCache, invalidateReservationsCache } from '../cache/invalidation';
+import { invalidatePrisonersCache } from '../cache/invalidation';
 import { logEvent } from '../services/logger';
 import { isDisciplineActive } from '../services/disciplineService';
 import { Env } from '../types';
@@ -105,7 +106,7 @@ export async function handleImportPrisoners(
   }
 
   await invalidatePrisonersCache(env);
-  if (reservationsWingSynced > 0) await invalidateReservationsCache(env);
+  if (reservationsWingSynced > 0) await reservationChanged(env);
   await logEvent(
     env,
     user.username,
@@ -164,7 +165,7 @@ export async function handleSyncPrisonerWings(
 
   if (updated > 0) {
     await invalidatePrisonersCache(env);
-    await invalidateReservationsCache(env);
+    await reservationChanged(env);
   }
   await logEvent(env, user.username, 'sync_prisoner_wings', '', { updated }, 'success');
   return { status: 'ok', message: 'อัปเดตแดนผู้ต้องขังเสร็จสิ้น: ' + updated + ' รายการ', updated };

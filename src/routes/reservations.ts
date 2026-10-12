@@ -1,3 +1,4 @@
+import { reservationChanged } from '../services/reservationChanges';
 import { REFUNDED_STATUS } from '../services/refundEvidence';
 import {
   PUBLIC_CACHE_TTL,
@@ -41,12 +42,7 @@ import {
 import { deleteNotesByRef } from '../db/queries/notes';
 import { deleteNotificationDataByRef } from '../db/queries/notifications';
 import { hasPermission } from '../db/queries/roles';
-import {
-  invalidateArchivedCache,
-  invalidateLookupCache,
-  invalidatePrisonerLookupCache,
-  invalidateReservationsCache,
-} from '../cache/invalidation';
+import { invalidateArchivedCache, invalidateLookupCache, invalidatePrisonerLookupCache } from '../cache/invalidation';
 import {
   computeApprovalTotals,
   computeBookingCost,
@@ -188,7 +184,7 @@ export async function getCountsByDate(env: Env): Promise<Record<string, unknown>
 /**
  * Availability for the no-prisoner table calendar: used slots per visit date plus
  * the day's capacity. Modelled on getCountsByDate — same version-guarded D1 cache,
- * dropped by invalidateReservationsCache on every booking write.
+ * dropped by reservationChanged on every booking write.
  *
  * Separate from getCountsByDate on purpose: the two pools are parallel, so table
  * availability must not be affected by prisoner-visit volume or vice versa.
@@ -342,7 +338,7 @@ export async function handleCancelBooking(
     { previousStatus: prevStatus, affectedRows: rows.length },
     'success'
   );
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
   await notify(env, {
     ref,
@@ -418,7 +414,7 @@ export async function handleDeleteBooking(
     snapshot,
     'success'
   );
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
   if (wasArchived) await invalidateArchivedCache(env);
   if (snapshot.prisonerId) await invalidatePrisonerLookupCache(env, snapshot.prisonerId);
@@ -515,7 +511,7 @@ export async function handleRevertBookingPayment(
     },
     'success'
   );
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
 
   if (body.notify !== false && body.notify !== 'false') {
@@ -584,7 +580,7 @@ export async function handlePublicCancelBooking(
     { previousStatus: prevStatus, affectedRows: rows.length },
     'success'
   );
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
   await notify(env, {
     ref,
@@ -702,7 +698,7 @@ export async function handleUpdateStatus(
     // The usual reason a staff member re-applies a status they already set is
     // that the dashboard showed them a stale row. Drop the caches on the way out
     // so the retry actually repairs the view instead of returning a silent no-op.
-    await invalidateReservationsCache(env);
+    await reservationChanged(env);
     await invalidateLookupCache(env, ref);
     await logEvent(env, user.username, 'status_change_noop', ref, { status, reason: 'already_at_target' }, 'success');
     return { status: 'ok', noop: true };
@@ -741,7 +737,7 @@ export async function handleUpdateStatus(
     { newStatus: status, affectedRows: rows.length, ...(fromArchive ? { archived: true } : {}) },
     'success'
   );
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
   if (fromArchive) await invalidateArchivedCache(env);
 
@@ -911,7 +907,7 @@ export async function handleUpdateVisitorApproval(
       'success'
     );
   }
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
 
   if (mainRejected) {
@@ -1090,7 +1086,7 @@ export async function handleUpdateBooking(
     { ...changes, ...(fromArchive ? { archived: true } : {}) },
     'success'
   );
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
   if (fromArchive) await invalidateArchivedCache(env);
   return { status: 'ok', message: 'แก้ไขการจองสำเร็จ', archived: fromArchive };
@@ -1250,7 +1246,7 @@ export async function handleCreateBooking(
     }
   }
 
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   if (newPrisonerId) await invalidatePrisonerLookupCache(env, newPrisonerId);
   await logEvent(
     env,

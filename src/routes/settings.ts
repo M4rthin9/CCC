@@ -1,11 +1,11 @@
 import { getSettings, saveSettings, getAllDataVersions, bumpDataVersion } from '../db/queries/settings';
 import { hasPermission } from '../db/queries/roles';
 import { logEvent } from '../services/logger';
-import { getTableBookingConfig } from '../services/tableCapacity';
-import { getPublicBookingConfig } from '../services/publicCapacity';
-import { getBookingWindow } from '../services/bookingWindow';
-import { getPromoConfig, promoImageUrl } from '../services/promo';
-import { getPdpaConfig } from '../services/pdpa';
+import { parseTableBookingConfig } from '../services/tableCapacity';
+import { parsePublicBookingConfig } from '../services/publicCapacity';
+import { parseBookingWindow } from '../services/bookingWindow';
+import { parsePromo, promoImageUrl } from '../services/promo';
+import { parsePdpa } from '../services/pdpa';
 import { publicFrontendContent } from '../services/frontendContent';
 import { Env } from '../types';
 
@@ -70,7 +70,10 @@ export async function handleGetSettings(env: Env): Promise<Record<string, unknow
  */
 export async function readPaymentSwitch(env: Env): Promise<{ enabled: boolean; closedMessage: string }> {
   const settings = await getSettings(env.DB);
-  const raw = (settings as Record<string, unknown>).payment;
+  return parsePaymentSwitch(settings.payment);
+}
+
+function parsePaymentSwitch(raw: unknown): { enabled: boolean; closedMessage: string } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { enabled: true, closedMessage: '' };
   const p = raw as Record<string, unknown>;
   return {
@@ -85,22 +88,22 @@ export async function readPaymentSwitch(env: Env): Promise<{ enabled: boolean; c
  * biller config and default account hashes, which must never leak.
  */
 export async function handleGetPublicSettings(env: Env, origin: string): Promise<Record<string, unknown>> {
-  const payment = await readPaymentSwitch(env);
+  const settings = await getSettings(env.DB);
+  const payment = parsePaymentSwitch(settings.payment);
   // The table-booking knobs are not secrets — the booking page needs them to draw
   // the calendar and to tell the visitor how long their slot is held.
-  const tableBooking = await getTableBookingConfig(env);
+  const tableBooking = parseTableBookingConfig(settings.tableBooking);
   // Same story for the daily cap on the normal visit path (held in a key the
   // booking page reads; rejected bookings keep their slot, early cancels free it).
-  const publicBooking = await getPublicBookingConfig(env);
+  const publicBooking = parsePublicBookingConfig(settings.publicBooking);
   // Global open/close plus per-date overrides, so the calendar can grey out
   // exactly what the server would refuse.
-  const bookingWindow = await getBookingWindow(env);
+  const bookingWindow = parseBookingWindow(settings.bookingWindow, settings.scheduledOpenings);
   // Home-page adverts: hidden ones are dropped here, and each image gets an
   // absolute URL because the booking site lives on another origin.
-  const promo = await getPromoConfig(env);
+  const promo = parsePromo(settings.promo);
   // Cookie-banner policy version (a bump re-asks everyone) and the DPO contact.
-  const pdpa = await getPdpaConfig(env);
-  const settings = await getSettings(env.DB);
+  const pdpa = parsePdpa(settings.pdpa);
   return {
     status: 'ok',
     paymentEnabled: payment.enabled,

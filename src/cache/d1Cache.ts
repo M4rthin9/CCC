@@ -2,7 +2,8 @@
 // counts, prisoners, users, roles) so the KV free-tier 1,000 puts/day
 // budget is reserved for rate-limiting and infrequent counters only.
 //
-// D1 (SQLite) has no write limit.  Values are stored as-is (no chunking)
+// D1 Free has a shared 100,000 rows-written/day limit, including indexes.
+// Values are stored as-is (no chunking)
 // because D1 cells can hold up to 1 MB of text — comfortably above any
 // cache payload in this project.
 
@@ -97,7 +98,7 @@ export async function d1CachePutVersioned(
 
 // ── Counters (rate limits, daily budgets) ────────────────────────────
 // These used to live in KV, one get + one put per public request, which
-// blew through the KV free-tier 1,000 writes/day. D1 has no such cap, and
+// blew through the KV free-tier 1,000 writes/day. D1 has a larger daily cap, and
 // the increment is a single atomic statement instead of a read-modify-write
 // race between isolates.
 

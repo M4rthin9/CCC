@@ -38,6 +38,9 @@ jobs:
       - name: Verify final booking charge reconciliation
         run: npx tsx scripts/verify-booking-charge-reconciliation.ts
 
+      - name: Verify table availability notifications
+        run: npm run smoke:availability
+
       - name: Select target environment
         id: target
         run: |

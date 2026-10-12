@@ -1,3 +1,4 @@
+import { reservationChanged } from '../services/reservationChanges';
 import { PUBLIC_LOOKUP_FIELDS, LOOKUP_CACHE_TTL } from '../constants';
 import { sanitizeStr } from '../config';
 import { lookupCacheKey } from '../cache/keys';
@@ -13,7 +14,7 @@ import {
   getAllRefs,
 } from '../db/queries/reservations';
 import { verifyTurnstileToken } from '../middleware/turnstile';
-import { invalidatePrisonerLookupCache, invalidateReservationsCache } from '../cache/invalidation';
+import { invalidatePrisonerLookupCache } from '../cache/invalidation';
 import { logEvent } from '../services/logger';
 import {
   validateSaveReservation,
@@ -210,7 +211,7 @@ export async function handleSaveReservation(
     return { status: 'error', message: visitsFullMessage(perDay), full: true, used: perDay };
   }
 
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidatePrisonerLookupCache(env, newPrisonerId);
   await logEvent(
     env,
@@ -345,7 +346,7 @@ export async function handleSaveTableReservation(
     return { status: 'error', message: dayFullMessage(config.perDay), full: true, used: config.perDay };
   }
 
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await logEvent(
     env,
     'public',

@@ -136,6 +136,18 @@ function isShut(iso: string, cfg: BookingWindowConfig): boolean {
   return day === 0 || day === 6 || HOLIDAYS.has(iso);
 }
 
+/** The public calendar's bookability gate, including Bangkok's next-day rule. */
+export function isBookableDate(iso: string, cfg: BookingWindowConfig, now: Date = new Date()): boolean {
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Bangkok' }).format(now);
+  return (
+    cfg.open &&
+    iso > today &&
+    iso <= lastOpenDateISO(now) &&
+    !isShut(iso, cfg) &&
+    (!cfg.openAt[iso] || Date.parse(cfg.openAt[iso]) <= now.getTime())
+  );
+}
+
 /**
  * Bookable dates that open in (from, to]: the window's new tail at the 07:00
  * roll, plus scheduled openings whose time falls in the range. A date with a

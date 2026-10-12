@@ -1,3 +1,4 @@
+import { reservationChanged } from './reservationChanges';
 import jsQR, { QRCode } from 'jsqr';
 import { decode as decodeJpeg } from 'jpeg-js';
 import UPNG from 'upng-js';
@@ -9,7 +10,7 @@ import {
   findReservationBySlipFingerprint,
 } from '../db/queries/reservations';
 import { loadSlipDataUri } from './slipStorage';
-import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
+import { invalidateLookupCache } from '../cache/invalidation';
 import { logEvent } from './logger';
 import { extractSlipFields, SlipOcrOutcome } from './slipOcr';
 import { decideSlip, SlipDecision } from './slipMatch';
@@ -366,7 +367,7 @@ export async function persistVerify(
     { status: result.status, kind: result.kind, decision: result.decision?.decision || '' },
     'success'
   );
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
 }
 

@@ -1,3 +1,4 @@
+import { reservationChanged } from './reservationChanges';
 import { ARCHIVE_FLOOR_ISO, ARCHIVE_MONTHS } from '../constants';
 import { formatBangkok } from '../config';
 import {
@@ -7,7 +8,7 @@ import {
   getArchivableRefs,
 } from '../db/queries/reservations';
 import { Env } from '../types';
-import { invalidateArchivedCache, invalidateReservationsCache } from '../cache/invalidation';
+import { invalidateArchivedCache } from '../cache/invalidation';
 
 // D1 caps a statement at 100 bound parameters; the copy statement spends one on
 // archivedAt, so 50 refs per batch leaves plenty of head-room.
@@ -75,7 +76,7 @@ export async function archiveOldReservations(env: Env, maxRows = DEFAULT_MAX_ROW
 
   if (archived > 0) {
     await invalidateArchivedCache(env);
-    await invalidateReservationsCache(env);
+    await reservationChanged(env);
   }
 
   return { status: 'ok', archived, remaining: Math.max(due - archived, 0), skipped, cutoff };

@@ -23,6 +23,10 @@ export async function getPublicBookingConfig(env: Env): Promise<PublicBookingCon
   } catch {
     return { ...DEFAULT_CONFIG };
   }
+  return parsePublicBookingConfig(raw);
+}
+
+export function parsePublicBookingConfig(raw: unknown): PublicBookingConfig {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_CONFIG };
   const cfg = raw as Record<string, unknown>;
   return { perDay: positiveInt(cfg.perDay, DEFAULT_CONFIG.perDay, 500) };

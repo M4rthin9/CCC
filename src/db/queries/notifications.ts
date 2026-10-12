@@ -248,7 +248,7 @@ export function getPendingNotifications(db: D1Database, limit: number): Promise<
     .prepare(
       `SELECT id, ref, type, channel, recipient, subject, body, status, attempts, error, createdAt, sentAt
        FROM notifications
-       WHERE status = 'pending'
+       WHERE status = 'pending' AND type != 'table_available'
        ORDER BY id ASC
        LIMIT ?`
     )

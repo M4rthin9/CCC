@@ -1,3 +1,4 @@
+import { reservationChanged } from '../services/reservationChanges';
 import { sanitizeStr } from '../config';
 import { TABLES } from '../constants';
 import {
@@ -9,7 +10,7 @@ import {
   updateArchivedReservationColumns,
   updateReservationColumns,
 } from '../db/queries/reservations';
-import { invalidateLookupCache, invalidateReservationsCache } from '../cache/invalidation';
+import { invalidateLookupCache } from '../cache/invalidation';
 import { logEvent } from '../services/logger';
 import { notify } from '../services/notifications';
 import { persistVerify, verifyAndDecideSlip } from '../services/slipverify';
@@ -112,7 +113,7 @@ async function verifyAndMaybeApprove(
       { score: result.decision?.score, kind: result.kind, total: booking.total },
       'success'
     );
-    await invalidateReservationsCache(env);
+    await reservationChanged(env);
     await invalidateLookupCache(env, ref);
     await notify(env, {
       ref,
@@ -172,7 +173,7 @@ export async function handleUploadSlip(
   try {
     await updateReservationColumns(env.DB, ref, await slipColumns(env, ref, dataUri));
     await logEvent(env, actor, 'slip_uploaded', ref, {}, 'success');
-    await invalidateReservationsCache(env);
+    await reservationChanged(env);
     await invalidateLookupCache(env, ref);
     // Verification used to wait for a separate verifySlip call, which meant a
     // slip sat unchecked until someone asked. Run it here instead.
@@ -249,7 +250,7 @@ export async function handleUpdateSlipAndStatus(
   await updateReservationColumns(env.DB, ref, cols);
 
   await logEvent(env, user.username, 'slip_and_status_updated', ref, { status }, 'success');
-  await invalidateReservationsCache(env);
+  await reservationChanged(env);
   await invalidateLookupCache(env, ref);
   if (status === PAID) {
     await notify(env, {
@@ -403,6 +404,6 @@ export async function handleMigrateSlipsToR2(
 
   const remaining = await countBase64Slips(env.DB, table);
   await logEvent(env, user.username, 'slips_migrated_to_r2', '', { moved, failed, remaining, table }, 'success');
-  if (moved > 0) await invalidateReservationsCache(env);
+  if (moved > 0) await reservationChanged(env);
   return { status: 'ok', table, moved, failed, remaining };
 }

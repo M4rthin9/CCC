@@ -28,7 +28,7 @@ export async function handleNotify(env: Env, body: Record<string, unknown>): Pro
 
 // POST /api/notify/subscribe (public) — saves a browser Push subscription for
 // a booking ref (status changes reach the visitor), and/or opts the browser in
-// to the "booking opens" alerts (`openingAlerts: true`, no ref needed).
+// to opening and returned-table alerts (`openingAlerts: true`, no ref needed).
 export async function handleSubscribe(env: Env, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const endpoint = sanitizeStr(body.endpoint, 500);
   const p256dh = sanitizeStr(body.p256dh, 500);

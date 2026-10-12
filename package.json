@@ -21,6 +21,7 @@
     "smoke:table": "tsx scripts/verify-table-booking.ts",
     "smoke:notifications": "tsx scripts/verify-notification-announcements.ts",
     "smoke:availability": "tsx scripts/verify-table-availability-alerts.ts",
+    "smoke:status": "tsx scripts/verify-system-status.ts",
     "lint": "eslint src scripts",
     "lint:fix": "eslint src scripts --fix",
     "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\" \"*.{json,mjs}\" \"**/*.{md,yml,yaml}\" \"!data/**\" \"!node_modules/**\"",

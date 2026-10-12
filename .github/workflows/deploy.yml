@@ -41,6 +41,9 @@ jobs:
       - name: Verify table availability notifications
         run: npm run smoke:availability
 
+      - name: Verify public system status
+        run: npm run smoke:status
+
       - name: Select target environment
         id: target
         run: |

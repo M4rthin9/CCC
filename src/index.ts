@@ -11,6 +11,8 @@ import { archiveOldReservations } from './services/archiveService';
 import { deleteExpiredRefreshTokens } from './db/queries/refreshTokens';
 import { releaseExpiredTableHolds } from './db/queries/reservations';
 import { handleHealthHtml, handleHealthJson } from './routes/health';
+import { handleSystemStatus } from './routes/systemStatus';
+import { recordSystemStatus } from './services/systemStatus';
 import { handleLineWebhook } from './routes/notifications';
 import { handleGetSlipImage } from './routes/slip';
 import { handleGetPromoImage } from './routes/promo';
@@ -239,6 +241,12 @@ function waitUntilOf(c: Context<{ Bindings: Env }>): ((p: Promise<unknown>) => v
 }
 
 // ── Health check ───────────────────────────────────────────────────
+app.get('/api/system-status', async (c) => {
+  const response = await handleSystemStatus(c.env, c.req.raw);
+  const headers = new Headers(response.headers);
+  Object.entries(makeCorsHeaders(c.req.raw, c.env)).forEach(([key, value]) => headers.set(key, value));
+  return new Response(response.body, { status: response.status, headers });
+});
 app.get('/health', async (c) => {
   const html = await handleHealthHtml(c.env, c.req.raw);
   const headers = makeCorsHeaders(c.req.raw, c.env);
@@ -305,6 +313,11 @@ export default {
 // An hour with nothing opening reads one settings row and stops.
 async function runCron(cron: string, scheduledTime: number, env: Env): Promise<void> {
   if (cron === '*/5 * * * *') {
+    try {
+      await recordSystemStatus(env, scheduledTime);
+    } catch (error) {
+      console.error('[Cron] system status could not be stored:', String(error));
+    }
     try {
       console.log(
         '[Cron] table availability:',

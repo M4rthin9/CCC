@@ -78,6 +78,7 @@ let settings: Record<string, unknown> = {
 };
 let writes = 0;
 const savedBookings: Record<string, unknown>[] = [];
+const cancellationWrites: Array<{ sql: string; params: unknown[] }> = [];
 const db = {
   prepare(sql: string) {
     let params: unknown[] = [];
@@ -101,6 +102,7 @@ const db = {
       },
       async run() {
         writes++;
+        if (sql.startsWith('UPDATE reservations SET')) cancellationWrites.push({ sql, params });
         if (sql.includes("VALUES ('admin_settings'")) settings = JSON.parse(String(params[0]));
         if (sql.startsWith('INSERT INTO reservations (')) {
           const columns = sql
@@ -203,17 +205,89 @@ try {
   assert.equal(writes, writesBeforeCancel, 'public cancellation cannot alter a booking confirmed under final terms');
 
   savedBookings.push({ ...savedBookings[0], ref: 'TBL-LEGACY', tableAgreementVersion: 'tbl-2026-10-07-v1' });
+  const cancellationEnv = { ...env, NOTIFY_EVENT_ALLOWLIST: 'skip-all' };
+  const writesBeforeVerification = writes;
+  const cancellationsBeforeVerification = cancellationWrites.length;
+  for (const visitorId of [undefined, null, '', '   ', 123456789, { value: 'TEST12345' }]) {
+    const result = await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-LEGACY', visitorId });
+    assert.equal(result.status, 'error');
+    assert.equal(result.identityRequired, true);
+  }
+  for (const visitorId of ['WRONG123', 'TEST12345' + 'X'.repeat(64), 'OTHER-GUEST']) {
+    const result = await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-LEGACY', visitorId });
+    assert.equal(result.status, 'error');
+    assert.equal(result.identityMismatch, true);
+  }
+  savedBookings.push({ ...savedBookings[0], ref: 'TBL-NO-ID', visitorId: '', tableAgreementVersion: '' });
   assert.equal(
-    (await handlePublicCancelBooking({ ...env, NOTIFY_EVENT_ALLOWLIST: 'skip-all' }, { ref: 'TBL-LEGACY' })).status,
+    (await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-NO-ID', visitorId: 'TEST12345' })).identityMismatch,
+    true,
+    'bookings without a stored identity cannot be cancelled publicly'
+  );
+  savedBookings.push({
+    ...savedBookings[0],
+    ref: 'TBL-ZERO-ID',
+    visitorId: '0123456789012',
+    extraVisitorNames: 'Other guest|OTHER-GUEST|Friend|',
+    tableAgreementVersion: '',
+  });
+  for (const visitorId of ['123456789012', 'OTHER-GUEST']) {
+    assert.equal(
+      (await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-ZERO-ID', visitorId })).identityMismatch,
+      true,
+      'leading zeroes matter and an additional guest cannot authorize cancellation'
+    );
+  }
+  assert.equal(writes, writesBeforeVerification, 'failed verification must not mutate data or send notifications');
+  assert.equal(cancellationWrites.length, cancellationsBeforeVerification);
+  assert.equal(
+    (await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-LEGACY', visitorId: ' test12345 ' })).status,
     'ok',
-    'older TBL bookings retain their accepted policy'
+    'older TBL bookings can cancel with a matching passport, regardless of letter case or surrounding whitespace'
+  );
+  assert.ok(cancellationWrites.at(-1)?.params.includes('ยกเลิก'));
+  assert.ok(cancellationWrites.at(-1)?.params.includes('TBL-LEGACY'));
+  assert.equal(
+    (await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-ZERO-ID', visitorId: '0123456789012' })).status,
+    'ok',
+    'matching national ID preserves leading zeroes'
   );
   savedBookings.push({ ...savedBookings[0], ref: 'VIS-LEGACY', bookingType: 'prisoner', tableAgreementVersion: '' });
   assert.equal(
-    (await handlePublicCancelBooking({ ...env, NOTIFY_EVENT_ALLOWLIST: 'skip-all' }, { ref: 'VIS-LEGACY' })).status,
+    (await handlePublicCancelBooking(cancellationEnv, { ref: 'VIS-LEGACY', visitorId: 'TEST12345' })).status,
     'ok',
-    'VIS cancellation remains unchanged'
+    'VIS cancellation also requires a matching main visitor identity'
   );
+  savedBookings.push({ ...savedBookings[0], ref: 'TBL-CANCELLED', status: 'ยกเลิก', tableAgreementVersion: '' });
+  assert.equal(
+    (await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-CANCELLED', visitorId: 'WRONG123' }))
+      .identityMismatch,
+    true,
+    'already-cancelled bookings still require verification'
+  );
+  assert.equal(
+    (await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-CANCELLED', visitorId: 'TEST12345' })).noop,
+    true
+  );
+  const writesBeforeLockedCancel = writes;
+  assert.equal(
+    (await handlePublicCancelBooking(cancellationEnv, { ref: created.ref, visitorId: 'TEST12345' })).changesLocked,
+    true,
+    'a matching identity cannot bypass final booking terms'
+  );
+  savedBookings.push({ ...savedBookings[0], ref: 'TBL-PAST', visitDateISO: '2000-01-01', tableAgreementVersion: '' });
+  assert.equal(
+    (await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-PAST', visitorId: 'TEST12345' })).status,
+    'error',
+    'identity verification cannot bypass the past-date guard'
+  );
+  savedBookings.push({ ...savedBookings[0], ref: 'TBL-REFUNDED', status: 'คืนเงินแล้ว', tableAgreementVersion: '' });
+  assert.equal(
+    (await handlePublicCancelBooking(cancellationEnv, { ref: 'TBL-REFUNDED', visitorId: 'TEST12345' })).status,
+    'error',
+    'refunded bookings stay protected'
+  );
+  assert.equal(writes, writesBeforeLockedCancel);
 } finally {
   globalThis.fetch = fetchBefore;
 }

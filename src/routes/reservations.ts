@@ -551,6 +551,27 @@ export async function handlePublicCancelBooking(
     };
   }
 
+  // The reference is public; only the main guest's stored identity can authorize
+  // self-service cancellation. Keep leading zeroes and reject non-string input.
+  const visitorId = typeof body.visitorId === 'string' ? body.visitorId.trim().toUpperCase() : '';
+  if (!visitorId) {
+    return {
+      status: 'error',
+      identityRequired: true,
+      message: 'กรุณากรอกเลขบัตรประชาชนหรือหนังสือเดินทางของผู้จองหลักที่ใช้ในการจอง',
+    };
+  }
+  if (
+    visitorId.length > 64 ||
+    rows.some((row) => !row.visitorId || String(row.visitorId).trim().toUpperCase() !== visitorId)
+  ) {
+    return {
+      status: 'error',
+      identityMismatch: true,
+      message: 'เลขบัตรประชาชนหรือหนังสือเดินทางไม่ตรงกับข้อมูลผู้จองหลักในการจองนี้',
+    };
+  }
+
   // Same guard the staff path applies: a visit that has already happened cannot
   // be cancelled retroactively. Its absence here was an asymmetry, not a rule.
   const today = formatDateISO(new Date());

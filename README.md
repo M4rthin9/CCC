@@ -34,7 +34,7 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
 - **Book a visit** — `saveReservation` with visitor / prisoner / extra-visitor details,
   visit date, counts and computed totals.
 - **Look up a booking by ref or prisoner ID** — `lookupByRef` (cached, TTL 15s).
-- **Cancel a booking** — `publicCancelBooking` (public-facing cancel flow).
+- **Cancel a booking** — `publicCancelBooking` requires `ref` and `visitorId`, matching the main guest's stored ID card or passport number (case-insensitive, surrounding whitespace ignored). The public form asks for verification; missing or mismatched identity leaves the booking unchanged. Existing cancellation restrictions still apply.
 - **Upload a payment slip** — `uploadSlip` (base64 data URI, max ~2 MB in D1).
 - **Live daily counts per visit date** — `getCountsByDate`.
 - **Prisoner list** — `getPrisoners` (minified, cached 5 min).

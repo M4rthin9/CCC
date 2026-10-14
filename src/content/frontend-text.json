@@ -1620,6 +1620,56 @@
     }
   },
   {
+    "key": "cancelIdentityHint",
+    "category": "status",
+    "defaults": {
+      "th": "กรอกเลขบัตรประชาชนหรือหนังสือเดินทางของผู้จองหลักที่ใช้ในการจองนี้ เพื่อยืนยันการยกเลิก",
+      "en": "Enter the main guest’s ID card or passport number used for this booking to confirm cancellation.",
+      "zh": "请输入本次预约时填写的主要预约人的身份证或护照号码，以确认取消。",
+      "vi": "Nhập số căn cước hoặc hộ chiếu của người đặt chính đã dùng cho đặt lịch này để xác nhận hủy."
+    }
+  },
+  {
+    "key": "cancelIdentityLabel",
+    "category": "status",
+    "defaults": {
+      "th": "เลขบัตรประชาชนหรือหนังสือเดินทาง",
+      "en": "ID card or passport number",
+      "zh": "身份证或护照号码",
+      "vi": "Số căn cước hoặc hộ chiếu"
+    }
+  },
+  {
+    "key": "cancelIdentityMismatch",
+    "category": "status",
+    "defaults": {
+      "th": "เลขบัตรประชาชนหรือหนังสือเดินทางไม่ตรงกับข้อมูลผู้จองหลักในการจองนี้",
+      "en": "The ID card or passport number does not match the main guest on this booking.",
+      "zh": "身份证或护照号码与本次预约的主要预约人信息不符。",
+      "vi": "Số căn cước hoặc hộ chiếu không khớp với người đặt chính trong đặt lịch này."
+    }
+  },
+  {
+    "key": "cancelIdentityRequired",
+    "category": "status",
+    "defaults": {
+      "th": "กรุณากรอกเลขบัตรประชาชนหรือหนังสือเดินทางของผู้จองหลักที่ใช้ในการจอง",
+      "en": "Enter the main guest’s ID card or passport number used for this booking.",
+      "zh": "请输入本次预约时填写的主要预约人的身份证或护照号码。",
+      "vi": "Vui lòng nhập số căn cước hoặc hộ chiếu của người đặt chính đã dùng cho đặt lịch này."
+    }
+  },
+  {
+    "key": "cancelKeepBooking",
+    "category": "status",
+    "defaults": {
+      "th": "เก็บการจองไว้",
+      "en": "Keep booking",
+      "zh": "保留预约",
+      "vi": "Giữ đặt lịch"
+    }
+  },
+  {
     "key": "cancelNotesTitle",
     "category": "status",
     "defaults": {

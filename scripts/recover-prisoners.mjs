@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite';
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 const token = process.env.CLOUDFLARE_API_TOKEN;
 if (!account || !token) throw new Error('Missing Cloudflare credentials');
@@ -17,7 +18,7 @@ for (const db of databases.filter(d => ['ccc-reservations', 'ccc-reservations-de
   const queries = [
     "SELECT count(*) AS prisoners FROM prisoners",
     "SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%prison%' OR name LIKE '%backup%')",
-    "SELECT timestamp, username, details, result FROM event_logs WHERE action='import_prisoners' ORDER BY rowid DESC LIMIT 8",
+    "SELECT timestamp, username, details, result FROM event_log WHERE action='import_prisoners' ORDER BY rowid DESC LIMIT 8",
     "SELECT key, length(value) AS bytes, expires_at FROM d1_cache WHERE key='prisoners'",
   ];
   for (const sql of queries) {
@@ -29,3 +30,28 @@ for (const db of databases.filter(d => ['ccc-reservations', 'ccc-reservations-de
     console.log('BEFORE INCIDENT BOOKMARK', JSON.stringify(await api(`database/${db.uuid}/time_travel/bookmark?timestamp=2026-10-15T08%3A22%3A00Z`)));
   }
 }
+const prod = databases.find(d => d.name === 'ccc-reservations');
+const before = await api(`database/${prod.uuid}/time_travel/bookmark?timestamp=2026-10-15T08%3A22%3A00Z`);
+try {
+  let bookmark = before.bookmark;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const result = await api(`database/${prod.uuid}/export`, {
+      output_format: 'polling',
+      current_bookmark: bookmark,
+      dump_options: { tables: ['prisoners', 'event_log'], no_schema: false, no_data: false },
+    });
+    console.log('HISTORICAL EXPORT STATUS', result.status);
+    if (result.status === 'complete') {
+      const download = await fetch(result.result.signed_url);
+      if (!download.ok) throw new Error('Export download failed');
+      const db = new DatabaseSync(':memory:');
+      db.exec(await download.text());
+      console.log('EXPORTED PRISONER COUNT', db.prepare('SELECT count(*) AS count FROM prisoners').get());
+      console.log('EXPORTED LAST IMPORT', db.prepare("SELECT timestamp, details FROM event_log WHERE action='import_prisoners' ORDER BY rowid DESC LIMIT 1").get());
+      break;
+    }
+    if (result.status === 'error') throw new Error('Historical export unavailable');
+    bookmark = result.at_bookmark;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+} catch (error) { console.log('HISTORICAL EXPORT RESULT', error.message); }

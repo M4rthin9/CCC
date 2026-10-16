@@ -2,7 +2,8 @@ import { reservationChanged } from '../services/reservationChanges';
 import { PUBLIC_LOOKUP_FIELDS, LOOKUP_CACHE_TTL } from '../constants';
 import { sanitizeStr } from '../config';
 import { lookupCacheKey } from '../cache/keys';
-import { d1CacheGet, d1CachePut, d1CacheRemove } from '../cache/d1Cache';
+import { d1CacheGetVersioned, d1CachePutVersioned } from '../cache/d1Cache';
+import { getScopeVersion } from '../db/queries/settings';
 import {
   getActiveReservations,
   getArchivedReservations,
@@ -401,15 +402,16 @@ export async function handleLookupByRef(env: Env, params: Record<string, unknown
   if (!ref && !prisonerId) return { status: 'error', message: 'Missing ref or prisonerId' };
 
   const cacheKey = lookupCacheKey(env, ref, prisonerId);
-  const cached = await d1CacheGet<string>(env.DB, cacheKey);
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached);
-      if (parsed && Array.isArray(parsed.rows)) return { status: 'ok', rows: parsed.rows };
-    } catch {
-      await d1CacheRemove(env.DB, cacheKey).catch(() => undefined);
-    }
+  // Staff writes advance this version even when only the reference lookup is
+  // explicitly invalidated. Prisoner and co-prisoner searches must refresh too.
+  let version: number;
+  try {
+    version = await getScopeVersion(env.DB, 'reservations');
+  } catch {
+    version = -1;
   }
+  const { hit } = await d1CacheGetVersioned<Record<string, unknown>[]>(env.DB, cacheKey, version);
+  if (Array.isArray(hit)) return { status: 'ok', rows: hit };
 
   let matches: Reservation[];
   if (ref) {
@@ -431,6 +433,6 @@ export async function handleLookupByRef(env: Env, params: Record<string, unknown
   }
 
   const masked = matches.map(maskRowForPublic);
-  await d1CachePut(env.DB, cacheKey, JSON.stringify({ rows: masked }), LOOKUP_CACHE_TTL);
+  await d1CachePutVersioned(env.DB, cacheKey, version, masked, LOOKUP_CACHE_TTL);
   return { status: 'ok', rows: masked };
 }

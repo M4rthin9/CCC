@@ -14,7 +14,12 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - run: node scripts/recover-prisoners.mjs
+      - run: node scripts/prisoner-recovery-prepare.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-prisoner-recovery-preflight
+          path: recovery-artifacts/
+          retention-days: 7

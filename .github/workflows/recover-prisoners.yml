@@ -5,21 +5,47 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: production-prisoner-recovery
+  cancel-in-progress: false
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - run: node scripts/prisoner-recovery-prepare.mjs
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify recovery insertion behavior
+        run: node scripts/verify-prisoner-recovery.mjs
+      - name: Prepare encrypted backup and maintenance version
+        run: node scripts/prisoner-recovery-prepare.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: encrypted-prisoner-recovery-preflight
+          path: recovery-artifacts/
+          retention-days: 7
+      - name: Pause production writes and capture frozen backup
+        run: node scripts/prisoner-recovery-freeze.mjs
+      - name: Save frozen backup before historical restore
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-prisoner-recovery-frozen
+          path: recovery-artifacts/
+          retention-days: 7
+      - name: Retrieve historical list and restore missing prisoners
+        run: node scripts/prisoner-recovery-apply.mjs
+      - name: Restore original production deployment
+        if: always()
+        run: node scripts/prisoner-recovery-cleanup.mjs
+      - name: Save encrypted recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-prisoner-recovery-evidence
           path: recovery-artifacts/
           retention-days: 7

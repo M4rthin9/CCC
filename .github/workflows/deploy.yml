@@ -41,6 +41,12 @@ jobs:
       - name: Verify table availability notifications
         run: npm run smoke:availability
 
+      - name: Verify shared admin and public booking capacity
+        run: npm run smoke:capacity
+
+      - name: Verify special round opening times
+        run: npm run smoke:special
+
       - name: Verify public system status
         run: npm run smoke:status
 

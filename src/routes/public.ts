@@ -9,8 +9,6 @@ import {
   getArchivedReservations,
   getReservationsByPrisonerId,
   insertReservation,
-  deleteReservation,
-  countActiveTableBookings,
   countPublicPrisonerBookings,
   getAllRefs,
 } from '../db/queries/reservations';
@@ -192,20 +190,13 @@ export async function handleSaveReservation(
     createdBy: 'public',
   };
 
-  await insertReservation(env.DB, row);
-
-  // D1 gives us no transaction across the count and the insert, so two requests
-  // can both see the last slot. Re-count afterwards and roll our own row back
-  // if we went over — cheap, and it closes the double-submit window.
-  const after = await countPublicPrisonerBookings(env.DB, String(data.visitDateISO || ''));
-  if (after > perDay) {
-    await deleteReservation(env.DB, ref).catch(() => undefined);
+  if (!(await insertReservation(env.DB, row, { perDay, nowIso: now }))) {
     await logEvent(
       env,
       'public',
       'booking_overbooked',
       ref,
-      { visitDateISO: data.visitDateISO, used: after },
+      { visitDateISO: data.visitDateISO, used: perDay },
       'denied',
       meta
     );
@@ -335,15 +326,16 @@ export async function handleSaveTableReservation(
     tableAgreementAcceptedAt: now,
   };
 
-  await insertReservation(env.DB, row);
-
-  // D1 gives us no transaction across the count and the insert, so two requests
-  // can both see the last free slot. Re-count afterwards and roll our own row
-  // back if we went over — cheap, and it closes the double-submit window.
-  const after = await countActiveTableBookings(env.DB, visitDateISO, now);
-  if (after > config.perDay) {
-    await deleteReservation(env.DB, ref).catch(() => undefined);
-    await logEvent(env, 'public', 'table_booking_overbooked', ref, { visitDateISO, used: after }, 'denied', meta);
+  if (!(await insertReservation(env.DB, row, { perDay: config.perDay, nowIso: now }))) {
+    await logEvent(
+      env,
+      'public',
+      'table_booking_overbooked',
+      ref,
+      { visitDateISO, used: config.perDay },
+      'denied',
+      meta
+    );
     return { status: 'error', message: dayFullMessage(config.perDay), full: true, used: config.perDay };
   }
 

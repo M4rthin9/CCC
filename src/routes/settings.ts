@@ -3,7 +3,7 @@ import { hasPermission } from '../db/queries/roles';
 import { logEvent } from '../services/logger';
 import { parseTableBookingConfig } from '../services/tableCapacity';
 import { parsePublicBookingConfig } from '../services/publicCapacity';
-import { parseBookingWindow } from '../services/bookingWindow';
+import { parseBookingWindow, scheduledOpeningsError } from '../services/bookingWindow';
 import { parsePromo, promoImageUrl } from '../services/promo';
 import { parsePdpa } from '../services/pdpa';
 import { publicFrontendContent } from '../services/frontendContent';
@@ -51,6 +51,8 @@ export async function handleSaveSettings(
 
   const settings =
     body.settings && typeof body.settings === 'object' ? { ...(body.settings as Record<string, unknown>) } : {};
+  const scheduleError = scheduledOpeningsError(settings.scheduledOpenings);
+  if (scheduleError) return { status: 'error', message: scheduleError };
   settings._savedBy = user.username;
   settings._savedAt = new Date().toISOString();
   await saveSettings(env.DB, settings, user.username, new Date().toISOString());

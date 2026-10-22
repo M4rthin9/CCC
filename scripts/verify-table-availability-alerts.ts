@@ -49,7 +49,9 @@ const saveSettings = () =>
 saveSettings();
 const insert = (ref: string, date = day, status = 'ชำระแล้ว', hold = '', type = 'table') =>
   sqlite
-    .prepare('INSERT INTO reservations (ref,visitDateISO,status,holdExpiresAt,bookingType) VALUES (?,?,?,?,?)')
+    .prepare(
+      "INSERT INTO reservations (ref,visitDateISO,status,holdExpiresAt,bookingType,visitorId) VALUES (?,?,?,?,?,'TEST-ID')"
+    )
     .run(ref, date, status, hold, type);
 insert('TBL-00001');
 insert('TBL-00002');
@@ -149,7 +151,7 @@ assert.equal(
   0
 );
 assert.equal((await scan()).queued, 0, 'repeat scans do not duplicate an available transition');
-assert.equal((await handlePublicCancelBooking(env, { ref: 'TBL-00002' })).noop, true);
+assert.equal((await handlePublicCancelBooking(env, { ref: 'TBL-00002', visitorId: 'TEST-ID' })).noop, true);
 assert.equal(count(), 85);
 const message = await getPushMessage(env, 'https://example.test/optin-0');
 assert.equal(message.title, 'มีโต๊ะว่างอีกครั้ง');

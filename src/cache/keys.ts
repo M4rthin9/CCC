@@ -5,7 +5,7 @@ export function cacheKeyReservations(env: { CACHE_VERSION?: string }): string {
 }
 
 export function cacheKeyCounts(env: { CACHE_VERSION?: string }): string {
-  return getCacheVersion(env) + ':counts';
+  return getCacheVersion(env) + ':counts:shared-admin';
 }
 
 /** Per-date used-slot counts for the no-prisoner table booking calendar. */

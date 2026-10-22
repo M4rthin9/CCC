@@ -19,6 +19,8 @@
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/verify-smoke.ts",
     "smoke:table": "tsx scripts/verify-table-booking.ts",
+    "smoke:capacity": "tsx scripts/verify-shared-booking-capacity.ts",
+    "smoke:special": "tsx scripts/verify-special-openings.ts",
     "smoke:notifications": "tsx scripts/verify-notification-announcements.ts",
     "smoke:availability": "tsx scripts/verify-table-availability-alerts.ts",
     "smoke:status": "tsx scripts/verify-system-status.ts",

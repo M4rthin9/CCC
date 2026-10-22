@@ -32,7 +32,6 @@ import {
   insertReservation,
   countReservationsByDate,
   countActiveTableBookingsByDate,
-  countActiveTableBookings,
   getAllRefs,
   deleteReservation,
   deleteArchivedReservation,
@@ -59,13 +58,7 @@ import { TABLE_NO_CHANGES_AGREEMENT_VERSIONS } from '../services/tableAgreement'
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
 import { getPrisonerById } from '../db/queries/prisoners';
-import {
-  checkTableCapacity,
-  checkTableSeats,
-  dayFullMessage,
-  getTableBookingConfig,
-  holdExpiryFrom,
-} from '../services/tableCapacity';
+import { checkTableSeats, getTableBookingConfig, holdExpiryFrom } from '../services/tableCapacity';
 import { getPublicBookingConfig } from '../services/publicCapacity';
 import {
   generateUniqueRefServer,
@@ -1202,17 +1195,12 @@ export async function handleCreateBooking(
   const tableConfig = isTable ? await getTableBookingConfig(env) : null;
 
   if (isTable) {
-    // No prisoner means no discipline standing and no duplicate to guard against;
-    // the daily table cap takes their place.
+    // Staff may exceed the daily cap, while each table still has a seat limit.
     const visitDateISO = normalizeVisitDateISO(data.visitDateISO);
     if (!visitDateISO) return { status: 'error', message: 'กรุณาเลือกวันที่เข้าใช้บริการ' };
     data.visitDateISO = visitDateISO;
     const seatsError = checkTableSeats(data, tableConfig!.seatsPerTable);
     if (seatsError) return { status: 'error', message: seatsError, seatsPerTable: tableConfig!.seatsPerTable };
-    const capacity = await checkTableCapacity(env, visitDateISO, tableConfig!.perDay, now);
-    if (!capacity.ok) {
-      return { status: 'error', message: dayFullMessage(tableConfig!.perDay), full: true, used: capacity.used };
-    }
   } else {
     const discipline = await getPrisonerDiscipline(env, newPrisonerId);
     if (discipline.restricted) {
@@ -1257,15 +1245,9 @@ export async function handleCreateBooking(
     source: isTable ? 'admin-table' : 'admin',
   };
 
+  // Only this permission-checked staff route bypasses the daily public quota.
+  // Its booking still consumes capacity in the public calendar and insert guard.
   await insertReservation(env.DB, row);
-
-  if (isTable) {
-    const after = await countActiveTableBookings(env.DB, String(data.visitDateISO), now);
-    if (after > tableConfig!.perDay) {
-      await deleteReservation(env.DB, ref).catch(() => undefined);
-      return { status: 'error', message: dayFullMessage(tableConfig!.perDay), full: true, used: tableConfig!.perDay };
-    }
-  }
 
   await reservationChanged(env);
   if (newPrisonerId) await invalidatePrisonerLookupCache(env, newPrisonerId);

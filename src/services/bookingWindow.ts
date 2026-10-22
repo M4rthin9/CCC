@@ -25,6 +25,28 @@ const MAX_DATES = 366;
 
 const DEFAULT_CLOSED_MESSAGE = '⚠️ ขณะนี้ปิดรับจองชั่วคราว กรุณาลองใหม่อีกครั้งภายหลัง';
 
+/** Reject broken schedules before saving, rather than silently opening a date. */
+export function scheduledOpeningsError(raw: unknown): string | null {
+  if (raw === undefined) return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'รูปแบบเวลาเปิดรอบพิเศษไม่ถูกต้อง';
+  const entries = Object.entries(raw);
+  if (entries.length > MAX_DATES) return 'ตั้งเวลาเปิดรอบพิเศษได้ไม่เกิน 366 วัน';
+  for (const [date, at] of entries) {
+    if (
+      !isValidISODate(date) ||
+      typeof at !== 'string' ||
+      !/(Z|[+-]\d{2}:\d{2})$/.test(at) ||
+      !Number.isFinite(Date.parse(at))
+    ) {
+      return 'กรุณาระบุวันที่และเวลาเปิดรอบพิเศษให้ถูกต้องพร้อมเขตเวลา';
+    }
+    if (Date.parse(at) >= Date.parse(`${date}T00:00:00+07:00`)) {
+      return 'เวลาเปิดรับจองต้องอยู่ก่อนวันเข้าใช้บริการ';
+    }
+  }
+  return null;
+}
+
 /**
  * Sanitise `admin_settings.bookingWindow`. A missing or malformed key means
  * OPEN with no overrides — a bad settings save must never shut the site.

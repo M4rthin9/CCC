@@ -289,21 +289,19 @@ export function findReservationBySlipFingerprint(
  *
  * A public submission consumes its slot: every status counts, rejected
  * included, except a booking cancelled at least CANCEL_RELEASE_DAYS before its
- * visit date (Bangkok calendar), which gives the slot back. Admin-created rows
- * (source='admin') are skipped so dashboard overrides do not inflate (or fool)
- * the public count.
+ * visit date (Bangkok calendar), which gives the slot back. Public and
+ * admin-created bookings consume the same daily pool.
  */
 const NOT_RELEASED = `NOT (status = ? AND cancelAt != ''
   AND visitDateISO >= date(cancelAt, '+7 hours', '+${CANCEL_RELEASE_DAYS} days'))`;
+const VISIT_OCCUPANCY_WHERE = `bookingType != 'table' AND ${NOT_RELEASED}`;
 
 export function countReservationsByDate(db: D1Database): Promise<Record<string, number>> {
   return db
     .prepare(
       `SELECT visitDateISO, COUNT(*) as c FROM ${TABLES.reservations}
      WHERE visitDateISO LIKE '____-__-__'
-       AND bookingType != 'table'
-       AND source != 'admin'
-       AND ${NOT_RELEASED}
+       AND ${VISIT_OCCUPANCY_WHERE}
      GROUP BY visitDateISO`
     )
     .bind(CANCELLED)
@@ -320,10 +318,7 @@ export function countPublicPrisonerBookings(db: D1Database, visitDateISO: string
   return db
     .prepare(
       `SELECT COUNT(*) AS n FROM ${TABLES.reservations}
-        WHERE bookingType != 'table'
-          AND visitDateISO = ?
-          AND source != 'admin'
-          AND ${NOT_RELEASED}`
+        WHERE visitDateISO = ? AND ${VISIT_OCCUPANCY_WHERE}`
     )
     .bind(visitDateISO, CANCELLED)
     .first<{ n: number }>()
@@ -410,17 +405,31 @@ export function getAllRefs(db: D1Database): Promise<string[]> {
     .then((res) => (res.results ?? []).map((r) => r.ref));
 }
 
-export function insertReservation(db: D1Database, data: Record<string, unknown>): Promise<void> {
+/** Public callers enforce capacity atomically; authorized staff can omit the cap. */
+export function insertReservation(
+  db: D1Database,
+  data: Record<string, unknown>,
+  capacity?: { perDay: number; nowIso: string }
+): Promise<boolean> {
   const cols = RESERVATION_COLUMNS;
-  const values = cols.map((c) => (data[c] !== undefined ? data[c] : ''));
+  const values: unknown[] = cols.map((c) => (data[c] !== undefined ? data[c] : ''));
+  let guard = '';
+  if (capacity) {
+    const isTable = data.bookingType === 'table';
+    const occupancy = isTable ? TABLE_OCCUPANCY_WHERE : VISIT_OCCUPANCY_WHERE;
+    const occupancyBinds = isTable ? tableOccupancyBinds(capacity.nowIso) : [CANCELLED];
+    guard = `WHERE (SELECT COUNT(*) FROM ${TABLES.reservations}
+       WHERE visitDateISO = ? AND ${occupancy}) < ?`;
+    values.push(data.visitDateISO, ...occupancyBinds, capacity.perDay);
+  }
   const stmt = db.prepare(
     `INSERT INTO ${TABLES.reservations} (${cols.join(', ')})
-     VALUES (${cols.map(() => '?').join(', ')})`
+     SELECT ${cols.map(() => '?').join(', ')} ${guard}`
   );
   return stmt
     .bind(...values)
     .run()
-    .then(() => undefined);
+    .then((result) => Number(result.meta.changes) === 1);
 }
 
 function updateColumnsIn(db: D1Database, table: string, ref: string, cols: Array<[string, unknown]>): Promise<void> {

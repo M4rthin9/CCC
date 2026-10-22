@@ -111,7 +111,7 @@ const db = {
             .map((column) => column.trim());
           savedBookings.push(Object.fromEntries(columns.map((column, index) => [column, params[index]])));
         }
-        return { success: true, meta: { changes: 0 } };
+        return { success: true, meta: { changes: sql.startsWith('INSERT INTO reservations (') ? 1 : 0 } };
       },
     };
     return statement;

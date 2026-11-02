@@ -59,6 +59,8 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
 
 ### Auth & security
 
+Additional [visitor QR attendance](docs/visitor-attendance.md) verifies confirmed payment and records each guest's entry separately. Existing daily reports remain unchanged.
+
 - Passwords hashed with `sha256$<salt>$<hash>`; legacy plaintext passwords are
   automatically re-hashed on first successful login.
 - Default accounts are flagged and **forced to change password** on first login.

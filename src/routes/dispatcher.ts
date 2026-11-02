@@ -62,6 +62,7 @@ import { handleUploadPromoImage, handleDeletePromoImage } from './promo';
 import { handleRecordCookieConsent, handleGetCookieConsentStats } from './pdpa';
 import { handleSaveFrontendContent } from './frontendContent';
 import { handleCompleteRefund, handleGetRefundEvidence } from './refundEvidence';
+import { handleGetVisitorEntryQr, handleCheckVisitorEntry, handleGetAttendance } from './attendance';
 import { getAnnouncementsHandler, sendAnnouncementHandler } from './announcements';
 import {
   handleNotify,
@@ -202,6 +203,10 @@ const GET_ROUTES: Record<string, Route> = {
 };
 
 const POST_ROUTES: Record<string, Route> = {
+  getVisitorEntryQr: { auth: false, handler: async (ctx) => handleGetVisitorEntryQr(ctx.env, ctx.body, ctx.ip) },
+  checkVisitorEntry: { auth: true, handler: async (ctx) => handleCheckVisitorEntry(ctx.env, ctx.body, ctx.user!) },
+  checkInVisitor: { auth: true, handler: async (ctx) => handleCheckVisitorEntry(ctx.env, ctx.body, ctx.user!, true) },
+  getAttendance: { auth: true, handler: async (ctx) => handleGetAttendance(ctx.env, ctx.body, ctx.user!) },
   completeRefund: { auth: true, handler: async (ctx) => handleCompleteRefund(ctx.env, ctx.body, ctx.user!, meta(ctx)) },
   getRefundEvidence: {
     auth: true,

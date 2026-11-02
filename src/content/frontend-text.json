@@ -23,10 +23,10 @@
     "key": "afterSubmitText",
     "category": "general",
     "defaults": {
-      "th": "เจ้าหน้าที่จะตรวจสอบประวัติวินัยของผู้ต้องขัง (1–2 วันทำการ)",
-      "en": "Officer will verify prisoner disciplinary record (1-2 business days)",
-      "zh": "工作人员将审核囚犯纪律记录（1–2 个工作日）",
-      "vi": "Cán bộ sẽ kiểm tra hồ sơ kỷ luật của phạm nhân (1–2 ngày làm việc)"
+      "th": "เจ้าหน้าที่จะตรวจสอบและพิจารณาอนุมัติรายชื่อผู้เยี่ยมและวินัยผู้ต้องขัง ช่วง 2–3 วันก่อนวันนัดหมาย กรุณาตรวจสอบผลในหน้าสถานะการจอง",
+      "en": "Officers review visitor approval and the prisoner’s disciplinary record 2–3 days before the booked visit date. Check the decision on your booking-status page.",
+      "zh": "工作人员将在预约探视日期前 2–3 天审核访客资格及在押人员的纪律记录。请在预约状态页面查询审核结果。",
+      "vi": "Nhân viên xét duyệt người thăm và hồ sơ kỷ luật của phạm nhân 2–3 ngày trước ngày thăm đã đặt. Kiểm tra kết quả trên trang trạng thái đặt chỗ."
     }
   },
   {
@@ -623,10 +623,10 @@
     "key": "availabilityVisitRule",
     "category": "general",
     "defaults": {
-      "th": "จองเยี่ยม: รอเจ้าหน้าที่ตรวจสอบประมาณ 1–2 วันทำการ ชำระเงินเมื่อสถานะเป็น “รอชำระเงิน”",
-      "en": "จองเยี่ยม: รอเจ้าหน้าที่ตรวจสอบประมาณ 1–2 วันทำการ ชำระเงินเมื่อสถานะเป็น “รอชำระเงิน”",
-      "zh": "จองเยี่ยม: รอเจ้าหน้าที่ตรวจสอบประมาณ 1–2 วันทำการ ชำระเงินเมื่อสถานะเป็น “รอชำระเงิน”",
-      "vi": "จองเยี่ยม: รอเจ้าหน้าที่ตรวจสอบประมาณ 1–2 วันทำการ ชำระเงินเมื่อสถานะเป็น “รอชำระเงิน”"
+      "th": "จองเยี่ยม VIS: เจ้าหน้าที่พิจารณาผู้เยี่ยมและวินัยผู้ต้องขังช่วง 2–3 วันก่อนวันนัดหมาย ชำระเมื่อสถานะเป็น “รอชำระเงิน”",
+      "en": "VIS: officers review visitor approval and prisoner discipline 2–3 days before the booked visit. Pay when the status is “Awaiting payment”.",
+      "zh": "VIS 探视：工作人员在预约日期前 2–3 天审核访客资格及在押人员纪律。状态变为“等待付款”后再付款。",
+      "vi": "VIS: nhân viên xét duyệt người thăm và kỷ luật phạm nhân 2–3 ngày trước ngày đã đặt. Thanh toán khi trạng thái là “Chờ thanh toán”."
     }
   },
   {
@@ -2233,10 +2233,10 @@
     "key": "chatReplyapprovalTime",
     "category": "chat",
     "defaults": {
-      "th": "⏱️ ระยะเวลาการตรวจสอบ:\nเจ้าหน้าที่จะตรวจสอบประวัติวินัยของผู้ต้องขัง\nใช้เวลาประมาณ 1-2 วันทำการ\n\nหากสถานะยังคง \"รอตรวจสอบ\" เกิน 3 วัน กรุณาติดต่อเจ้าหน้าที่โดยตรง",
-      "en": "⏱️ Processing Time:\nOfficers check prisoner disciplinary record\nTakes approximately 1-2 business days\n\nIf still \"Pending\" after 3 days, contact officers directly",
-      "zh": "⏱️ 处理时间:\n工作人员将审核囚犯纪律记录\n约需1-2个工作日\n\n如3天后仍显示\"待审核\"，请直接联系工作人员",
-      "vi": "⏱️ Processing Time:\nOfficers check prisoner disciplinary record\nTakes approximately 1-2 business days\n\nIf still \"Pending\" after 3 days, contact officers directly"
+      "th": "เจ้าหน้าที่จะตรวจสอบและพิจารณาอนุมัติรายชื่อผู้เยี่ยมและวินัยผู้ต้องขัง ช่วง 2–3 วันก่อนวันนัดหมาย กรุณาตรวจสอบผลในหน้าสถานะการจอง",
+      "en": "Officers review visitor approval and the prisoner’s disciplinary record 2–3 days before the booked visit date. Check the decision on your booking-status page.",
+      "zh": "工作人员将在预约探视日期前 2–3 天审核访客资格及在押人员的纪律记录。请在预约状态页面查询审核结果。",
+      "vi": "Nhân viên xét duyệt người thăm và hồ sơ kỷ luật của phạm nhân 2–3 ngày trước ngày thăm đã đặt. Kiểm tra kết quả trên trang trạng thái đặt chỗ."
     }
   },
   {
@@ -2263,10 +2263,10 @@
     "key": "chatReplybookingSteps",
     "category": "chat",
     "defaults": {
-      "th": "📋 ขั้นตอนการจอง 5 ขั้นตอน:\n① กดปุ่ม \"จองคิว\" ด้านบน\n② กรอกข้อมูลผู้เข้าร่วมกิจกรรม ข้อมูลผู้ต้องขัง และเลือกวันที่\n③ รับเลขอ้างอิง (Ref No.) ทันที\n④ รอเจ้าหน้าที่ตรวจสอบ (1-2 วัน)\n⑤ ชำระเงินเมื่อได้รับการอนุมัติ",
-      "en": "📋 5-Step Booking Process:\n① Click \"Book Slot\" button above\n② Fill in visitor info, prisoner info, and select date\n③ Get reference number (Ref No.) instantly\n④ Wait for officer verification (1-2 business days)\n⑤ Pay when approved",
-      "zh": "📋 5步预约流程:\n① 点击上方\"预约名额\"\n② 填写家属信息、囚犯信息并选择日期\n③ 立即获取参考编号（Ref No.）\n④ 等待工作人员审核（1-2个工作日）\n⑤ 审核通过后付款",
-      "vi": "📋 5-Step Booking Process:\n① Click \"Book Slot\" button above\n② Fill in visitor info, prisoner info, and select date\n③ Get reference number (Ref No.) instantly\n④ Wait for officer verification (1-2 business days)\n⑤ Pay when approved"
+      "th": "📋 ขั้นตอนจองเยี่ยม VIS:\n① กรอกผู้เยี่ยมและเลือกผู้ต้องขัง\n② เลือกวันและยืนยันการจอง\n③ เก็บเลขอ้างอิง VIS-\n④ เจ้าหน้าที่พิจารณาผู้เยี่ยมและวินัยผู้ต้องขังช่วง 2–3 วันก่อนวันนัดหมาย\n⑤ ตรวจสถานะและชำระเมื่อระบบเปิดให้ชำระ",
+      "en": "📋 VIS booking steps:\n① Enter visitors and select the prisoner\n② Choose a date and confirm the booking\n③ Keep your VIS- reference\n④ Officers review visitors and prisoner discipline 2–3 days before the booked visit\n⑤ Check your status and pay when payment is available",
+      "zh": "📋 VIS 探视预约步骤：\n① 填写访客并选择在押人员\n② 选择日期并确认预约\n③ 保存 VIS- 预约编号\n④ 工作人员在预约日期前 2–3 天审核访客及在押人员纪律\n⑤ 查询状态，系统开放付款后再付款",
+      "vi": "📋 Các bước đặt thăm VIS:\n① Điền người thăm và chọn phạm nhân\n② Chọn ngày và xác nhận đặt chỗ\n③ Giữ mã VIS-\n④ Nhân viên xét duyệt người thăm và kỷ luật phạm nhân 2–3 ngày trước ngày đã đặt\n⑤ Kiểm tra trạng thái và thanh toán khi hệ thống cho phép"
     }
   },
   {
@@ -3973,10 +3973,10 @@
     "key": "entryGuideStep2",
     "category": "general",
     "defaults": {
-      "th": "ดำเนินการตามสถานะที่ระบบแจ้งและชำระเงินเมื่อเปิดให้ชำระ การอัปโหลดสลิปยังไม่ใช่การยืนยันจากฝ่ายการเงิน บัตร QR จะเปิดให้สร้างเมื่อสถานะเป็น “เสร็จสิ้น” และผู้เข้าร่วมได้รับอนุมัติ",
-      "en": "Follow the next step shown in your booking and pay when payment is available. Uploading a slip does not mean finance has confirmed payment. The QR becomes available when the status is “Completed” and participants are approved.",
-      "zh": "按照预约状态提示完成后续步骤，开放付款后再付款。上传凭证并不代表财务已确认。状态为“已完成”且参与者获批后，才可生成入场二维码。",
-      "vi": "Làm theo bước tiếp theo trên trạng thái đặt chỗ và thanh toán khi được phép. Tải biên lai lên không có nghĩa là tài chính đã xác nhận. QR chỉ khả dụng khi trạng thái là “Hoàn tất” và người tham gia đã được duyệt."
+      "th": "สำหรับ VIS เจ้าหน้าที่จะพิจารณาผู้เยี่ยมและวินัยผู้ต้องขังช่วง 2–3 วันก่อนวันนัดหมาย ตรวจสถานะและชำระเมื่อระบบเปิดให้ชำระ การอัปโหลดสลิปยังไม่ใช่การยืนยันเงิน บัตร QR เปิดให้สร้างเมื่อสถานะเป็น “เสร็จสิ้น” และผู้เข้าร่วมได้รับอนุมัติ",
+      "en": "For VIS, officers review visitors and prisoner discipline 2–3 days before the booked visit. Check your status and pay when payment is available. Uploading a slip does not mean payment is confirmed. The QR becomes available when the status is “Completed” and participants are approved.",
+      "zh": "VIS 探视的访客资格和在押人员纪律将在预约日期前 2–3 天审核。请查询状态，系统开放付款后再付款。上传凭证并不代表财务已确认。状态为“已完成”且参与者获批后，才可生成入场二维码。",
+      "vi": "Với VIS, nhân viên xét duyệt người thăm và kỷ luật phạm nhân 2–3 ngày trước ngày đã đặt. Kiểm tra trạng thái và chỉ thanh toán khi được phép. Tải biên lai không có nghĩa là thanh toán đã được xác nhận. QR khả dụng khi trạng thái là “Hoàn tất” và người tham gia được duyệt."
     }
   },
   {
@@ -4603,10 +4603,10 @@
     "key": "homeFaq2A",
     "category": "home",
     "defaults": {
-      "th": "โดยทั่วไป 1–2 วันทำการ ติดตามผลได้ที่หน้า “ตรวจสอบสถานะ” ด้วยเลขอ้างอิงหรือเลขประจำตัวผู้ต้องขัง",
-      "en": "Usually 1–2 working days. Follow the result on the \"Check Status\" page with your reference number or the prisoner's ID number.",
-      "zh": "通常需要 1–2 个工作日，可凭预约编号或服刑人员编号在“查询状态”页面查看结果。",
-      "vi": "Thường mất 1–2 ngày làm việc. Theo dõi kết quả tại trang \"Kiểm tra trạng thái\" bằng mã đặt chỗ hoặc số hiệu phạm nhân."
+      "th": "สำหรับ VIS เจ้าหน้าที่จะพิจารณารายชื่อผู้เยี่ยมและวินัยผู้ต้องขังช่วง 2–3 วันก่อนวันนัดหมาย กรุณาตรวจผลด้วยเลขอ้างอิง เมื่อผ่านการพิจารณาและสถานะเป็น “รอชำระเงิน” จึงดำเนินการชำระตามที่ระบบแจ้ง",
+      "en": "For VIS, officers review visitor approval and the prisoner’s disciplinary record 2–3 days before the booked visit date. Use your reference to check the decision. After approval, pay when the status becomes “Awaiting payment”, following the instructions shown.",
+      "zh": "VIS 探视的访客资格和在押人员纪律记录将在预约日期前 2–3 天由工作人员审核。请用预约编号查询结果。审核通过且状态为“等待付款”后，按照系统提示付款。",
+      "vi": "Với VIS, nhân viên xét duyệt người thăm và hồ sơ kỷ luật phạm nhân 2–3 ngày trước ngày thăm đã đặt. Dùng mã tham chiếu để kiểm tra kết quả. Sau khi được duyệt và trạng thái là “Chờ thanh toán”, làm theo hướng dẫn thanh toán trên hệ thống."
     }
   },
   {
@@ -5063,10 +5063,10 @@
     "key": "homeStep3D",
     "category": "home",
     "defaults": {
-      "th": "ตรวจสอบประวัติวินัยของผู้ต้องขัง รวมทั้งสองขั้นตอนประมาณ 1–2 วันทำการ",
-      "en": "The prisoner's discipline record is checked. Both checks take about 1–2 working days.",
-      "zh": "审核服刑人员的纪律记录，两项审核约需 1–2 个工作日。",
-      "vi": "Kiểm tra hồ sơ kỷ luật của phạm nhân. Cả hai bước mất khoảng 1–2 ngày làm việc."
+      "th": "เจ้าหน้าที่จะตรวจสอบและพิจารณาอนุมัติรายชื่อผู้เยี่ยมและวินัยผู้ต้องขัง ช่วง 2–3 วันก่อนวันนัดหมาย กรุณาตรวจสอบผลในหน้าสถานะการจอง",
+      "en": "Officers review visitor approval and the prisoner’s disciplinary record 2–3 days before the booked visit date. Check the decision on your booking-status page.",
+      "zh": "工作人员将在预约探视日期前 2–3 天审核访客资格及在押人员的纪律记录。请在预约状态页面查询审核结果。",
+      "vi": "Nhân viên xét duyệt người thăm và hồ sơ kỷ luật của phạm nhân 2–3 ngày trước ngày thăm đã đặt. Kiểm tra kết quả trên trang trạng thái đặt chỗ."
     }
   },
   {
@@ -5763,10 +5763,10 @@
     "key": "noticeReviewDefaultText",
     "category": "general",
     "defaults": {
-      "th": "เจ้าหน้าที่กำลังตรวจสอบประวัติวินัยของผู้ต้องขัง (1–2 วันทำการ) กรุณาตรวจสอบสถานะอีกครั้งในภายหลัง",
-      "en": "Officers are checking the prisoner's disciplinary record (1-2 business days). Please check back later.",
-      "zh": "官员正在核查囚犯的纪律记录（1-2 个工作日），请稍后再次查询。",
-      "vi": "Cán bộ đang kiểm tra hồ sơ kỷ luật (1–2 ngày làm việc). Vui lòng quay lại sau."
+      "th": "เจ้าหน้าที่จะตรวจสอบและพิจารณาอนุมัติรายชื่อผู้เยี่ยมและวินัยผู้ต้องขัง ช่วง 2–3 วันก่อนวันนัดหมาย กรุณาตรวจสอบผลในหน้าสถานะการจอง",
+      "en": "Officers review visitor approval and the prisoner’s disciplinary record 2–3 days before the booked visit date. Check the decision on your booking-status page.",
+      "zh": "工作人员将在预约探视日期前 2–3 天审核访客资格及在押人员的纪律记录。请在预约状态页面查询审核结果。",
+      "vi": "Nhân viên xét duyệt người thăm và hồ sơ kỷ luật của phạm nhân 2–3 ngày trước ngày thăm đã đặt. Kiểm tra kết quả trên trang trạng thái đặt chỗ."
     }
   },
   {
@@ -5783,10 +5783,10 @@
     "key": "noticeReviewDisciplineText",
     "category": "general",
     "defaults": {
-      "th": "เจ้าหน้าที่ฝ่ายวินัยกำลังตรวจสอบประวัติวินัยของผู้ต้องขัง (1–2 วันทำการ) กรุณาตรวจสอบสถานะอีกครั้งในภายหลัง",
-      "en": "Officers are checking the prisoner's disciplinary record (1-2 business days). Please check back later.",
-      "zh": "官员正在核查囚犯的纪律记录（1-2 个工作日），请稍后再次查询。",
-      "vi": "Cán bộ đang kiểm tra hồ sơ kỷ luật của phạm nhân (1–2 ngày làm việc). Vui lòng quay lại sau."
+      "th": "เจ้าหน้าที่จะตรวจสอบและพิจารณาอนุมัติรายชื่อผู้เยี่ยมและวินัยผู้ต้องขัง ช่วง 2–3 วันก่อนวันนัดหมาย กรุณาตรวจสอบผลในหน้าสถานะการจอง",
+      "en": "Officers review visitor approval and the prisoner’s disciplinary record 2–3 days before the booked visit date. Check the decision on your booking-status page.",
+      "zh": "工作人员将在预约探视日期前 2–3 天审核访客资格及在押人员的纪律记录。请在预约状态页面查询审核结果。",
+      "vi": "Nhân viên xét duyệt người thăm và hồ sơ kỷ luật của phạm nhân 2–3 ngày trước ngày thăm đã đặt. Kiểm tra kết quả trên trang trạng thái đặt chỗ."
     }
   },
   {
@@ -5803,10 +5803,10 @@
     "key": "noticeReviewParticipantsText",
     "category": "general",
     "defaults": {
-      "th": "เจ้าหน้าที่ฝ่ายทัณฑ์กำลังตรวจสอบรายชื่อผู้เข้าร่วม (1–2 วันทำการ) กรุณาตรวจสอบสถานะอีกครั้งในภายหลัง",
-      "en": "Officers are reviewing the participant list (1-2 business days). Please check back later.",
-      "zh": "官员正在审核参与者名单（1-2 个工作日），请稍后再次查询。",
-      "vi": "Cán bộ đang kiểm tra danh sách người tham gia (1–2 ngày làm việc). Vui lòng quay lại sau."
+      "th": "เจ้าหน้าที่จะตรวจสอบและพิจารณาอนุมัติรายชื่อผู้เยี่ยมและวินัยผู้ต้องขัง ช่วง 2–3 วันก่อนวันนัดหมาย กรุณาตรวจสอบผลในหน้าสถานะการจอง",
+      "en": "Officers review visitor approval and the prisoner’s disciplinary record 2–3 days before the booked visit date. Check the decision on your booking-status page.",
+      "zh": "工作人员将在预约探视日期前 2–3 天审核访客资格及在押人员的纪律记录。请在预约状态页面查询审核结果。",
+      "vi": "Nhân viên xét duyệt người thăm và hồ sơ kỷ luật của phạm nhân 2–3 ngày trước ngày thăm đã đặt. Kiểm tra kết quả trên trang trạng thái đặt chỗ."
     }
   },
   {
@@ -6953,10 +6953,10 @@
     "key": "successSub",
     "category": "general",
     "defaults": {
-      "th": "เจ้าหน้าที่จะตรวจสอบผู้เข้าร่วมก่อน จากนั้นตรวจสอบประวัติวินัยและดำเนินการภายใน 1–2 วันทำการ",
-      "en": "Officer will verify participant first, then check disciplinary record within 1-2 business days",
-      "zh": "工作人员将先核验参与者，再于 1–2 个工作日内审核纪律记录",
-      "vi": "Cán bộ sẽ xét duyệt người tham gia trước, sau đó kiểm tra kỷ luật trong 1–2 ngày làm việc"
+      "th": "เจ้าหน้าที่จะตรวจสอบและพิจารณาอนุมัติรายชื่อผู้เยี่ยมและวินัยผู้ต้องขัง ช่วง 2–3 วันก่อนวันนัดหมาย กรุณาตรวจสอบผลในหน้าสถานะการจอง",
+      "en": "Officers review visitor approval and the prisoner’s disciplinary record 2–3 days before the booked visit date. Check the decision on your booking-status page.",
+      "zh": "工作人员将在预约探视日期前 2–3 天审核访客资格及在押人员的纪律记录。请在预约状态页面查询审核结果。",
+      "vi": "Nhân viên xét duyệt người thăm và hồ sơ kỷ luật của phạm nhân 2–3 ngày trước ngày thăm đã đặt. Kiểm tra kết quả trên trang trạng thái đặt chỗ."
     }
   },
   {

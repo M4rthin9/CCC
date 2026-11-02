@@ -3800,83 +3800,323 @@
     }
   },
   {
+    "key": "entryCardDate",
+    "category": "general",
+    "defaults": {
+      "th": "วันที่เข้าร่วม",
+      "en": "Visit date",
+      "zh": "到访日期",
+      "vi": "Ngày tham gia"
+    }
+  },
+  {
+    "key": "entryCardError",
+    "category": "general",
+    "defaults": {
+      "th": "เตรียมไฟล์รูปภาพไม่สำเร็จ คุณยังแสดง QR ด้านบนหรือบันทึกภาพหน้าจอได้",
+      "en": "The image could not be prepared. You can still show the QR above or take a screenshot.",
+      "zh": "图片生成失败。您仍可出示上方二维码或截屏保存。",
+      "vi": "Không thể tạo ảnh thẻ. Bạn vẫn có thể xuất trình QR phía trên hoặc chụp màn hình."
+    }
+  },
+  {
+    "key": "entryCardNote",
+    "category": "general",
+    "defaults": {
+      "th": "เจ้าหน้าที่จะตรวจสอบสถานะล่าสุดก่อนลงทะเบียน",
+      "en": "Staff check the latest booking status before registration",
+      "zh": "工作人员登记前将核验最新预约状态",
+      "vi": "Nhân viên kiểm tra trạng thái mới nhất trước khi đăng ký"
+    }
+  },
+  {
+    "key": "entryCardOffline",
+    "category": "general",
+    "defaults": {
+      "th": "บันทึกบัตรไว้ก่อนเดินทาง เพื่อเปิดแสดงได้แม้โทรศัพท์ไม่มีอินเทอร์เน็ต ใช้ได้เฉพาะวันที่จองและขึ้นอยู่กับสถานะการจองล่าสุด",
+      "en": "Save before travelling so you can show the card without mobile internet. Valid only for the booked date, subject to the latest booking status.",
+      "zh": "请出发前保存，以便手机无网络时出示。仅适用于预约日期，并以最新预约状态为准。",
+      "vi": "Lưu trước khi đi để xuất trình khi điện thoại không có mạng. Chỉ áp dụng cho ngày đã đặt và tùy theo trạng thái đặt chỗ mới nhất."
+    }
+  },
+  {
+    "key": "entryCardPreparing",
+    "category": "general",
+    "defaults": {
+      "th": "กำลังเตรียมบัตรสำหรับบันทึก…",
+      "en": "Preparing your card…",
+      "zh": "正在准备卡片…",
+      "vi": "Đang chuẩn bị thẻ…"
+    }
+  },
+  {
+    "key": "entryCardSaveHint",
+    "category": "general",
+    "defaults": {
+      "th": "บนโทรศัพท์ กดแชร์แล้วเลือกบันทึกรูปภาพ หรือกดค้างที่รูปบัตรเพื่อบันทึก ปุ่มบันทึกบัตร PNG จะดาวน์โหลดไฟล์รูปภาพ",
+      "en": "On your phone, tap Share and choose Save Image, or press and hold the card to save it. Download PNG card saves an image file.",
+      "zh": "在手机上点击分享并选择保存图片，或长按卡片保存。下载 PNG 卡片会保存图片文件。",
+      "vi": "Trên điện thoại, chọn Chia sẻ rồi Lưu hình ảnh, hoặc nhấn giữ thẻ để lưu. Tải thẻ PNG sẽ lưu một tệp hình ảnh."
+    }
+  },
+  {
+    "key": "entryCardShare",
+    "category": "general",
+    "defaults": {
+      "th": "แชร์ / บันทึกรูปภาพ",
+      "en": "Share / save image",
+      "zh": "分享 / 保存图片",
+      "vi": "Chia sẻ / lưu ảnh"
+    }
+  },
+  {
+    "key": "entryCardShareError",
+    "category": "general",
+    "defaults": {
+      "th": "แชร์ไม่สำเร็จ กรุณากดบันทึกบัตร PNG หรือกดค้างที่รูปบัตร",
+      "en": "Sharing was unavailable. Download the PNG card or press and hold its image.",
+      "zh": "无法分享，请下载 PNG 卡片或长按图片保存。",
+      "vi": "Không thể chia sẻ. Vui lòng tải thẻ PNG hoặc nhấn giữ hình ảnh."
+    }
+  },
+  {
+    "key": "entryCardShow",
+    "category": "general",
+    "defaults": {
+      "th": "แสดง QR พร้อมบัตรประชาชนหรือหนังสือเดินทางตัวจริง",
+      "en": "Show QR with your original ID card or passport",
+      "zh": "请出示二维码及身份证或护照原件",
+      "vi": "Xuất trình QR cùng căn cước hoặc hộ chiếu bản gốc"
+    }
+  },
+  {
+    "key": "entryCardTitle",
+    "category": "general",
+    "defaults": {
+      "th": "บัตรลงทะเบียนเข้าร่วมกิจกรรม",
+      "en": "Visitor registration card",
+      "zh": "访客活动登记卡",
+      "vi": "Thẻ đăng ký tham gia"
+    }
+  },
+  {
+    "key": "entryGuideChanges",
+    "category": "general",
+    "defaults": {
+      "th": "หากชำระเงินล่าช้า ให้รอฝ่ายการเงินยืนยันและตรวจสอบสถานะอีกครั้ง หากเปลี่ยนวันต้องรับ QR ใหม่ บัตรที่บันทึกไว้ไม่ยืนยันสิทธิ์ของรายการที่ยกเลิก คืนเงิน หรือไม่ได้รับอนุมัติ",
+      "en": "For late payment, wait for finance confirmation and check your status again. Get a new QR after a date change. A saved card does not grant entry for a cancelled, refunded or unapproved booking.",
+      "zh": "逾期付款后请等待财务确认并重新查询状态。更改日期后须获取新二维码。已取消、已退款或未获批准的预约不能凭已保存的卡片入场。",
+      "vi": "Nếu thanh toán muộn, chờ tài chính xác nhận và kiểm tra lại trạng thái. Sau khi đổi ngày phải lấy QR mới. Thẻ đã lưu không cho phép vào nếu đặt chỗ bị hủy, hoàn tiền hoặc chưa được duyệt."
+    }
+  },
+  {
+    "key": "entryGuideIntro",
+    "category": "general",
+    "defaults": {
+      "th": "ใช้บัตร QR เข้างานและเอกสารยืนยันตัวตนตัวจริง ไม่ต้องสร้างบัญชีผู้เยี่ยมเพิ่มเติม",
+      "en": "Bring your entry QR card and original identification. No additional visitor account is needed.",
+      "zh": "请携带入场二维码卡和身份证件原件，无需另行创建访客账号。",
+      "vi": "Mang thẻ QR vào cửa và giấy tờ tùy thân bản gốc. Không cần tạo thêm tài khoản khách."
+    }
+  },
+  {
+    "key": "entryGuideOpenStatus",
+    "category": "general",
+    "defaults": {
+      "th": "เปิดหน้าตรวจสอบสถานะ / รับบัตร QR",
+      "en": "Check booking status / get your QR card",
+      "zh": "查询预约状态 / 获取二维码卡",
+      "vi": "Kiểm tra trạng thái / lấy thẻ QR"
+    }
+  },
+  {
+    "key": "entryGuideParty",
+    "category": "general",
+    "defaults": {
+      "th": "หนึ่ง QR ใช้กับผู้เข้าร่วมที่ได้รับอนุมัติในการจองเดียวกัน เจ้าหน้าที่ลงทะเบียนแต่ละคนแยกกันได้ แม้มาถึงไม่พร้อมกัน",
+      "en": "One QR covers approved guests in the same booking. Staff register each guest individually, including guests arriving separately.",
+      "zh": "同一预约中获批的参与者共用一个二维码。即使分批到达，工作人员也可逐人登记。",
+      "vi": "Một QR dùng cho những người được duyệt trong cùng đặt chỗ. Nhân viên đăng ký từng người, kể cả khi đến riêng."
+    }
+  },
+  {
+    "key": "entryGuidePhones",
+    "category": "general",
+    "defaults": {
+      "th": "สำหรับ VIS ใช้โทรศัพท์แสดงบัตรที่จุดลงทะเบียน และปฏิบัติตามข้อกำหนดของทัณฑสถาน ห้ามนำโทรศัพท์เข้าพื้นที่เยี่ยม หากไม่มีโทรศัพท์ให้นำบัตรที่พิมพ์ชัดเจนพร้อมเอกสารตัวจริง",
+      "en": "For VIS, show your phone at registration and follow the institution’s rules. Phones are not allowed in the visiting area. Without a phone, bring a clearly printed card and original identification.",
+      "zh": "VIS 访客可在登记处用手机出示卡片，并须遵守机构规定。探视区域禁止携带手机。没有手机时，请携带清晰打印的卡片和身份证件原件。",
+      "vi": "Với VIS, xuất trình điện thoại tại quầy và tuân thủ quy định của cơ sở. Không mang điện thoại vào khu thăm gặp. Nếu không có điện thoại, mang thẻ in rõ nét cùng giấy tờ gốc."
+    }
+  },
+  {
+    "key": "entryGuideStep1",
+    "category": "general",
+    "defaults": {
+      "th": "เมื่อจองสำเร็จ เก็บเลขอ้างอิง VIS- หรือ TBL- พร้อมวันที่นัดหมาย ใช้เลขนี้เปิดหน้าตรวจสอบสถานะการจอง",
+      "en": "After booking, keep your VIS- or TBL- reference and appointment date. Use this reference to open your booking status.",
+      "zh": "预约成功后，请保存 VIS- 或 TBL- 编号及预约日期，用该编号打开预约状态页面。",
+      "vi": "Sau khi đặt chỗ, giữ mã VIS- hoặc TBL- và ngày hẹn. Dùng mã này để mở trang trạng thái đặt chỗ."
+    }
+  },
+  {
+    "key": "entryGuideStep1Title",
+    "category": "general",
+    "defaults": {
+      "th": "เก็บเลขอ้างอิงการจอง",
+      "en": "Keep your booking reference",
+      "zh": "保存预约编号",
+      "vi": "Giữ mã tham chiếu đặt chỗ"
+    }
+  },
+  {
+    "key": "entryGuideStep2",
+    "category": "general",
+    "defaults": {
+      "th": "ดำเนินการตามสถานะที่ระบบแจ้งและชำระเงินเมื่อเปิดให้ชำระ การอัปโหลดสลิปยังไม่ใช่การยืนยันจากฝ่ายการเงิน บัตร QR จะเปิดให้สร้างเมื่อสถานะเป็น “เสร็จสิ้น” และผู้เข้าร่วมได้รับอนุมัติ",
+      "en": "Follow the next step shown in your booking and pay when payment is available. Uploading a slip does not mean finance has confirmed payment. The QR becomes available when the status is “Completed” and participants are approved.",
+      "zh": "按照预约状态提示完成后续步骤，开放付款后再付款。上传凭证并不代表财务已确认。状态为“已完成”且参与者获批后，才可生成入场二维码。",
+      "vi": "Làm theo bước tiếp theo trên trạng thái đặt chỗ và thanh toán khi được phép. Tải biên lai lên không có nghĩa là tài chính đã xác nhận. QR chỉ khả dụng khi trạng thái là “Hoàn tất” và người tham gia đã được duyệt."
+    }
+  },
+  {
+    "key": "entryGuideStep2Title",
+    "category": "general",
+    "defaults": {
+      "th": "รอการอนุมัติและยืนยันการชำระเงิน",
+      "en": "Wait for approval and payment confirmation",
+      "zh": "等待审核及付款确认",
+      "vi": "Chờ phê duyệt và xác nhận thanh toán"
+    }
+  },
+  {
+    "key": "entryGuideStep3",
+    "category": "general",
+    "defaults": {
+      "th": "เปิดหน้าสถานะ กรอกเลขบัตรประชาชนหรือหนังสือเดินทางเดิมของผู้จองหลัก แล้วกดสร้างบัตร QR เข้างาน บันทึกบัตร PNG หรือใช้เมนูแชร์เพื่อเก็บรูปภาพไว้ก่อนเดินทาง QR นี้ใช้ลงทะเบียน ไม่ใช่ QR ชำระเงิน",
+      "en": "Open booking status, enter the main booking holder’s original ID or passport number and select Create entry QR card. Download the PNG or use Share to save the image before travelling. This is a check-in QR, separate from the payment QR.",
+      "zh": "打开预约状态，输入主预约人原先填写的身份证或护照号码，选择生成入场二维码卡。出发前下载 PNG 或通过分享菜单保存图片。此二维码用于入场登记，与付款二维码不同。",
+      "vi": "Mở trạng thái đặt chỗ, nhập số căn cước hoặc hộ chiếu ban đầu của người đặt chính rồi chọn Tạo thẻ QR vào cửa. Tải PNG hoặc dùng Chia sẻ để lưu ảnh trước khi đi. QR đăng ký này khác với QR thanh toán."
+    }
+  },
+  {
+    "key": "entryGuideStep3Title",
+    "category": "general",
+    "defaults": {
+      "th": "สร้างและบันทึกบัตร QR ในโทรศัพท์",
+      "en": "Create and save the QR card on your phone",
+      "zh": "生成二维码卡并保存至手机",
+      "vi": "Tạo và lưu thẻ QR vào điện thoại"
+    }
+  },
+  {
+    "key": "entryGuideStep4",
+    "category": "general",
+    "defaults": {
+      "th": "เปิดรูปบัตรให้เจ้าหน้าที่สแกน ผู้เข้าร่วมทุกคนต้องนำบัตรประชาชนหรือหนังสือเดินทางตัวจริง เจ้าหน้าที่ตรวจสอบการจอง การชำระเงิน และการอนุมัติ แล้วลงทะเบียนให้แต่ละคนที่มาถึง",
+      "en": "Open the saved card for staff to scan. Every arriving guest must bring their original ID card or passport. Staff check the booking, payment and approvals, then register each arriving guest.",
+      "zh": "打开保存的图片供工作人员扫描。每位到场访客均须携带身份证或护照原件。工作人员核验预约、付款及审核状态后，为每位到场人员登记。",
+      "vi": "Mở ảnh thẻ đã lưu để nhân viên quét. Mọi khách đến phải mang căn cước hoặc hộ chiếu bản gốc. Nhân viên kiểm tra đặt chỗ, thanh toán và phê duyệt rồi đăng ký từng người có mặt."
+    }
+  },
+  {
+    "key": "entryGuideStep4Title",
+    "category": "general",
+    "defaults": {
+      "th": "แสดงบัตรที่จุดลงทะเบียนในวันที่จอง",
+      "en": "Show your card at registration on the booked date",
+      "zh": "预约当天到登记处出示卡片",
+      "vi": "Xuất trình thẻ tại quầy vào ngày đã đặt"
+    }
+  },
+  {
+    "key": "entryGuideTitle",
+    "category": "general",
+    "defaults": {
+      "th": "จองแล้ว ต้องเตรียมอะไรเพื่อลงทะเบียน?",
+      "en": "Booked already? Your guide to check-in",
+      "zh": "预约后，如何办理入场登记？",
+      "vi": "Đã đặt chỗ? Hướng dẫn đăng ký vào cửa"
+    }
+  },
+  {
     "key": "entryQrError",
     "category": "general",
     "defaults": {
-      "th": "?????????????? QR ?????????? ????????????",
+      "th": "ไม่สามารถสร้าง QR เข้างานได้ กรุณาลองใหม่",
       "en": "Unable to create entry QR. Please try again.",
-      "zh": "??????????????",
-      "vi": "Kh?ng th? t?o QR v?o c?a. Vui l?ng th? l?i."
+      "zh": "无法生成入场二维码，请重试。",
+      "vi": "Không thể tạo mã QR vào cửa. Vui lòng thử lại."
     }
   },
   {
     "key": "entryQrGet",
     "category": "general",
     "defaults": {
-      "th": "???? QR ???????",
-      "en": "Show entry QR",
-      "zh": "???????",
-      "vi": "Hi?n QR v?o c?a"
+      "th": "สร้างบัตร QR เข้างาน",
+      "en": "Create entry QR card",
+      "zh": "生成入场二维码卡",
+      "vi": "Tạo thẻ QR vào cửa"
     }
   },
   {
     "key": "entryQrIdentity",
     "category": "general",
     "defaults": {
-      "th": "??????????????/???????????????????????????",
-      "en": "Main booking holder?s ID or passport number",
-      "zh": "?????????????",
-      "vi": "S? gi?y t? t?y th?n ho?c h? chi?u c?a ng??i ??t ch?nh"
+      "th": "เลขบัตรประชาชนหรือหนังสือเดินทางของผู้จองหลัก",
+      "en": "Main booking holder’s ID or passport number",
+      "zh": "主预约人的身份证或护照号码",
+      "vi": "Số căn cước hoặc hộ chiếu của người đặt chỗ chính"
     }
   },
   {
     "key": "entryQrInstructions",
     "category": "general",
     "defaults": {
-      "th": "???? QR ???????????????????????????????????????????????? ?????????????????????????????????????????????????????????????",
-      "en": "Show this QR and your ID or passport on your booked date. Staff will check payment and register each arriving guest.",
-      "zh": "????????????????????????????????????????",
-      "vi": "Xu?t tr?nh m? QR v? gi?y t? t?y th?n ho?c h? chi?u v?o ng?y ?? ??t. Nh?n vi?n s? ki?m tra thanh to?n v? ??ng k? t?ng kh?ch ??n."
+      "th": "ยืนยันตัวตนเพื่อรับบัตร แล้วแสดง QR พร้อมเอกสารตัวจริงที่จุดลงทะเบียนในวันที่จอง",
+      "en": "Verify your identity to get your card. Show it with original identification at registration on your booked date.",
+      "zh": "验证身份后获取卡片。请在预约日期到登记处出示二维码及身份证件原件。",
+      "vi": "Xác minh danh tính để nhận thẻ. Xuất trình mã QR và giấy tờ gốc tại quầy đăng ký vào ngày đã đặt."
     }
   },
   {
     "key": "entryQrLoading",
     "category": "general",
     "defaults": {
-      "th": "?????????????",
-      "en": "Checking?",
-      "zh": "?????",
-      "vi": "?ang ki?m tra?"
+      "th": "กำลังตรวจสอบ…",
+      "en": "Checking…",
+      "zh": "正在核验…",
+      "vi": "Đang kiểm tra…"
     }
   },
   {
     "key": "entryQrSave",
     "category": "general",
     "defaults": {
-      "th": "?????? QR ???????",
-      "en": "Save entry QR",
-      "zh": "???????",
-      "vi": "L?u QR v?o c?a"
+      "th": "บันทึกบัตร PNG",
+      "en": "Download PNG card",
+      "zh": "下载 PNG 卡片",
+      "vi": "Tải thẻ PNG"
     }
   },
   {
     "key": "entryQrText",
     "category": "general",
     "defaults": {
-      "th": "??????? QR ?????????????????",
-      "en": "QR text for the scanner",
-      "zh": "????????????",
-      "vi": "N?i dung QR cho m?y qu?t"
+      "th": "ข้อความ QR สำหรับเครื่องสแกน",
+      "en": "QR text for a scanner",
+      "zh": "供扫描设备使用的二维码文本",
+      "vi": "Nội dung QR cho máy quét"
     }
   },
   {
     "key": "entryQrTitle",
     "category": "general",
     "defaults": {
-      "th": "QR ????????????????",
-      "en": "Event entry QR",
-      "zh": "???????",
-      "vi": "QR v?o s? ki?n"
+      "th": "บัตร QR สำหรับลงทะเบียนเข้างาน",
+      "en": "Your check-in QR card",
+      "zh": "您的入场登记二维码卡",
+      "vi": "Thẻ QR đăng ký vào cửa"
     }
   },
   {

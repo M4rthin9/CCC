@@ -17,10 +17,10 @@ export function validAttendanceDate(value: string): boolean {
   );
 }
 
-/** A submitted/auto-verified slip (PAID_STATUS) is still awaiting finance review. */
+/** COMPLETED is the final payment authority; individual approval flags remain metadata.
+ * A submitted/auto-verified slip (PAID_STATUS) is still awaiting finance review. */
 export function entryBlockedReason(booking: Reservation): string {
   if (booking.status !== COMPLETED) return 'ยังไม่ยืนยันการชำระเงิน หรือรายการถูกยกเลิก/คืนเงิน';
-  if (String(booking.visitorApproved).trim().toLowerCase() !== 'yes') return 'ผู้จองหลักยังไม่ได้รับอนุมัติเข้าร่วม';
   if (!validAttendanceDate(String(booking.visitDateISO || ''))) return 'วันที่เข้าร่วมไม่ถูกต้อง';
   return '';
 }
@@ -80,9 +80,9 @@ export async function tableAttendance(booking: Reservation, records: AttendanceR
   const guests = await attendanceGuests(booking);
   const approved = guests.filter((guest) => guest.approved);
   const arrived = new Set(records.map((record) => record.guestKey));
-  const approvedArrivals = approved.filter((guest) => arrived.has(guest.guestKey)).length;
-  const expectedCount = Math.max(Number(booking.visitorCount) || 0, approved.length);
-  const fullyRegistered = expectedCount > 0 && approvedArrivals >= expectedCount;
+  const guestArrivals = guests.filter((guest) => arrived.has(guest.guestKey)).length;
+  const expectedCount = Math.max(Number(booking.visitorCount) || 0, guests.length);
+  const fullyRegistered = expectedCount > 0 && guestArrivals >= expectedCount;
   const registrationStatus = fullyRegistered
     ? ('registered' as const)
     : records.length
@@ -113,7 +113,7 @@ export async function tableAttendance(booking: Reservation, records: AttendanceR
     expectedCount,
     approvedCount: approved.length,
     checkedInCount: records.length,
-    remainingCount: Math.max(0, expectedCount - approvedArrivals),
+    remainingCount: Math.max(0, expectedCount - guestArrivals),
     registrationStatus,
     guests: guests.map((guest) => {
       const record = records.find((record) => record.guestKey === guest.guestKey);

@@ -32,6 +32,9 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      - name: Verify paid visitor QR and attendance
+        run: npx tsx scripts/verify-attendance.ts
+
       - name: Verify paid total preservation
         run: npx tsx scripts/verify-paid-total-preservation.ts
 

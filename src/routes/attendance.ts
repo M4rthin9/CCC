@@ -92,7 +92,7 @@ export async function handleCheckVisitorEntry(
   if (checkIn) {
     if (blockedReason) return error(blockedReason);
     const guest = guests.find((guest) => guest.guestKey === body.guestKey);
-    if (!guest?.approved) return error('ผู้เข้าร่วมนี้ยังไม่ได้รับอนุมัติ');
+    if (!guest) return error('ไม่พบผู้เข้าร่วมนี้ในการจอง');
     recorded = await recordAttendance(env.DB, booking, guest, user.username);
     if (!recorded) {
       const existing = await getAttendance(env.DB, token.visitDateISO, token.ref);

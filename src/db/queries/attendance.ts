@@ -59,14 +59,7 @@ export async function recordAttendance(
   guest: { guestKey: string; name: string },
   username: string
 ): Promise<boolean> {
-  const snapshotColumns = [
-    'visitDateISO',
-    'visitorId',
-    'visitorName',
-    'visitorApproved',
-    'extraVisitorNames',
-    'extraVisitorApproved',
-  ] as const;
+  const snapshotColumns = ['visitDateISO', 'visitorId', 'visitorName', 'extraVisitorNames'] as const;
   const result = await db
     .prepare(
       `INSERT INTO visitor_attendance

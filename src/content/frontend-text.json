@@ -3933,10 +3933,10 @@
     "key": "entryGuideParty",
     "category": "general",
     "defaults": {
-      "th": "หนึ่ง QR ใช้กับผู้เข้าร่วมที่ได้รับอนุมัติในการจองเดียวกัน เจ้าหน้าที่ลงทะเบียนแต่ละคนแยกกันได้ แม้มาถึงไม่พร้อมกัน",
-      "en": "One QR covers approved guests in the same booking. Staff register each guest individually, including guests arriving separately.",
-      "zh": "同一预约中获批的参与者共用一个二维码。即使分批到达，工作人员也可逐人登记。",
-      "vi": "Một QR dùng cho những người được duyệt trong cùng đặt chỗ. Nhân viên đăng ký từng người, kể cả khi đến riêng."
+      "th": "หนึ่ง QR ใช้กับผู้เข้าร่วมที่มีรายชื่อในการจองเดียวกันซึ่งยืนยันชำระเงินแล้ว เจ้าหน้าที่ลงทะเบียนแต่ละคนแยกกันได้ แม้มาถึงไม่พร้อมกัน",
+      "en": "One QR covers the named guests in the same payment-confirmed booking. Staff register each guest separately, including guests arriving at different times.",
+      "zh": "同一已确认付款的预约名单中的参与者共用一个二维码。即使分批到达，工作人员也可逐人登记。",
+      "vi": "Một QR dùng cho những người có tên trong cùng đặt chỗ đã được xác nhận thanh toán. Nhân viên đăng ký từng người, kể cả khi đến riêng."
     }
   },
   {
@@ -3973,10 +3973,10 @@
     "key": "entryGuideStep2",
     "category": "general",
     "defaults": {
-      "th": "สำหรับ VIS เจ้าหน้าที่จะพิจารณาผู้เยี่ยมและวินัยผู้ต้องขังช่วง 2–3 วันก่อนวันนัดหมาย ตรวจสถานะและชำระเมื่อระบบเปิดให้ชำระ การอัปโหลดสลิปยังไม่ใช่การยืนยันเงิน บัตร QR เปิดให้สร้างเมื่อสถานะเป็น “เสร็จสิ้น” และผู้เข้าร่วมได้รับอนุมัติ",
-      "en": "For VIS, officers review visitors and prisoner discipline 2–3 days before the booked visit. Check your status and pay when payment is available. Uploading a slip does not mean payment is confirmed. The QR becomes available when the status is “Completed” and participants are approved.",
-      "zh": "VIS 探视的访客资格和在押人员纪律将在预约日期前 2–3 天审核。请查询状态，系统开放付款后再付款。上传凭证并不代表财务已确认。状态为“已完成”且参与者获批后，才可生成入场二维码。",
-      "vi": "Với VIS, nhân viên xét duyệt người thăm và kỷ luật phạm nhân 2–3 ngày trước ngày đã đặt. Kiểm tra trạng thái và chỉ thanh toán khi được phép. Tải biên lai không có nghĩa là thanh toán đã được xác nhận. QR khả dụng khi trạng thái là “Hoàn tất” và người tham gia được duyệt."
+      "th": "สำหรับ VIS เจ้าหน้าที่จะพิจารณาผู้เยี่ยมและวินัยผู้ต้องขังช่วง 2–3 วันก่อนวันนัดหมาย ตรวจสถานะและชำระเมื่อระบบเปิดให้ชำระ การอัปโหลดสลิปยังไม่ใช่การยืนยันเงิน เมื่อสถานะเป็น “เสร็จสิ้น” ให้ยืนยันเลขบัตรหรือหนังสือเดินทางของผู้จองหลักเพื่อรับ QR โดยไม่ต้องรออนุมัติเข้าร่วมซ้ำ",
+      "en": "For VIS, officers review visitors and prisoner discipline 2–3 days before the booked visit. Check your status and pay when payment is available. Uploading a slip is not payment confirmation. Once the status is “Completed”, verify the main holder’s ID or passport number to get your QR; no additional individual approval is required.",
+      "zh": "VIS 探视的访客资格和在押人员纪律将在预约日期前 2–3 天审核。请查询状态，系统开放付款后再付款。上传凭证并不代表付款已确认。状态为“已完成”后，验证主预约人的身份证或护照号码即可领取二维码，无需等待额外的个人审核标记。",
+      "vi": "Với VIS, nhân viên xét duyệt người thăm và kỷ luật phạm nhân 2–3 ngày trước ngày đã đặt. Kiểm tra trạng thái và chỉ thanh toán khi được phép. Tải biên lai chưa phải là xác nhận thanh toán. Khi trạng thái là “Hoàn tất”, xác minh số căn cước hoặc hộ chiếu của người đặt chính để nhận QR; không cần chờ thêm phê duyệt từng người."
     }
   },
   {
@@ -4013,10 +4013,10 @@
     "key": "entryGuideStep4",
     "category": "general",
     "defaults": {
-      "th": "เปิดรูปบัตรให้เจ้าหน้าที่สแกน ผู้เข้าร่วมทุกคนต้องนำบัตรประชาชนหรือหนังสือเดินทางตัวจริง เจ้าหน้าที่ตรวจสอบการจอง การชำระเงิน และการอนุมัติ แล้วลงทะเบียนให้แต่ละคนที่มาถึง",
-      "en": "Open the saved card for staff to scan. Every arriving guest must bring their original ID card or passport. Staff check the booking, payment and approvals, then register each arriving guest.",
-      "zh": "打开保存的图片供工作人员扫描。每位到场访客均须携带身份证或护照原件。工作人员核验预约、付款及审核状态后，为每位到场人员登记。",
-      "vi": "Mở ảnh thẻ đã lưu để nhân viên quét. Mọi khách đến phải mang căn cước hoặc hộ chiếu bản gốc. Nhân viên kiểm tra đặt chỗ, thanh toán và phê duyệt rồi đăng ký từng người có mặt."
+      "th": "เปิดรูปบัตรให้เจ้าหน้าที่สแกน ผู้เข้าร่วมทุกคนต้องนำบัตรประชาชนหรือหนังสือเดินทางตัวจริง เจ้าหน้าที่ตรวจสอบการจองและการยืนยันชำระเงิน แล้วลงทะเบียนให้แต่ละคนที่มาถึง",
+      "en": "Open the saved card for staff to scan. Every arriving guest must bring their original ID card or passport. Staff check the booking and confirmed payment, then register each arriving guest.",
+      "zh": "打开保存的图片供工作人员扫描。每位到场访客均须携带身份证或护照原件。工作人员核验预约和付款确认状态后，为每位到场人员登记。",
+      "vi": "Mở ảnh thẻ đã lưu để nhân viên quét. Mọi khách đến phải mang căn cước hoặc hộ chiếu bản gốc. Nhân viên kiểm tra đặt chỗ và xác nhận thanh toán rồi đăng ký từng người có mặt."
     }
   },
   {

@@ -120,11 +120,6 @@ assert.equal(checked.entry.guests.filter((guest) => guest.approved).length, 2);
 assert.equal(snapshot(), original, 'issuing and scanning never edits the booking');
 const mainKey = checked.entry.guests[0]!.guestKey;
 const extraKey = checked.entry.guests[1]!.guestKey;
-for (const guest of checked.entry.guests.slice(2))
-  assert.equal(
-    (await handleCheckVisitorEntry(env, { qr: pass.payload, guestKey: guest.guestKey }, reception, true)).status,
-    'error'
-  );
 assert.equal(
   (await handleCheckVisitorEntry(env, { qr: pass.payload, guestKey: 'made-up' }, reception, true)).status,
   'error'
@@ -141,6 +136,13 @@ assert.equal(records.rows.length, 2);
 assert.equal(records.rows[0]!.checkedInBy, 'reception');
 assert.equal((await handleGetAttendance(env, { date: '2026-02-30' }, reception)).status, 'error');
 assert.equal(validAttendanceDate('invalid'), false);
+for (const guest of checked.entry.guests.slice(2))
+  assert.equal(
+    (await scan(pass.payload, guest.guestKey)).recorded,
+    true,
+    'Completed payment overrides legacy individual flags'
+  );
+assert.equal(snapshot(), original, 'Payment-based check-in preserves original approval and report fields');
 
 for (const status of ['รอชำระเงิน', 'ชำระแล้ว', 'ยกเลิก', 'คืนเงินแล้ว', 'ไม่อนุมัติ']) {
   const ref = `VIS-STATE-${status}`;
@@ -240,7 +242,7 @@ let overview = await dailyTables();
 let lateTable = overview.find((table) => table.ref === 'TBL-LATE-PAYMENT')!;
 assert.equal(lateTable.registrationStatus, 'not_registered');
 assert.equal(lateTable.checkedInCount, 0);
-assert.equal(lateTable.remainingCount, 2);
+assert.equal(lateTable.remainingCount, 4);
 assert.equal(lateTable.paymentConfirmed, false);
 assert.equal(lateTable.eligible, false);
 sqlite.prepare("UPDATE reservations SET status = 'เสร็จสิ้น' WHERE ref = 'TBL-LATE-PAYMENT'").run();
@@ -260,13 +262,18 @@ await scan(latePass.payload, mainKey);
 lateTable = (await dailyTables()).find((table) => table.ref === 'TBL-LATE-PAYMENT')!;
 assert.equal(lateTable.registrationStatus, 'partial');
 assert.equal(lateTable.checkedInCount, 1);
-assert.equal(lateTable.remainingCount, 1);
+assert.equal(lateTable.remainingCount, 3);
 assert.equal(lateTable.guests[0]!.checkedInBy, 'reception');
 await scan(latePass.payload, extraKey);
 await scan(latePass.payload, extraKey);
 lateTable = (await dailyTables()).find((table) => table.ref === 'TBL-LATE-PAYMENT')!;
-assert.equal(lateTable.registrationStatus, 'registered');
+assert.equal(lateTable.registrationStatus, 'partial');
 assert.equal(lateTable.checkedInCount, 2, 'duplicate scans never inflate the table registration count');
+assert.equal(lateTable.remainingCount, 2);
+for (const guest of (await scan(latePass.payload)).entry.guests.slice(2)) await scan(latePass.payload, guest.guestKey);
+lateTable = (await dailyTables()).find((table) => table.ref === 'TBL-LATE-PAYMENT')!;
+assert.equal(lateTable.registrationStatus, 'registered');
+assert.equal(lateTable.checkedInCount, 4);
 assert.equal(lateTable.remainingCount, 0);
 assert.equal(snapshot(), afterLatePayment, 'late arrivals update attendance only');
 assert.equal(
@@ -313,13 +320,13 @@ assert.equal(
   'error'
 );
 
-for (const change of [
+for (const [index, change] of [
   "status = 'ยกเลิก'",
-  "extraVisitorApproved = 'no;;no;;'",
+  "status = 'ชำระแล้ว'",
   "extraVisitorNames = 'Replacement|NEW|Friend|30'",
   "visitDateISO = '2099-01-01'",
-]) {
-  const ref = `VIS-RACE-${change.split(' ')[0]}`;
+].entries()) {
+  const ref = `VIS-RACE-${index}`;
   seed(ref);
   const qr = await issue(ref);
   assert.ok('payload' in qr);
@@ -333,6 +340,21 @@ for (const change of [
   );
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM visitor_attendance WHERE ref = ?').get(ref)?.n, 0);
 }
+seed('VIS-APPROVAL-RACE');
+const approvalRaceQr = await issue('VIS-APPROVAL-RACE');
+assert.ok('payload' in approvalRaceQr);
+beforeInsert = () => {
+  sqlite
+    .prepare(
+      "UPDATE reservations SET visitorApproved = '', extraVisitorApproved = 'no;;no;;' WHERE ref = 'VIS-APPROVAL-RACE'"
+    )
+    .run();
+};
+assert.equal(
+  (await scan(approvalRaceQr.payload, extraKey)).recorded,
+  true,
+  'Approval-only edits do not invalidate confirmed payment'
+);
 seed('VIS-REFUND-HISTORY');
 sqlite
   .prepare(
@@ -354,6 +376,34 @@ const response = await dispatchAction(
   false
 );
 assert.equal(((await response.json()) as { message: string }).message, 'Unauthorized');
+
+// Finance-confirmed bookings use payment status as the admission authority.
+// Legacy individual flags must not prevent an ID-verified guest getting a QR.
+for (const prefix of ['VIS', 'TBL']) {
+  for (const approval of ['', 'no', 'pending']) {
+    const ref = `${prefix}-PAID-FLAG-${String(approval)}`;
+    seed(ref);
+    sqlite
+      .prepare(
+        `UPDATE reservations SET visitorApproved = ?, extraVisitorApproved = '',
+      extraVisitorNames = 'Extra guest|ID2|Friend|30', visitorCount = 2 WHERE ref = ?`
+      )
+      .run(approval, ref);
+    const before = snapshot();
+    assert.equal((await issue(ref, 'wrong-id')).status, 'error');
+    const paidQr = await issue(ref);
+    assert.ok('payload' in paidQr, 'message' in paidQr ? paidQr.message : 'Paid bookings must issue an ID-verified QR');
+    const paidEntry = await scan(paidQr.payload);
+    assert.equal(paidEntry.entry.allowed, true);
+    assert.equal(paidEntry.entry.guests[0]!.approved, false, 'Original approval flags remain truthful');
+    for (const guest of paidEntry.entry.guests)
+      assert.equal((await scan(paidQr.payload, guest.guestKey)).recorded, true);
+    const paidTable = (await dailyTables()).find((table) => table.ref === ref)!;
+    assert.equal(paidTable.registrationStatus, 'registered');
+    assert.equal(paidTable.remainingCount, 0);
+    assert.equal(snapshot(), before, 'Payment-based entry never edits approval or report fields');
+  }
+}
 console.log(
   'Attendance checks passed: live daily table registration, late payments/arrivals, full TBL details, identity/auth, date isolation, duplicate/racing scans, archive handling, refunds, and unchanged sent reports.'
 );

@@ -8980,6 +8980,116 @@
     }
   },
   {
+    "key": "visVideoChapter",
+    "category": "general",
+    "defaults": {
+      "th": "วิดีโอ VIS",
+      "en": "VIS video",
+      "zh": "VIS 视频",
+      "vi": "Video VIS"
+    }
+  },
+  {
+    "key": "visVideoDescription",
+    "category": "general",
+    "defaults": {
+      "th": "ดูขั้นตอนตั้งแต่กรอกข้อมูลผู้เยี่ยม เลือกผู้ต้องขัง รอผลอนุมัติ ชำระเงิน จนถึงบันทึกบัตร QR และลงทะเบียนที่หน้างาน",
+      "en": "Follow the steps: enter visitors, select the prisoner, wait for approval, pay, save your QR card and check in at registration.",
+      "zh": "了解填写访客、选择在押人员、等待审核、付款、保存二维码卡及现场登记的完整流程。",
+      "vi": "Xem các bước: điền người thăm, chọn phạm nhân, chờ phê duyệt, thanh toán, lưu thẻ QR và đăng ký tại quầy."
+    }
+  },
+  {
+    "key": "visVideoDownload",
+    "category": "general",
+    "defaults": {
+      "th": "ดาวน์โหลดวิดีโอ",
+      "en": "Download video",
+      "zh": "下载视频",
+      "vi": "Tải video"
+    }
+  },
+  {
+    "key": "visVideoError",
+    "category": "general",
+    "defaults": {
+      "th": "ไม่สามารถเล่นวิดีโอได้ กรุณาเปิดไฟล์ MP4 หรือดาวน์โหลดเพื่อรับชม",
+      "en": "The video could not play. Open the MP4 file or download it to watch.",
+      "zh": "无法播放视频，请打开 MP4 文件或下载后观看。",
+      "vi": "Không thể phát video. Hãy mở tệp MP4 hoặc tải xuống để xem."
+    }
+  },
+  {
+    "key": "visVideoEyebrow",
+    "category": "general",
+    "defaults": {
+      "th": "วิดีโอแนะนำการจองเยี่ยม VIS",
+      "en": "VIS reservation video guide",
+      "zh": "VIS 探视预约视频指南",
+      "vi": "Video hướng dẫn đặt thăm VIS"
+    }
+  },
+  {
+    "key": "visVideoLanguage",
+    "category": "general",
+    "defaults": {
+      "th": "เสียงบรรยายและคำบรรยายภาษาไทย",
+      "en": "Thai narration and subtitles",
+      "zh": "泰语配音及字幕",
+      "vi": "Thuyết minh và phụ đề tiếng Thái"
+    }
+  },
+  {
+    "key": "visVideoStep1",
+    "category": "general",
+    "defaults": {
+      "th": "จองเยี่ยม VIS และรอเจ้าหน้าที่พิจารณา",
+      "en": "Book a VIS visit and wait for officer review",
+      "zh": "预约 VIS 探视并等待工作人员审核",
+      "vi": "Đặt thăm VIS và chờ nhân viên xét duyệt"
+    }
+  },
+  {
+    "key": "visVideoStep2",
+    "category": "general",
+    "defaults": {
+      "th": "ชำระเงินเมื่อระบบเปิดให้ชำระ แล้วบันทึก QR",
+      "en": "Pay when payment is available, then save your QR",
+      "zh": "系统开放付款后再付款，并保存二维码",
+      "vi": "Thanh toán khi được phép, rồi lưu mã QR"
+    }
+  },
+  {
+    "key": "visVideoStep3",
+    "category": "general",
+    "defaults": {
+      "th": "แสดง QR พร้อมเอกสารตัวจริงที่จุดลงทะเบียน",
+      "en": "Show your QR and original identification at registration",
+      "zh": "在登记处出示二维码和身份证件原件",
+      "vi": "Xuất trình QR và giấy tờ gốc tại quầy đăng ký"
+    }
+  },
+  {
+    "key": "visVideoTitle",
+    "category": "general",
+    "defaults": {
+      "th": "จองเยี่ยมให้เข้าใจ พร้อมใช้ QR ในวันนัดหมาย",
+      "en": "Book your visit and arrive ready with your QR",
+      "zh": "了解探视预约流程，携带二维码准时到访",
+      "vi": "Hiểu cách đặt thăm và chuẩn bị mã QR cho ngày hẹn"
+    }
+  },
+  {
+    "key": "visVideoWatch",
+    "category": "general",
+    "defaults": {
+      "th": "ดูวิดีโอวิธีจองเยี่ยม VIS",
+      "en": "Watch the VIS booking guide",
+      "zh": "观看 VIS 探视预约指南",
+      "vi": "Xem hướng dẫn đặt thăm VIS"
+    }
+  },
+  {
     "key": "visitorCountLabel",
     "category": "booking",
     "defaults": {

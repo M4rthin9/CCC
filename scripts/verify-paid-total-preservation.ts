@@ -59,6 +59,10 @@ assert.equal(
   evidence[1]!.fromTotal
 );
 
+// The historical repair checks above intentionally use the old schema. Current
+// route/archiving checks below also need the additive approval columns.
+sqlite.exec(readFileSync('src/db/migrations/0030_parallel_booking_approvals.sql', 'utf8'));
+
 type Statement = { run(): Promise<{ success: boolean; meta: { changes: number } }> };
 const env = {
   DB: {

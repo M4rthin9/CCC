@@ -74,6 +74,9 @@ Additional [visitor QR attendance](docs/visitor-attendance.md) verifies confirme
 - **Independent staff approvals**: Tadtel (`approve_participant`) and Discipline
   (`approve_discipline`) can approve in either order, including concurrently.
   Payment opens only after both checks. See [approval API and rollout](docs/parallel-booking-approvals.md).
+- **Returning visitors**: an approved ID/passport can reuse participant approval
+  for the same primary prisoner. Only new people need review; discipline remains
+  per booking. See [returning visitor rules](docs/returning-visitors.md).
 - Thai pricing: main visitor 2,000 THB, each approved extra visitor 1,000 THB,
   children under 5 free, children ≤ 8 pay 500 THB (`pricing.ts`).
 - **Discipline status** (`ติดวินัย งดเยี่ยม`): prisoners with this status are blocked

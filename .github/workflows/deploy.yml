@@ -50,6 +50,9 @@ jobs:
       - name: Verify independent role-based booking approvals
         run: npm run smoke:approvals
 
+      - name: Verify returning visitor clearances
+        run: npm run smoke:returning
+
       - name: Verify special round opening times
         run: npm run smoke:special
 

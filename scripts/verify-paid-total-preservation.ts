@@ -62,6 +62,10 @@ assert.equal(
 // The historical repair checks above intentionally use the old schema. Current
 // route/archiving checks below also need the additive approval columns.
 sqlite.exec(readFileSync('src/db/migrations/0030_parallel_booking_approvals.sql', 'utf8'));
+sqlite.exec(readFileSync('src/db/migrations/0031_returning_visitor_clearances.sql', 'utf8'));
+sqlite.exec(
+  "INSERT INTO users (username, password, role, displayName, createdAt) VALUES ('test-admin', 'test-only', 'Superadmin', '', '')"
+);
 
 type Statement = { run(): Promise<{ success: boolean; meta: { changes: number } }> };
 const env = {

@@ -22,6 +22,7 @@
     "smoke:table": "tsx scripts/verify-table-booking.ts",
     "smoke:capacity": "tsx scripts/verify-shared-booking-capacity.ts",
     "smoke:approvals": "tsx scripts/verify-parallel-approvals.ts",
+    "smoke:returning": "tsx scripts/verify-returning-visitors.ts",
     "smoke:special": "tsx scripts/verify-special-openings.ts",
     "smoke:notifications": "tsx scripts/verify-notification-announcements.ts",
     "smoke:availability": "tsx scripts/verify-table-availability-alerts.ts",

@@ -26,6 +26,7 @@ import {
   getArchivedReservationByRef,
   getPaymentLock,
   updateBookingChargeColumns,
+  updateVisitorApprovalColumns,
   getReservationsByRefs,
   updateReservationColumns,
   approveReservationStage,
@@ -49,6 +50,7 @@ import {
   applyServerPricing,
   alignExtraVisitorApprovals,
   parseExtraPrisoners,
+  parseExtraVisitorNames,
   formatExtraPrisoners,
   ExtraPrisoner,
 } from '../services/pricing';
@@ -58,6 +60,11 @@ import { archiveOldReservations } from '../services/archiveService';
 import { TABLE_NO_CHANGES_AGREEMENT_VERSIONS } from '../services/tableAgreement';
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
+import {
+  applyReturningVisitorApprovals,
+  rememberParticipantStage,
+  visitorClearanceStatements,
+} from '../services/visitorClearance';
 import { getPrisonerById } from '../db/queries/prisoners';
 import { checkTableSeats, getTableBookingConfig, holdExpiryFrom } from '../services/tableCapacity';
 import { getPublicBookingConfig } from '../services/publicCapacity';
@@ -664,6 +671,7 @@ async function handleApproveStage(
     if (!current) return { status: 'error', message: 'Ref not found' };
     const own = stage === 'participant' ? current.participantApproved : current.disciplineApproved;
     if (own === 'yes' && ACTIVE_STATUSES.includes(String(current.status))) {
+      if (stage === 'participant') await rememberParticipantStage(env.DB, current, user.username);
       await reservationChanged(env);
       await invalidateLookupCache(env, ref);
       return {
@@ -677,6 +685,7 @@ async function handleApproveStage(
     return { status: 'error', message: 'ไม่สามารถอนุมัติการจองในสถานะนี้ได้' };
   }
 
+  if (stage === 'participant') await rememberParticipantStage(env.DB, row, user.username);
   await logEvent(
     env,
     user.username,
@@ -919,12 +928,33 @@ export async function handleUpdateVisitorApproval(
   body: Record<string, unknown>,
   user: { username: string }
 ): Promise<Record<string, unknown>> {
+  if (
+    !(await hasPermission(env.DB, user.username, 'visitor_approval')) &&
+    !(await hasPermission(env.DB, user.username, 'approve_participant'))
+  )
+    return { status: 'error', message: 'ไม่มีสิทธิ์อนุมัติผู้เข้าร่วม' };
   if (!body.ref) return { status: 'error', message: 'Missing ref' };
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
   if (rows.length === 0) return { status: 'error', message: 'Ref not found' };
   if (rows.some((row) => row.status === REFUNDED_STATUS))
     return { status: 'error', message: 'รายการคืนเงินแล้ว ไม่สามารถเปลี่ยนข้อมูลการชำระเงินหรือสถานะได้' };
+
+  // Only explicit individual decisions may establish reusable clearance.
+  if (body.visitorApproved !== undefined) {
+    const value = String(body.visitorApproved).trim().toLowerCase();
+    if (!['yes', 'no'].includes(value)) return { status: 'error', message: 'ผลอนุมัติผู้เข้าร่วมไม่ถูกต้อง' };
+    body = { ...body, visitorApproved: value };
+  }
+  if (body.extraVisitorApproved !== undefined) {
+    const values = String(body.extraVisitorApproved)
+      .split(';;')
+      .map((value) => value.trim().toLowerCase());
+    const count = parseExtraVisitorNames(rows[0]!.extraVisitorNames).length;
+    if (values.some((value) => !['', 'yes', 'no'].includes(value)) || values.slice(count).some(Boolean))
+      return { status: 'error', message: 'ผลอนุมัติผู้เข้าร่วมเพิ่มเติมไม่ถูกต้อง' };
+    body = { ...body, extraVisitorApproved: Array.from({ length: count }, (_, i) => values[i] || '').join(';;') };
+  }
 
   // Same fallback as extraVisitorApproved below: a caller deciding only the
   // extra visitors omits visitorApproved, and reading that absence as "not
@@ -983,13 +1013,44 @@ export async function handleUpdateVisitorApproval(
   cols.push(['child5to8Count', child5to8Count]);
   cols.push(['childUnder5Count', childUnder5Count]);
   cols.push(['version', Number(rows[0]!.version || 1) + 1]);
-  cols.push(['updatedAt', new Date().toISOString()]);
+  const now = new Date().toISOString();
+  cols.push(['updatedAt', now]);
+
+  let newStatus = String(rows[0]!.status || '');
+  let participantApproved = String(rows[0]!.participantApproved || '');
+  if (!paymentLock && ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย'].includes(newStatus)) {
+    const decisions = String(extraVisitorApproved || '').split(';;');
+    const resolved =
+      mainApproved &&
+      parseExtraVisitorNames(extraVisitorNames).every((_, i) => ['yes', 'no'].includes(decisions[i] || ''));
+    participantApproved = resolved ? 'yes' : '';
+    newStatus = resolved
+      ? rows[0]!.disciplineApproved === 'yes'
+        ? 'รอชำระเงิน'
+        : 'รอตรวจสอบวินัย'
+      : 'รอตรวจสอบผู้เข้าร่วม';
+    cols.push(['participantApproved', participantApproved], ['status', newStatus]);
+  }
 
   const mainRejected = body.visitorApproved !== undefined && !mainApproved && rows[0]!.visitorApproved !== 'no';
   if (mainRejected) {
-    cols.push(['status', 'ไม่อนุมัติ']);
+    newStatus = 'ไม่อนุมัติ';
+    const statusIndex = cols.findIndex(([column]) => column === 'status');
+    if (statusIndex >= 0) cols.splice(statusIndex, 1);
+    cols.push(['status', newStatus]);
     cols.push(['cancelReason', 'ผู้เยี่ยมหลักถูกปฏิเสธการเข้าร่วม']);
   }
+
+  const history = visitorClearanceStatements(
+    env.DB,
+    rows[0]!,
+    {
+      ...(body.visitorApproved !== undefined ? { visitorApproved: String(body.visitorApproved) } : {}),
+      ...(body.extraVisitorApproved !== undefined ? { extraVisitorApproved: String(body.extraVisitorApproved) } : {}),
+    },
+    user.username,
+    now
+  );
 
   if (paymentLock) {
     if (
@@ -1000,11 +1061,13 @@ export async function handleUpdateVisitorApproval(
         cols,
         Number(rows[0]!.version || 1),
         Number(rows[0]!.total),
-        user.username
+        user.username,
+        history
       ))
     )
       return { status: 'error', message: 'ข้อมูลการจองเปลี่ยนแล้ว กรุณาโหลดใหม่ก่อนบันทึก' };
-  } else await updateReservationColumns(env.DB, ref, cols);
+  } else if (!(await updateVisitorApprovalColumns(env.DB, rows[0]!, cols, history)))
+    return { status: 'error', message: 'ข้อมูลการจองเปลี่ยนแล้ว กรุณาโหลดใหม่ก่อนบันทึก' };
 
   await logEvent(
     env,
@@ -1036,6 +1099,15 @@ export async function handleUpdateVisitorApproval(
   await reservationChanged(env);
   await invalidateLookupCache(env, ref);
 
+  if (newStatus === 'รอชำระเงิน' && rows[0]!.status !== newStatus) {
+    await notify(env, {
+      ref,
+      type: 'payment_due',
+      prisonerName: rows[0]!.prisonerName,
+      visitDate: rows[0]!.visitDate,
+      total,
+    }).catch(() => undefined);
+  }
   if (mainRejected) {
     await notify(env, {
       ref,
@@ -1051,7 +1123,17 @@ export async function handleUpdateVisitorApproval(
       total,
     }).catch(() => undefined);
   }
-  return { status: 'ok', visitorCount, total, adultCount, child5to8Count, childUnder5Count };
+  return {
+    status: 'ok',
+    visitorCount,
+    total,
+    adultCount,
+    child5to8Count,
+    childUnder5Count,
+    newStatus,
+    participantApproved,
+    disciplineApproved: rows[0]!.disciplineApproved,
+  };
 }
 
 export async function handleUpdateBooking(
@@ -1341,6 +1423,7 @@ export async function handleCreateBooking(
   }
   data.ref = ref;
 
+  const reusedParticipants = isTable ? 0 : await applyReturningVisitorApprovals(env.DB, data);
   const row: Record<string, unknown> = {
     ...data,
     ...(isTable
@@ -1374,6 +1457,7 @@ export async function handleCreateBooking(
       visitorName: data.visitorName,
       prisonerName: data.prisonerName,
       visitDate: data.visitDate,
+      reusedParticipants,
     },
     'success'
   );

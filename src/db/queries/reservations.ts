@@ -452,6 +452,33 @@ export function updateReservationColumns(db: D1Database, ref: string, cols: Arra
   return updateColumnsIn(db, TABLES.reservations, ref, cols);
 }
 
+/** Atomically record individual decisions and update the reviewed roster. */
+export async function updateVisitorApprovalColumns(
+  db: D1Database,
+  current: Reservation,
+  cols: Array<[string, unknown]>,
+  history: D1PreparedStatement[]
+): Promise<boolean> {
+  const allowed = new Set(RESERVATION_WRITABLE_COLUMNS);
+  const filtered = cols.filter(([column]) => allowed.has(column));
+  const results = await db.batch([
+    ...history,
+    db
+      .prepare(
+        `UPDATE ${TABLES.reservations} SET ${filtered.map(([column]) => `${column} = ?`).join(', ')}
+      WHERE ref = ? AND version = ? AND status = ? AND total = ?`
+      )
+      .bind(
+        ...filtered.map(([, value]) => value),
+        current.ref,
+        Number(current.version || 1),
+        String(current.status || ''),
+        Number(current.total || 0)
+      ),
+  ]);
+  return Number(results[results.length - 1]?.meta.changes || 0) === 1;
+}
+
 /** One atomic write reads the other team's current decision, so simultaneous
  * approvals cannot lose a decision or open payment before both checks pass. */
 export async function approveReservationStage(
@@ -494,7 +521,8 @@ export async function updateBookingChargeColumns(
   cols: Array<[string, unknown]>,
   expectedVersion: number,
   expectedTotal: number,
-  username: string
+  username: string,
+  beforeUpdate: D1PreparedStatement[] = []
 ): Promise<boolean> {
   const table = archived ? TABLES.archive : TABLES.reservations;
   const filtered = cols.filter(([column]) => RESERVATION_WRITABLE_COLUMNS.includes(column));
@@ -516,6 +544,7 @@ export async function updateBookingChargeColumns(
       WHERE ref = ? AND total = ? AND EXISTS (SELECT 1 FROM ${table} WHERE ${condition})`
       )
       .bind(total, ref, expectedTotal, ...snapshot),
+    ...beforeUpdate,
     db
       .prepare(
         `UPDATE ${table} SET ${filtered.map(([column]) => `${column} = ?`).join(', ')}
@@ -523,7 +552,7 @@ export async function updateBookingChargeColumns(
       )
       .bind(...filtered.map(([, value]) => value), ...snapshot),
   ]);
-  return Number(results[2]?.meta.changes || 0) === 1;
+  return Number(results[results.length - 1]?.meta.changes || 0) === 1;
 }
 
 export function deleteReservation(db: D1Database, ref: string): Promise<void> {

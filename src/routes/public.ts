@@ -37,6 +37,7 @@ import { BOOKING_TYPE_PRISONER, BOOKING_TYPE_TABLE, TABLE_REF_PREFIX } from '../
 import { normalizeVisitDateISO } from '../config';
 import { applyServerPricing, parseExtraPrisoners } from '../services/pricing';
 import { getPrisonerDiscipline } from '../services/disciplineService';
+import { applyReturningVisitorApprovals } from '../services/visitorClearance';
 import { notify } from '../services/notifications';
 import { Env, Reservation } from '../types';
 
@@ -178,6 +179,7 @@ export async function handleSaveReservation(
   }
   data.ref = ref;
 
+  const reusedParticipants = await applyReturningVisitorApprovals(env.DB, data);
   const now = new Date().toISOString();
   const row: Record<string, unknown> = {
     ...data,
@@ -214,6 +216,7 @@ export async function handleSaveReservation(
       visitorName: data.visitorName,
       prisonerName: data.prisonerName,
       visitDate: data.visitDate,
+      reusedParticipants,
     },
     'success',
     meta
@@ -226,7 +229,7 @@ export async function handleSaveReservation(
     total: data.total,
     status: data.status,
   }).catch(() => undefined);
-  return { status: 'ok', ref };
+  return { status: 'ok', ref, newStatus: data.status };
 }
 
 /**

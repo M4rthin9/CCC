@@ -169,6 +169,9 @@ export async function handleUploadSlip(
   if (rows.some((row) => row.status === 'คืนเงินแล้ว'))
     return { status: 'error', message: 'รายการนี้คืนเงินแล้ว ไม่สามารถเปลี่ยนสลิปหรือสถานะได้' };
 
+  if (rows.some((row) => ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย'].includes(String(row.status))))
+    return { status: 'error', message: 'ต้องอนุมัติผู้เข้าร่วมและวินัยครบทั้งสองขั้นตอนก่อนชำระเงิน' };
+
   const actor = String(body.username || 'public');
   try {
     await updateReservationColumns(env.DB, ref, await slipColumns(env, ref, dataUri));
@@ -217,6 +220,8 @@ export async function handleUpdateSlipAndStatus(
     return { status: 'error', message: 'รายการนี้คืนเงินแล้ว ไม่สามารถเปลี่ยนสลิปหรือสถานะได้' };
 
   const currentStatus = String(rows[0]?.status || '').trim();
+  if (['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย'].includes(currentStatus))
+    return { status: 'error', message: 'ต้องอนุมัติผู้เข้าร่วมและวินัยครบทั้งสองขั้นตอนก่อนชำระเงิน' };
   let status = sanitizeStr(body.status, 50) || PAID;
   if (status === 'คืนเงินแล้ว') return { status: 'error', message: 'กรุณาบันทึกการคืนเงินผ่านแบบฟอร์มคืนเงิน' };
 

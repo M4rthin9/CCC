@@ -332,6 +332,8 @@ export const PUBLIC_LOOKUP_FIELDS = [
   'ref',
   'timestamp',
   'status',
+  'participantApproved',
+  'disciplineApproved',
   'bookingType',
   'tableAgreementVersion',
   'visitDate',

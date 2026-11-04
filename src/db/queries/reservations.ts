@@ -38,6 +38,8 @@ const RESERVATION_COLUMNS = [
   'visitorAge',
   'payment_ref1',
   'status',
+  'participantApproved',
+  'disciplineApproved',
   'slipImage',
   'slip_key',
   'slip_verify_status',
@@ -448,6 +450,31 @@ function updateColumnsIn(db: D1Database, table: string, ref: string, cols: Array
 
 export function updateReservationColumns(db: D1Database, ref: string, cols: Array<[string, unknown]>): Promise<void> {
   return updateColumnsIn(db, TABLES.reservations, ref, cols);
+}
+
+/** One atomic write reads the other team's current decision, so simultaneous
+ * approvals cannot lose a decision or open payment before both checks pass. */
+export async function approveReservationStage(
+  db: D1Database,
+  ref: string,
+  stage: 'participant' | 'discipline'
+): Promise<Reservation | null> {
+  const own = stage === 'participant' ? 'participantApproved' : 'disciplineApproved';
+  const other = stage === 'participant' ? 'disciplineApproved' : 'participantApproved';
+  const pending = stage === 'participant' ? 'รอตรวจสอบวินัย' : 'รอตรวจสอบผู้เข้าร่วม';
+  const row = await db
+    .prepare(
+      `UPDATE ${TABLES.reservations}
+       SET ${own} = 'yes',
+           status = CASE WHEN ${other} = 'yes' THEN ? ELSE ? END,
+           updatedAt = ?, version = COALESCE(NULLIF(version, ''), 1) + 1
+       WHERE ref = ? AND bookingType != 'table' AND ${own} != 'yes'
+         AND status IN ('รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย')
+       RETURNING ${RESERVATION_COLUMNS.join(', ')}`
+    )
+    .bind(AWAITING_PAYMENT, pending, new Date().toISOString(), ref)
+    .first<Record<string, unknown>>();
+  return row ? reservationRowToObject(row) : null;
 }
 
 export function updateArchivedReservationColumns(

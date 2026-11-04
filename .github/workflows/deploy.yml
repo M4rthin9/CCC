@@ -47,6 +47,9 @@ jobs:
       - name: Verify shared admin and public booking capacity
         run: npm run smoke:capacity
 
+      - name: Verify independent role-based booking approvals
+        run: npm run smoke:approvals
+
       - name: Verify special round opening times
         run: npm run smoke:special
 

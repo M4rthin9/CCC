@@ -98,6 +98,8 @@ export interface Reservation {
   slip_decision?: string;
   slip_decision_json?: string;
   status?: string;
+  participantApproved?: string;
+  disciplineApproved?: string;
   slipImage?: string;
   /** R2 object key for the uploaded slip (empty for legacy base64 rows). */
   slip_key?: string;

@@ -68,6 +68,8 @@ export async function handleGeneratePromptPayQr(
 
   const booking = await getReservationByRef(env.DB, ref);
   if (!booking) return { status: 'error', message: 'Ref not found' };
+  if (['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย'].includes(String(booking.status)))
+    return { status: 'error', message: 'ต้องอนุมัติผู้เข้าร่วมและวินัยครบทั้งสองขั้นตอนก่อนชำระเงิน' };
 
   const cfg = await getPromptPayConfig(env);
   const amount = Number(booking.total);

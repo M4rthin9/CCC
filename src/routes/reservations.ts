@@ -28,6 +28,7 @@ import {
   updateBookingChargeColumns,
   getReservationsByRefs,
   updateReservationColumns,
+  approveReservationStage,
   updateArchivedReservationColumns,
   insertReservation,
   countReservationsByDate,
@@ -623,6 +624,92 @@ const roleAllowedStatuses: Record<string, string[] | null> = {
   Finance: ['ชำระแล้ว', 'เสร็จสิ้น', 'ไม่อนุมัติ'],
 };
 
+function forcedApprovalColumns(status: string): Array<[string, unknown]> {
+  if (status === 'รอตรวจสอบผู้เข้าร่วม')
+    return [
+      ['participantApproved', ''],
+      ['disciplineApproved', ''],
+    ];
+  if (status === 'รอตรวจสอบวินัย')
+    return [
+      ['participantApproved', 'yes'],
+      ['disciplineApproved', ''],
+    ];
+  if (['รอชำระเงิน', 'ชำระแล้ว', 'เสร็จสิ้น'].includes(status))
+    return [
+      ['participantApproved', 'yes'],
+      ['disciplineApproved', 'yes'],
+    ];
+  return [];
+}
+
+async function handleApproveStage(
+  env: Env,
+  ref: string,
+  stage: 'participant' | 'discipline',
+  user: { username: string }
+): Promise<Record<string, unknown>> {
+  if (
+    !(await hasPermission(
+      env.DB,
+      user.username,
+      stage === 'participant' ? 'approve_participant' : 'approve_discipline'
+    ))
+  )
+    return { status: 'error', message: 'ไม่มีสิทธิ์อนุมัติขั้นตอนนี้' };
+
+  const row = await approveReservationStage(env.DB, ref, stage);
+  if (!row) {
+    const [current] = await getReservationsByRefs(env.DB, ref);
+    if (!current) return { status: 'error', message: 'Ref not found' };
+    const own = stage === 'participant' ? current.participantApproved : current.disciplineApproved;
+    if (own === 'yes' && ACTIVE_STATUSES.includes(String(current.status))) {
+      await reservationChanged(env);
+      await invalidateLookupCache(env, ref);
+      return {
+        status: 'ok',
+        noop: true,
+        newStatus: current.status,
+        participantApproved: current.participantApproved,
+        disciplineApproved: current.disciplineApproved,
+      };
+    }
+    return { status: 'error', message: 'ไม่สามารถอนุมัติการจองในสถานะนี้ได้' };
+  }
+
+  await logEvent(
+    env,
+    user.username,
+    'booking_stage_approved',
+    ref,
+    {
+      stage,
+      newStatus: row.status,
+      participantApproved: row.participantApproved,
+      disciplineApproved: row.disciplineApproved,
+    },
+    'success'
+  );
+  await reservationChanged(env);
+  await invalidateLookupCache(env, ref);
+  // Only the write completing the second check can emit payment_due.
+  if (row.status === 'รอชำระเงิน') {
+    await notify(env, {
+      ref,
+      type: 'payment_due',
+      prisonerName: row.prisonerName,
+      visitDate: row.visitDate,
+      total: row.total,
+    }).catch(() => undefined);
+  }
+  return {
+    status: 'ok',
+    newStatus: row.status,
+    participantApproved: row.participantApproved,
+    disciplineApproved: row.disciplineApproved,
+  };
+}
+
 export async function handleUpdateStatus(
   env: Env,
   body: Record<string, unknown>,
@@ -632,6 +719,26 @@ export async function handleUpdateStatus(
   const status = sanitizeStr(body.status, 50);
   if (!ref || !status) return { status: 'error', message: 'Missing ref or status' };
   if (!VALID_STATUSES.includes(status as never)) return { status: 'error', message: 'Invalid status: ' + status };
+
+  // Preserve older clients' target-status API. Normal approval buttons supply
+  // the stage explicitly, including for Superadmin; its manual force path stays available.
+  const stage =
+    body.approvalStage ??
+    (user.role !== 'Superadmin'
+      ? status === 'รอตรวจสอบวินัย'
+        ? 'participant'
+        : status === 'รอชำระเงิน'
+          ? 'discipline'
+          : undefined
+      : undefined);
+  if (stage !== undefined) {
+    if (
+      (stage !== 'participant' && stage !== 'discipline') ||
+      status !== (stage === 'participant' ? 'รอตรวจสอบวินัย' : 'รอชำระเงิน')
+    )
+      return { status: 'error', message: 'Invalid approval stage or status' };
+    return handleApproveStage(env, ref, stage, user);
+  }
 
   const callerRole = user.role;
 
@@ -696,7 +803,11 @@ export async function handleUpdateStatus(
   let allAlreadyAtTarget = true;
   for (const row of rows) {
     const oldStatus = String(row.status || '').trim();
-    if (oldStatus === status) continue;
+    if (
+      oldStatus === status &&
+      !(isSuperForce && forcedApprovalColumns(status).some(([key, value]) => row[key] !== value))
+    )
+      continue;
     allAlreadyAtTarget = false;
     if (isSuperForce) continue;
     let allowed = allowedTransitions[oldStatus];
@@ -730,6 +841,7 @@ export async function handleUpdateStatus(
   }
 
   const cols: Array<[string, unknown]> = [['status', status]];
+  if (isSuperForce) cols.push(...forcedApprovalColumns(status));
   if (body.reason && (status === 'ไม่อนุมัติ' || status === 'ยกเลิก')) {
     cols.push(['cancelReason', sanitizeStr(body.reason, 2000)]);
   }
@@ -962,6 +1074,8 @@ export async function handleUpdateBooking(
 
   const { cols, changes, errors } = parseUpdateBookingFields(body);
   if (errors.length > 0) return { status: 'error', message: errors.join('; ') };
+  if (changes.status !== undefined && changes.status !== current.status)
+    cols.push(...forcedApprovalColumns(String(changes.status)));
 
   // Discipline and duplicate-booking checks guard future visits. An archived
   // row is a historical record, so moving its prisoner/date cannot create a
@@ -1349,6 +1463,18 @@ export async function handleBulkBookingAction(
   if (forcedStatus && !VALID_STATUSES.includes(forcedStatus as never)) {
     return { status: 'error', message: 'Invalid status: ' + forcedStatus };
   }
+  if (
+    body.approvalStage !== undefined &&
+    (operation !== 'approve' || !['participant', 'discipline'].includes(String(body.approvalStage)))
+  )
+    return { status: 'error', message: 'Invalid approval stage' };
+  const [canParticipant, canDiscipline] =
+    operation === 'approve'
+      ? await Promise.all([
+          hasPermission(env.DB, user.username, 'approve_participant'),
+          hasPermission(env.DB, user.username, 'approve_discipline'),
+        ])
+      : [false, false];
 
   const stopOnError = body.stopOnError === true || body.stopOnError === 'true';
   const results: Array<{ ref: string; status: 'success' | 'error'; message?: string; newStatus?: string }> = [];
@@ -1358,6 +1484,7 @@ export async function handleBulkBookingAction(
     try {
       let result: Record<string, unknown>;
       let newStatus = '';
+      let approvalStage = body.approvalStage;
 
       if (operation === 'delete') {
         result = await handleDeleteBooking(env, { ref }, user);
@@ -1365,6 +1492,8 @@ export async function handleBulkBookingAction(
         if (operation === 'approve') {
           if (forcedStatus) {
             newStatus = forcedStatus;
+          } else if (approvalStage) {
+            newStatus = approvalStage === 'participant' ? 'รอตรวจสอบวินัย' : 'รอชำระเงิน';
           } else {
             const rows = await getReservationsByRefs(env.DB, ref);
             if (rows.length === 0) {
@@ -1373,7 +1502,20 @@ export async function handleBulkBookingAction(
               continue;
             }
             const current = String(rows[0]!.status || '').trim();
-            const next = NEXT_STATUS[current];
+            let next = NEXT_STATUS[current];
+            if (['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย'].includes(current)) {
+              approvalStage ??=
+                canParticipant && rows[0]!.participantApproved !== 'yes'
+                  ? 'participant'
+                  : canDiscipline && rows[0]!.disciplineApproved !== 'yes'
+                    ? 'discipline'
+                    : canParticipant
+                      ? 'participant'
+                      : canDiscipline
+                        ? 'discipline'
+                        : undefined;
+              if (approvalStage) next = approvalStage === 'participant' ? 'รอตรวจสอบวินัย' : 'รอชำระเงิน';
+            }
             if (!next) {
               results.push({ ref, status: 'error', message: 'สถานะ "' + current + '" ไม่สามารถอนุมัติต่อได้' });
               if (stopOnError) break;
@@ -1384,7 +1526,8 @@ export async function handleBulkBookingAction(
         } else {
           newStatus = operation === 'decline' ? 'ไม่อนุมัติ' : 'ยกเลิก';
         }
-        result = await handleUpdateStatus(env, { ref, status: newStatus, reason: body.reason }, user);
+        result = await handleUpdateStatus(env, { ref, status: newStatus, reason: body.reason, approvalStage }, user);
+        newStatus = String(result.newStatus || newStatus);
       }
 
       if (result.status === 'error') {

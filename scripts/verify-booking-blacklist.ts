@@ -14,7 +14,7 @@ import { getPublicBookingConfig, publicCapacityForDate } from '../src/services/p
 import { lastOpenDateISO } from '../src/services/bookingWindow';
 import type { Env } from '../src/types';
 import { countPublicPrisonerBookings, insertReservation } from '../src/db/queries/reservations';
-import { formatDateISO } from '../src/config';
+import { formatBangkok } from '../src/config';
 import { CANCEL_RELEASE_DAYS } from '../src/constants';
 
 const sqlite = new DatabaseSync(':memory:');
@@ -60,6 +60,7 @@ for (const user of [admin, superadmin]) {
 }
 const date = lastOpenDateISO();
 const now = new Date().toISOString();
+const todayBangkok = formatBangkok(new Date()).slice(0, 10);
 sqlite
   .prepare("INSERT INTO settings (key, value, savedBy, savedAt) VALUES ('admin_settings', ?, '', '')")
   .run(JSON.stringify({ bookingWindow: { open: true, openDates: [date] } }));
@@ -69,7 +70,7 @@ function seed(
   prisonerId: string,
   bookingType = 'prisoner',
   extraPrisoners = '',
-  visitDateISO = formatDateISO(new Date())
+  visitDateISO = todayBangkok
 ) {
   sqlite
     .prepare(
@@ -81,9 +82,9 @@ function seed(
 const state = (id: string) => sqlite.prepare('SELECT * FROM prisoner_booking_blacklist WHERE prisonerId = ?').get(id);
 
 // All staff cancellation paths exempt the exact same dates that free capacity.
-const earlyDate = new Date(`${formatDateISO(new Date())}T00:00:00+07:00`);
+const earlyDate = new Date(`${todayBangkok}T00:00:00+07:00`);
 earlyDate.setUTCDate(earlyDate.getUTCDate() + CANCEL_RELEASE_DAYS);
-const releasedDate = formatDateISO(earlyDate);
+const releasedDate = formatBangkok(earlyDate).slice(0, 10);
 for (const [i, cancel] of [
   (ref: string) => handleCancelBooking(env, { ref }, admin),
   (ref: string) => handleUpdateStatus(env, { ref, status: 'ยกเลิก' }, superadmin),

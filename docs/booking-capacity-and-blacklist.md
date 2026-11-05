@@ -17,6 +17,15 @@ strikes or reset that streak. One reservation can contribute at most one strike
 per prisoner. Shared-table prisoners are included. The next pair of cancellations
 starts a fresh streak after a ban is triggered.
 
+Migration 0033 exempts staff cancellations that return the VIS slot: at least
+four Bangkok calendar days before the visit, matching `CANCEL_RELEASE_DAYS`.
+For a 9 November visit, cancellation on 5 November or earlier adds no strike;
+6 November or later counts. Exempt cancellations leave the existing streak
+unchanged. This applies to every staff cancellation path and shared prisoners.
+The migration also removes identifiable early-cancellation strikes from existing
+history and rebuilds only affected prisoners' streaks and bans. Outcomes for
+deleted bookings are retained because their visit dates cannot be recovered.
+
 Bans expire automatically at the recorded time, with no cleanup job required.
 Calendar-month arithmetic uses Bangkok time and clamps month ends (31 August
 becomes 30 November). New bookings, changes of prisoner and reopening cancelled
@@ -26,7 +35,7 @@ archiving. Editing archived historical records does not create new strikes.
 Historical cancellations are not backfilled because their actor is not reliably
 recorded.
 
-Release: apply D1 migration 0032 before deploying the backend, then deploy the
+Release: apply D1 migrations through 0033 before deploying the backend, then deploy the
 adjacent Frontend repository. Dashboard only has updated text-catalog defaults.
 No production database or deployment is changed by the verification scripts.
 

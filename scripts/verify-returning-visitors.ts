@@ -46,6 +46,12 @@ assert.equal(clearance('GROUPNO')?.decision, 'no');
 for (const id of ['PN1', 'STAGEONLY', 'TABLEONLY', '']) assert.equal(clearance(id), undefined);
 assert.equal(clearance('AB123', 'P2'), undefined);
 
+// Exercise current handlers against the complete schema after testing the backfill.
+for (const file of readdirSync('src/db/migrations')
+  .filter((f) => f.endsWith('.sql') && f > migration)
+  .sort())
+  sqlite.exec(readFileSync(`src/db/migrations/${file}`, 'utf8'));
+
 type Statement = { run(): Promise<{ meta: { changes: number } }> };
 let beforeBatch: (() => void) | undefined;
 let failBookingUpdate = false;

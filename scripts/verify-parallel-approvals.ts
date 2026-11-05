@@ -53,6 +53,12 @@ for (const [i, table] of ['reservations', 'reservations_archive'].entries()) {
   );
 }
 
+// Exercise current handlers against the complete schema after testing the backfill.
+for (const file of readdirSync('src/db/migrations')
+  .filter((f) => f.endsWith('.sql') && f > migration)
+  .sort())
+  db.exec(readFileSync(`src/db/migrations/${file}`, 'utf8'));
+
 let beforeStageWrite: (() => void) | undefined;
 const env = {
   NOTIFY_PUSH_ENABLED: 'true',

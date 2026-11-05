@@ -509,7 +509,7 @@ check(
 check(
   'public settings exposes publicBooking perDay',
   String((publicSettings.publicBooking as { perDay?: number } | undefined)?.perDay),
-  '20'
+  '25'
 );
 
 // ── Booking window: global switch + per-date overrides ────────────

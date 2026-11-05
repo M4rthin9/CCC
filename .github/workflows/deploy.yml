@@ -47,6 +47,9 @@ jobs:
       - name: Verify shared admin and public booking capacity
         run: npm run smoke:capacity
 
+      - name: Verify prisoner booking blacklist and dated VIS capacity
+        run: npm run smoke:blacklist
+
       - name: Verify independent role-based booking approvals
         run: npm run smoke:approvals
 

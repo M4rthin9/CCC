@@ -30,13 +30,14 @@ import {
   holdExpiryFrom,
   tableBookingOpeningError,
 } from '../services/tableCapacity';
-import { getPublicBookingConfig, visitsFullMessage } from '../services/publicCapacity';
+import { getPublicBookingConfig, publicCapacityForDate, visitsFullMessage } from '../services/publicCapacity';
 import { TABLE_AGREEMENT_TEXT, TABLE_AGREEMENT_VERSION, tableAgreementError } from '../services/tableAgreement';
 import { bookingWindowError, getBookingWindow } from '../services/bookingWindow';
 import { BOOKING_TYPE_PRISONER, BOOKING_TYPE_TABLE, TABLE_REF_PREFIX } from '../constants';
 import { normalizeVisitDateISO } from '../config';
 import { applyServerPricing, parseExtraPrisoners } from '../services/pricing';
 import { getPrisonerDiscipline } from '../services/disciplineService';
+import { prisonerBookingBanError } from '../services/bookingBlacklist';
 import { applyReturningVisitorApprovals } from '../services/visitorClearance';
 import { notify } from '../services/notifications';
 import { Env, Reservation } from '../types';
@@ -146,6 +147,8 @@ export async function handleSaveReservation(
   }
 
   const newPrisonerId = String(data.prisonerId || '').trim();
+  const banError = await prisonerBookingBanError(env, newPrisonerId);
+  if (banError) return { status: 'error', message: banError, banned: true };
 
   const discipline = await getPrisonerDiscipline(env, newPrisonerId);
   if (discipline.restricted) {
@@ -166,7 +169,7 @@ export async function handleSaveReservation(
 
   // Hard daily cap on public bookings: every submission for the date consumes a
   // slot, rejected or cancelled included, unless cancelled CANCEL_RELEASE_DAYS+ ahead.
-  const { perDay } = await getPublicBookingConfig(env);
+  const perDay = publicCapacityForDate(await getPublicBookingConfig(env), String(data.visitDateISO || ''));
   const used = await countPublicPrisonerBookings(env.DB, String(data.visitDateISO || ''));
   if (used >= perDay) {
     return { status: 'error', message: visitsFullMessage(perDay), full: true, used };

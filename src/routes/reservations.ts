@@ -60,12 +60,14 @@ import { archiveOldReservations } from '../services/archiveService';
 import { TABLE_NO_CHANGES_AGREEMENT_VERSIONS } from '../services/tableAgreement';
 import { notify } from '../services/notifications';
 import { getPrisonerDiscipline } from '../services/disciplineService';
+import { prisonerBookingBanError } from '../services/bookingBlacklist';
 import {
   applyReturningVisitorApprovals,
   rememberParticipantStage,
   visitorClearanceStatements,
 } from '../services/visitorClearance';
 import { getPrisonerById } from '../db/queries/prisoners';
+import { getUserByUsername } from '../db/queries/users';
 import { checkTableSeats, getTableBookingConfig, holdExpiryFrom } from '../services/tableCapacity';
 import { getPublicBookingConfig } from '../services/publicCapacity';
 import {
@@ -172,14 +174,14 @@ export async function getCountsByDate(env: Env): Promise<Record<string, unknown>
   }
   if (version !== -1) {
     const { hit } = await d1CacheGetVersioned<Record<string, number>>(env.DB, countsKey, version);
-    if (hit) return { status: 'ok', counts: hit, perDay: config.perDay };
+    if (hit) return { status: 'ok', counts: hit, ...config };
   }
 
   const counts = await countReservationsByDate(env.DB);
   if (version !== -1) {
     await d1CachePutVersioned(env.DB, countsKey, version, counts, PUBLIC_CACHE_TTL);
   }
-  return { status: 'ok', counts, perDay: config.perDay };
+  return { status: 'ok', counts, ...config };
 }
 
 /**
@@ -304,7 +306,7 @@ async function resolveRefAnyTable(env: Env, ref: string): Promise<{ row: Reserva
 export async function handleCancelBooking(
   env: Env,
   body: Record<string, unknown>,
-  user: { username: string }
+  user: { username: string; role?: string }
 ): Promise<Record<string, unknown>> {
   const ref = sanitizeStr(body.ref, 64);
   const rows = await getReservationsByRefs(env.DB, ref);
@@ -322,10 +324,12 @@ export async function handleCancelBooking(
   }
 
   const prevStatus = String(rows[0]!.status || '');
+  if (prevStatus === 'ยกเลิก') return { status: 'ok', noop: true };
   // cancelAt decides whether the cancel frees the day's public slot.
   await updateReservationColumns(env.DB, ref, [
     ['status', 'ยกเลิก'],
     ['cancelAt', new Date().toISOString()],
+    ['cancellationRole', user.role || (await getUserByUsername(env.DB, user.username))?.role || ''],
   ]);
   if (body.reason) {
     await updateReservationColumns(env.DB, ref, [['cancelReason', sanitizeStr(body.reason, 2000)]]);
@@ -797,6 +801,15 @@ export async function handleUpdateStatus(
   }
 
   if (rows.some((row) => row.status === REFUNDED_STATUS)) return { status: 'error', message: 'รายการนี้คืนเงินแล้ว' };
+  if (!fromArchive && !['ยกเลิก', 'ไม่อนุมัติ'].includes(status)) {
+    for (const row of rows.filter((r) => ['ยกเลิก', 'ไม่อนุมัติ'].includes(String(r.status)))) {
+      const ids = [String(row.prisonerId || ''), ...parseExtraPrisoners(row.extraPrisoners).map((p) => p.id)];
+      for (const id of ids) {
+        const banError = await prisonerBookingBanError(env, id);
+        if (banError) return { status: 'error', message: banError, banned: true };
+      }
+    }
+  }
   if (!isSuperForce && (status === 'ไม่อนุมัติ' || status === 'ยกเลิก')) {
     const today = formatDateISO(new Date());
     const allExpired = rows.every((row) => {
@@ -855,6 +868,7 @@ export async function handleUpdateStatus(
     cols.push(['cancelReason', sanitizeStr(body.reason, 2000)]);
   }
   if (status === 'ยกเลิก') {
+    cols.push(['cancellationRole', user.role]);
     cols.push(['cancelAt', new Date().toISOString()]);
     cols.push(['updatedAt', new Date().toISOString()]);
   }
@@ -1156,6 +1170,9 @@ export async function handleUpdateBooking(
 
   const { cols, changes, errors } = parseUpdateBookingFields(body);
   if (errors.length > 0) return { status: 'error', message: errors.join('; ') };
+  if (changes.status === 'ยกเลิก' && current.status !== 'ยกเลิก') {
+    cols.push(['cancelAt', new Date().toISOString()], ['cancellationRole', user.role]);
+  }
   if (changes.status !== undefined && changes.status !== current.status)
     cols.push(...forcedApprovalColumns(String(changes.status)));
 
@@ -1164,6 +1181,24 @@ export async function handleUpdateBooking(
   // new double-booking and the prisoner's current standing is irrelevant.
   // A table booking has no prisoner, so neither guard applies to it.
   const isTableBooking = String(current.bookingType || 'prisoner') === 'table';
+  const reopens =
+    ['ยกเลิก', 'ไม่อนุมัติ'].includes(String(current.status)) &&
+    changes.status !== undefined &&
+    !['ยกเลิก', 'ไม่อนุมัติ'].includes(String(changes.status));
+  if (
+    !fromArchive &&
+    !isTableBooking &&
+    (reopens || changes.prisonerId !== undefined || changes.extraPrisoners !== undefined)
+  ) {
+    const ids = [
+      String(changes.prisonerId ?? current.prisonerId ?? ''),
+      ...parseExtraPrisoners(changes.extraPrisoners ?? current.extraPrisoners).map((p) => p.id),
+    ];
+    for (const id of ids) {
+      const banError = await prisonerBookingBanError(env, id);
+      if (banError) return { status: 'error', message: banError, banned: true };
+    }
+  }
 
   // Editing the guest list must not push a table past its seat count either.
   if (isTableBooking && changes.extraVisitorNames !== undefined) {
@@ -1329,6 +1364,8 @@ async function resolveExtraPrisoners(
     const p = await getPrisonerById(env.DB, id);
     if (!p) return { status: 'error', message: `ไม่พบผู้ต้องขังหมายเลข ${id} ในฐานข้อมูล` };
     if (!skipBookingChecks) {
+      const banError = await prisonerBookingBanError(env, id);
+      if (banError) return { status: 'error', message: banError, banned: true };
       const discipline = await getPrisonerDiscipline(env, id);
       if (discipline.restricted) return { status: 'error', message: discipline.message };
       const dupRef = await findDuplicateActive(env, id, date, ref);
@@ -1398,6 +1435,8 @@ export async function handleCreateBooking(
     const seatsError = checkTableSeats(data, tableConfig!.seatsPerTable);
     if (seatsError) return { status: 'error', message: seatsError, seatsPerTable: tableConfig!.seatsPerTable };
   } else {
+    const banError = await prisonerBookingBanError(env, newPrisonerId);
+    if (banError) return { status: 'error', message: banError, banned: true };
     const discipline = await getPrisonerDiscipline(env, newPrisonerId);
     if (discipline.restricted) {
       return { status: 'error', message: discipline.message };

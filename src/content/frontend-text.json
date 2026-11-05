@@ -2343,10 +2343,10 @@
     "key": "chatReplydaysTime",
     "category": "chat",
     "defaults": {
-      "th": "📅 วันและเวลา:\nเปิดรับจองเฉพาะ วันทำการ\nจันทร์ – ศุกร์ (ยกเว้นวันหยุดราชการ)\n\nจำนวนโต๊ะจำกัด 20 โต๊ะ / วัน\nเมื่อเต็มแล้วระบบจะปิดรับโดยอัตโนมัติ",
-      "en": "📅 Days and Hours:\nBookings accepted on working days\nMon – Fri (except public holidays)\n\nLimited to 20 seats / day\nSystem closes automatically when full",
-      "zh": "📅 日期与时间:\n仅限工作日预约\n星期一 – 星期五（公假除外）\n\n每天限20个席位\n满额后系统自动关闭",
-      "vi": "📅 Days and Hours:\nBookings accepted on working days\nMon – Fri (except public holidays)\n\nLimited to 20 seats / day\nSystem closes automatically when full"
+      "th": "📅 วันและเวลา:\nเปิดรับจองเฉพาะ วันทำการ\nจันทร์ – ศุกร์ (ยกเว้นวันหยุดราชการ)\n\nVIS: 20 โต๊ะ/วัน ก่อนวันที่ 9 พ.ย. 2569 และ 25 โต๊ะ/วัน ตั้งแต่วันที่ 9 พ.ย. 2569\nเมื่อเต็มแล้วระบบจะปิดรับโดยอัตโนมัติ",
+      "en": "📅 Days and Hours:\nBookings accepted on working days\nMon – Fri (except public holidays)\n\nVIS: 20 tables/day before 9 November 2026; 25 tables/day from 9 November 2026\nSystem closes automatically when full",
+      "zh": "📅 日期与时间:\n仅限工作日预约\n星期一 – 星期五（公假除外）\n\nVIS：2026年11月9日前每天20桌；自2026年11月9日起每天25桌\n满额后系统自动关闭",
+      "vi": "📅 Days and Hours:\nBookings accepted on working days\nMon – Fri (except public holidays)\n\nVIS: 20 tables/day before 9 November 2026; 25 tables/day from 9 November 2026\nSystem closes automatically when full"
     }
   },
   {

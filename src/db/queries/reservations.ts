@@ -66,7 +66,7 @@ const RESERVATION_COLUMNS = [
 // slip_base64 holds multi-MB base64 slip uploads and is intentionally NOT part
 // of RESERVATION_COLUMNS so list endpoints never ship it. It must still be
 // writable (uploadSlip / updateSlipAndStatus) and retained when archiving.
-const RESERVATION_WRITABLE_COLUMNS = [...RESERVATION_COLUMNS, 'slip_base64'];
+const RESERVATION_WRITABLE_COLUMNS = [...RESERVATION_COLUMNS, 'slip_base64', 'cancellationRole'];
 
 export function reservationRowToObject(row: unknown): Reservation {
   const r = (row ?? {}) as Record<string, unknown>;
@@ -438,6 +438,10 @@ function updateColumnsIn(db: D1Database, table: string, ref: string, cols: Array
   if (cols.length === 0) return Promise.resolve();
   const allowed = new Set(RESERVATION_WRITABLE_COLUMNS);
   const filtered = cols.filter(([c]) => allowed.has(c));
+  // Public/other-role cancellations must never inherit a previous staff actor.
+  if (filtered.some(([c]) => c === 'status') && !filtered.some(([c]) => c === 'cancellationRole')) {
+    filtered.push(['cancellationRole', '']);
+  }
   if (filtered.length === 0) return Promise.resolve();
   const setSql = filtered.map(([c]) => `${c} = ?`).join(', ');
   const params = filtered.map(([, v]) => v);

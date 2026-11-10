@@ -22,6 +22,7 @@
     "smoke:table": "tsx scripts/verify-table-booking.ts",
     "smoke:capacity": "tsx scripts/verify-shared-booking-capacity.ts",
     "smoke:blacklist": "tsx scripts/verify-booking-blacklist.ts",
+    "smoke:prisoners": "tsx scripts/verify-prisoner-management.ts",
     "smoke:approvals": "tsx scripts/verify-parallel-approvals.ts",
     "smoke:returning": "tsx scripts/verify-returning-visitors.ts",
     "smoke:special": "tsx scripts/verify-special-openings.ts",

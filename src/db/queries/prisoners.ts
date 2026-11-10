@@ -44,6 +44,30 @@ export function getPrisonerById(db: D1Database, prisonerId: string): Promise<Pri
     .first<Prisoner>();
 }
 
+/** Updates only the selected prisoner and the fields supplied by the editor. */
+export function updatePrisoner(
+  db: D1Database,
+  prisonerId: string,
+  fields: Partial<Omit<Prisoner, 'prisonerId'>>
+): Promise<Prisoner | null> {
+  const columns = Object.keys(fields) as Array<keyof typeof fields>;
+  return db
+    .prepare(
+      `UPDATE ${TABLES.prisoners} SET ${columns.map((key) => `${key} = ?`).join(', ')}
+       WHERE prisonerId = ? RETURNING prisonerId, prisonerName, wing, status, vinaiDate, note`
+    )
+    .bind(...columns.map((key) => fields[key]!), prisonerId)
+    .first<Prisoner>();
+}
+
+export function syncPrisonerWing(db: D1Database, prisonerId: string, wing: string): Promise<number> {
+  return db
+    .prepare('UPDATE reservations SET wing = ? WHERE prisonerId = ? AND wing != ?')
+    .bind(wing, prisonerId, wing)
+    .run()
+    .then((result) => result.meta.changes ?? 0);
+}
+
 export function getPrisonerIds(db: D1Database): Promise<string[]> {
   return db
     .prepare(`SELECT prisonerId FROM ${TABLES.prisoners}`)

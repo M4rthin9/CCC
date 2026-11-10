@@ -35,10 +35,38 @@ archiving. Editing archived historical records does not create new strikes.
 Historical cancellations are not backfilled because their actor is not reliably
 recorded.
 
+The dashboard's **บัญชีระงับการจอง** page (`#/blacklist`, Admin/Superadmin/Discipline) lists
+current warning streaks, automatic warning history, expiry in Bangkok time and
+remaining days. Search the roster to apply a manual three-calendar-month ban,
+edit the expiry/current warning count, or lift a ban. A manual three-month ban
+starts a new warning round. Lifting a ban keeps pending warnings; saving zero
+warnings explicitly clears them. Manual changes are recorded in the event log
+with the actor, previous state and optional reason. They use the same live
+blacklist table and booking guards as automatic bans. Former prisoners remain
+visible if they have a blacklist record.
+
+Authenticated actions: `getBookingBlacklist` returns `rows` and `serverTime`;
+`updateBookingBan` accepts `prisonerId`, `operation` (`ban`, `unban`, `update`),
+and an optional `reason`. `update` additionally requires `warnings` (0 or 1)
+and `bannedUntil` (future ISO instant with timezone, or empty to lift the ban).
+
+The prisoner editor now uses `updatePrisoner`, which updates only the selected
+`prisonerId` and supplied fields (`prisonerName`, `wing`, `status`, `vinaiDate`,
+`note`). It requires `manage_prisoners` (Superadmin/Discipline). The authenticated
+`getPrisonersAdmin` list includes notes so edits preserve them; the public list
+is unchanged. A wing edit also synchronizes that prisoner's live booking wings.
+Full CSV replacement remains an import operation and requires `replaceAll: true`;
+old single-row import calls and invalid replacement rows are rejected before
+the roster is modified.
+
+These dashboard controls require no new migration and do not reset the database.
+Deploy the backend first (including these actions), then the Dashboard. A stale
+dashboard's old editor will be rejected safely until it is refreshed.
+
 Release: apply D1 migrations through 0033 before deploying the backend, then deploy the
 adjacent Frontend repository. Dashboard only has updated text-catalog defaults.
 No production database or deployment is changed by the verification scripts.
 
-Verify with `npm run smoke:blacklist`, `npm run smoke:capacity`, `npm run build`,
+Verify with `npm run smoke:prisoners`, `npm run smoke:blacklist`, `npm run smoke:capacity`, `npm run build`,
 and the Frontend repository's `npm run check`, `npm run build` and
 `node scripts/verify-dated-vis-capacity.mjs` (uses its built files).

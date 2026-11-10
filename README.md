@@ -48,8 +48,11 @@ It serves both the public booking flow (visitors reserving a visit) and the admi
   rolling-window archive sweep (`archiveOldReservations`, Superadmin, batched —
   takes `limit`, returns `{ archived, remaining, cutoff }`; call it again while
   `remaining` > 0).
-- **Prisoners** — import (up to 5,000 rows), sync wings onto active reservations,
-  re-check discipline status.
+- **Prisoners** — edit an individual record/discipline without replacing the roster;
+  explicit full CSV import (up to 20,000 rows), sync wings onto live reservations,
+  and re-check discipline status. Dashboard blacklist controls show warnings and
+  days remaining, and allow manual three-month bans, expiry edits and unbanning.
+  See [blacklist and prisoner management](docs/booking-capacity-and-blacklist.md).
 - **Users** — list, create, update, delete (Superadmin / `manage_users` permission).
 - **Roles** — list, create custom roles with a permission matrix.
 - **Notes** — add notes to a booking, get notes.

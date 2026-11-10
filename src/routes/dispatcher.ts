@@ -35,7 +35,15 @@ import {
   handleCreateBooking,
   handleBulkBookingAction,
 } from './reservations';
-import { handleGetPrisoners, handleImportPrisoners, handleSyncPrisonerWings, handleRecheckPrisoner } from './prisoners';
+import {
+  handleGetPrisoners,
+  handleGetPrisonersAdmin,
+  handleUpdatePrisoner,
+  handleImportPrisoners,
+  handleSyncPrisonerWings,
+  handleRecheckPrisoner,
+} from './prisoners';
+import { handleGetBookingBlacklist, handleUpdateBookingBan } from './bookingBlacklist';
 import { getUsersHandler, handleCreateUser, handleUpdateUser, handleDeleteUser } from './users';
 import { getRolesHandler, handleCreateRole } from './roles';
 import { handleGetEventLogs, handleLogClientEvent } from './eventlog';
@@ -327,6 +335,10 @@ const POST_ROUTES: Record<string, Route> = {
   getCookieConsentStats: { auth: true, handler: async (ctx) => handleGetCookieConsentStats(ctx.env, ctx.user!) },
   addNote: { auth: true, handler: async (ctx) => handleAddNote(ctx.env, ctx.body, ctx.user!) },
   importPrisoners: { auth: true, handler: async (ctx) => handleImportPrisoners(ctx.env, ctx.body, ctx.user!) },
+  getPrisonersAdmin: { auth: true, handler: async (ctx) => handleGetPrisonersAdmin(ctx.env, ctx.user!) },
+  updatePrisoner: { auth: true, handler: async (ctx) => handleUpdatePrisoner(ctx.env, ctx.body, ctx.user!) },
+  getBookingBlacklist: { auth: true, handler: async (ctx) => handleGetBookingBlacklist(ctx.env, ctx.user!) },
+  updateBookingBan: { auth: true, handler: async (ctx) => handleUpdateBookingBan(ctx.env, ctx.body, ctx.user!) },
   syncPrisonerWings: { auth: true, handler: async (ctx) => handleSyncPrisonerWings(ctx.env, ctx.body, ctx.user!) },
   getUsers: { auth: true, handler: async (ctx) => getUsersHandler(ctx.env) },
   getRoles: { auth: true, handler: async (ctx) => getRolesHandler(ctx.env) },

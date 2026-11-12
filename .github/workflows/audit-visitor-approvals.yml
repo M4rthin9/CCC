@@ -1,0 +1,30 @@
+name: Audit visitor approval routing
+
+on:
+  push:
+    branches: [audit/visitor-approvals-20261112]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Read production approval routing (no writes)
+        run: npx tsx scripts/audit-visitor-approvals.ts
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visitor-approval-audit
+          path: approval-audit/report.json
+          retention-days: 1

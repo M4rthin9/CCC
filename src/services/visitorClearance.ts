@@ -33,7 +33,9 @@ export function reusableVisitorClearance(
 ): boolean {
   if (decision(clearance.decision) !== 'yes') return false;
   if (clearance.decidedBy !== 'legacy') return true;
-  if (!source || clearance.sourceRef === ref) return false;
+  if (clearance.sourceRef === ref) return false;
+  // Clearances outlive hard-deleted source bookings by design.
+  if (!source) return true;
   if (source.participantApproved === 'yes') return true;
   if (identity(source.visitorId) === identity(clearance.visitorId)) return decision(source.visitorApproved) === 'yes';
   const flags = String(source.extraVisitorApproved || '').split(';;');

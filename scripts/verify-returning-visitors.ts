@@ -232,6 +232,17 @@ assert.equal((await read('VIS-legacy-partial'))!.status, 'รอตรวจส�
 const unreviewedAgain = await create('VIS-unreviewed-again', 'AB123', 'Unreviewed|UNREVIEWED|Partner|30');
 assert.equal(unreviewedAgain.extraVisitorApproved, '', 'a corrected legacy stage cannot grant a new visitor history');
 assert.equal(unreviewedAgain.status, 'รอตรวจสอบผู้เข้าร่วม');
+sqlite
+  .prepare(
+    `INSERT INTO visitor_clearances(prisonerId,visitorId,decision,sourceRef,decidedBy,decidedAt)
+ VALUES('P1','DELETEDHISTORY','yes','VIS-deleted-source','legacy','2026-11-01T00:00:00Z')`
+  )
+  .run();
+assert.equal(
+  (await create('VIS-deleted-history', 'DELETEDHISTORY')).visitorApproved,
+  'yes',
+  'clearance survives deletion of its source booking'
+);
 
 const newMain = await create('VIS-new-main', 'NEWMAIN', 'Known extra|EX1|Partner|30');
 assert.equal(newMain.visitorApproved, '');

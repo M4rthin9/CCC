@@ -253,3 +253,19 @@ export async function handleRecheckPrisoner(env: Env, body: Record<string, unkno
       : null,
   };
 }
+
+/** Public selection check; exposes only the current booking ban, never staff notes. */
+export async function handleGetPrisonerBookingBan(
+  env: Env,
+  body: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const prisonerId = sanitizeStr(body.prisonerId, 64);
+  if (!prisonerId) return { status: 'error', message: 'Missing prisonerId' };
+  const now = new Date();
+  const ban = await env.DB.prepare(
+    'SELECT bannedUntil FROM prisoner_booking_blacklist WHERE prisonerId = ? AND bannedUntil > ?'
+  )
+    .bind(prisonerId, now.toISOString())
+    .first<{ bannedUntil: string }>();
+  return { status: 'ok', bannedUntil: ban?.bannedUntil ?? '', serverTime: now.toISOString() };
+}

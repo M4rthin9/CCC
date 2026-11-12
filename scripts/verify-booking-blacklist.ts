@@ -1,3 +1,5 @@
+import { handleGetPrisonerBookingBan } from '../src/routes/prisoners';
+import { dispatchAction } from '../src/routes/dispatcher';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -249,6 +251,37 @@ for (const [at, expected] of [
       .run(`DATE-${at}-${n}`, at, at);
   assert.equal(state(at)!.bannedUntil, expected);
 }
+// Selection reads live state and stops exposing a ban immediately at expiry/lifting.
+assert.equal((await handleGetPrisonerBookingBan(env, {})).status, 'error');
+const selectionExpiry = new Date(Date.now() + 86400000).toISOString();
+sqlite
+  .prepare('INSERT OR REPLACE INTO prisoner_booking_blacklist (prisonerId, bannedUntil) VALUES (?, ?)')
+  .run('SELECTION', selectionExpiry);
+const selectionBan = await handleGetPrisonerBookingBan(env, { prisonerId: 'SELECTION' });
+assert.equal(selectionBan.bannedUntil, selectionExpiry);
+for (const isGet of [false, true]) {
+  const response = await dispatchAction(
+    {
+      env,
+      body: { prisonerId: 'SELECTION' },
+      request: new Request('https://example.test/'),
+      ip: '127.0.0.1',
+      userAgent: 'test',
+      user: null,
+    },
+    'getPrisonerBookingBan',
+    isGet
+  );
+  assert.equal(((await response.json()) as { bannedUntil: string }).bannedUntil, selectionExpiry);
+}
+assert.ok(Date.parse(String(selectionBan.serverTime)) <= Date.parse(selectionExpiry));
+sqlite
+  .prepare('UPDATE prisoner_booking_blacklist SET bannedUntil = ? WHERE prisonerId = ?')
+  .run('2020-01-01T00:00:00.000Z', 'SELECTION');
+assert.equal((await handleGetPrisonerBookingBan(env, { prisonerId: 'SELECTION' })).bannedUntil, '');
+sqlite.prepare("UPDATE prisoner_booking_blacklist SET bannedUntil = '' WHERE prisonerId = ?").run('SELECTION');
+assert.equal((await handleGetPrisonerBookingBan(env, { prisonerId: 'SELECTION' })).bannedUntil, '');
+assert.equal((await handleGetPrisonerBookingBan(env, { prisonerId: 'UNKNOWN' })).bannedUntil, '');
 sqlite.close();
 
 // Upgrade a populated 0032 database: remove exempt strikes without erasing valid

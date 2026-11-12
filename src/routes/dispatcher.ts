@@ -37,6 +37,7 @@ import {
 } from './reservations';
 import {
   handleGetPrisoners,
+  handleGetPrisonerBookingBan,
   handleGetPrisonersAdmin,
   handleUpdatePrisoner,
   handleImportPrisoners,
@@ -172,6 +173,7 @@ const GET_ROUTES: Record<string, Route> = {
     auth: true,
     handler: async (ctx) => handleGetEventLogs(ctx.env, ctx.body, ctx.user!),
   },
+  getPrisonerBookingBan: { auth: false, handler: async (ctx) => handleGetPrisonerBookingBan(ctx.env, ctx.body) },
   getPrisoners: { auth: false, handler: async (ctx) => handleGetPrisoners(ctx.env) },
   getRoles: { auth: true, handler: async (ctx) => getRolesHandler(ctx.env) },
   getUsers: { auth: true, handler: async (ctx) => getUsersHandler(ctx.env) },
@@ -211,6 +213,7 @@ const GET_ROUTES: Record<string, Route> = {
 };
 
 const POST_ROUTES: Record<string, Route> = {
+  getPrisonerBookingBan: { auth: false, handler: async (ctx) => handleGetPrisonerBookingBan(ctx.env, ctx.body) },
   getVisitorEntryQr: { auth: false, handler: async (ctx) => handleGetVisitorEntryQr(ctx.env, ctx.body, ctx.ip) },
   checkVisitorEntry: { auth: true, handler: async (ctx) => handleCheckVisitorEntry(ctx.env, ctx.body, ctx.user!) },
   checkInVisitor: { auth: true, handler: async (ctx) => handleCheckVisitorEntry(ctx.env, ctx.body, ctx.user!, true) },

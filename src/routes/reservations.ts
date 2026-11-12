@@ -63,6 +63,8 @@ import { getPrisonerDiscipline } from '../services/disciplineService';
 import { prisonerBookingBanError } from '../services/bookingBlacklist';
 import {
   applyReturningVisitorApprovals,
+  refreshReturningVisitorApprovals,
+  visitorApprovalsComplete,
   rememberParticipantStage,
   visitorClearanceStatements,
 } from '../services/visitorClearance';
@@ -1033,10 +1035,11 @@ export async function handleUpdateVisitorApproval(
   let newStatus = String(rows[0]!.status || '');
   let participantApproved = String(rows[0]!.participantApproved || '');
   if (!paymentLock && ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย'].includes(newStatus)) {
-    const decisions = String(extraVisitorApproved || '').split(';;');
-    const resolved =
-      mainApproved &&
-      parseExtraVisitorNames(extraVisitorNames).every((_, i) => ['yes', 'no'].includes(decisions[i] || ''));
+    const resolved = visitorApprovalsComplete({
+      visitorApproved: mainApprovedRaw,
+      extraVisitorApproved,
+      extraVisitorNames,
+    });
     participantApproved = resolved ? 'yes' : '';
     newStatus = resolved
       ? rows[0]!.disciplineApproved === 'yes'
@@ -1255,6 +1258,58 @@ export async function handleUpdateBooking(
     (f) => changes[f] !== undefined && Number(changes[f]) !== Number(current[f] || 0)
   );
   const paymentLock = await getPaymentLock(env.DB, ref);
+  const rosterChanged = ['visitorId', 'prisonerId', 'extraVisitorNames', 'extraVisitorApproved'].some(
+    (field) => changes[field] !== undefined && String(changes[field] || '') !== String(current[field] || '')
+  );
+  const refreshParticipants =
+    !fromArchive &&
+    !isTableBooking &&
+    !paymentLock &&
+    rosterChanged &&
+    ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย', 'รอชำระเงิน'].includes(String(changes.status ?? current.status));
+  if (refreshParticipants) {
+    const merged: Record<string, unknown> = { ...current, ...changes };
+    const samePrisoner =
+      String(merged.prisonerId || '')
+        .trim()
+        .toUpperCase() ===
+      String(current.prisonerId || '')
+        .trim()
+        .toUpperCase();
+    if (!samePrisoner) {
+      merged.visitorApproved = '';
+      merged.extraVisitorApproved = '';
+      merged.disciplineApproved = '';
+    } else {
+      if (
+        String(merged.visitorId || '')
+          .trim()
+          .toUpperCase() !==
+        String(current.visitorId || '')
+          .trim()
+          .toUpperCase()
+      )
+        merged.visitorApproved = '';
+      if (changes.extraVisitorNames !== undefined && changes.extraVisitorApproved === undefined)
+        merged.extraVisitorApproved = alignExtraVisitorApprovals(
+          current.extraVisitorNames,
+          current.extraVisitorApproved,
+          changes.extraVisitorNames
+        );
+    }
+    await refreshReturningVisitorApprovals(env.DB, merged);
+    for (const field of [
+      'visitorApproved',
+      'extraVisitorApproved',
+      'participantApproved',
+      'disciplineApproved',
+      'status',
+    ]) {
+      for (let i = cols.length - 1; i >= 0; i--) if (cols[i]![0] === field) cols.splice(i, 1);
+      cols.push([field, merged[field]]);
+      changes[field] = merged[field];
+    }
+  }
   const unchangedEditorInputs = ['relation', 'visitorAge', 'extraVisitorNames'].every(
     (field) => changes[field] !== undefined
   );
@@ -1318,6 +1373,9 @@ export async function handleUpdateBooking(
         return { status: 'error', message: 'ข้อมูลการจองเปลี่ยนแล้ว กรุณาโหลดใหม่ก่อนบันทึก' };
     } else if (fromArchive) {
       await updateArchivedReservationColumns(env.DB, ref, cols);
+    } else if (refreshParticipants) {
+      if (!(await updateVisitorApprovalColumns(env.DB, current, cols, [])))
+        return { status: 'error', message: 'ข้อมูลการจองเปลี่ยนแล้ว กรุณาโหลดใหม่ก่อนบันทึก' };
     } else {
       await updateReservationColumns(env.DB, ref, cols);
     }

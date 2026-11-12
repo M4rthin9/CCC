@@ -4,6 +4,15 @@ on:
   push:
     branches: [audit/visitor-approvals-20261112]
   workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply the reviewed corrections to pending VIS reservations
+        type: boolean
+        default: false
+      plan_hash:
+        description: Exact planHash from the latest dry-run audit (required to apply)
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -19,11 +28,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Read production approval routing (no writes)
+      - name: Check or reconcile production approval routing
         run: npx tsx scripts/audit-visitor-approvals.ts
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          APPLY_VISITOR_RECHECK: ${{ inputs.apply || 'false' }}
+          EXPECTED_PLAN_HASH: ${{ inputs.plan_hash }}
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: visitor-approval-audit
           path: approval-audit/report.json

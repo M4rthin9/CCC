@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { handleCreateBooking, handleUpdateStatus, handleUpdateVisitorApproval } from '../src/routes/reservations';
+import {
+  handleCreateBooking,
+  handleUpdateBooking,
+  handleUpdateStatus,
+  handleUpdateVisitorApproval,
+} from '../src/routes/reservations';
 import { handleSaveReservation } from '../src/routes/public';
 import { archiveReservationsByRef, getReservationByRef } from '../src/db/queries/reservations';
 import { lastOpenDateISO } from '../src/services/bookingWindow';
 import type { Env } from '../src/types';
+import { approvalRecheckPlan, recheckUpdateSql } from './visitor-approval-recheck-plan';
+import type { VisitorClearance } from '../src/services/visitorClearance';
 
 const sqlite = new DatabaseSync(':memory:');
 const migration = '0031_returning_visitor_clearances.sql';
@@ -171,6 +178,61 @@ assert.equal(
 );
 assert.equal(swapped.total, 4500, 'the current age is priced again; old prices are never reused');
 
+const editedReturning = await create('VIS-edited-returning', 'AB123', 'Known extra|EX1|Partner|30');
+assert.equal(editedReturning.status, 'รอตรวจสอบวินัย');
+const edited = await handleUpdateBooking(
+  env,
+  {
+    ref: editedReturning.ref,
+    extraVisitorNames: 'Known extra|EX1|Partner|30;;New extra|EDITNEW|Partner|30',
+  },
+  admin
+);
+assert.equal(edited.status, 'ok');
+const afterEdit = (await read(editedReturning.ref))!;
+assert.equal(afterEdit.visitorApproved, 'yes');
+assert.equal(afterEdit.extraVisitorApproved, 'yes;;');
+assert.equal(afterEdit.participantApproved, '', 'adding a new guest reopens Tadtel review');
+assert.equal(afterEdit.status, 'รอตรวจสอบผู้เข้าร่วม');
+const finalEditedDecision = await handleUpdateVisitorApproval(
+  env,
+  { ref: editedReturning.ref, extraVisitorApproved: 'yes;;yes' },
+  clerk
+);
+assert.equal(finalEditedDecision.newStatus, 'รอตรวจสอบวินัย');
+const appendKnown = await handleUpdateBooking(
+  env,
+  {
+    ref: editedReturning.ref,
+    extraVisitorNames: 'Known extra|EX1|Partner|30;;New extra|EDITNEW|Partner|30;;Returning|EX2|Child|6',
+  },
+  admin
+);
+assert.equal(appendKnown.status, 'ok');
+assert.equal((await read(editedReturning.ref))!.extraVisitorApproved, 'yes;;yes;;yes');
+assert.equal((await read(editedReturning.ref))!.status, 'รอตรวจสอบวินัย');
+sqlite
+  .prepare(
+    `INSERT INTO reservations(ref,prisonerId,visitorId,visitorApproved,extraVisitorNames,participantApproved,status)
+ VALUES('VIS-legacy-partial','P1','AB123','yes','Unreviewed|UNREVIEWED|Partner|30','yes','รอตรวจสอบวินัย')`
+  )
+  .run();
+sqlite
+  .prepare(
+    `INSERT INTO visitor_clearances(prisonerId,visitorId,decision,sourceRef,decidedBy,decidedAt)
+ VALUES('P1','UNREVIEWED','yes','VIS-legacy-partial','legacy','2026-11-12T00:00:00Z')`
+  )
+  .run();
+await handleUpdateBooking(
+  env,
+  { ref: 'VIS-legacy-partial', extraVisitorNames: 'Unreviewed|UNREVIEWED|Partner|31' },
+  admin
+);
+assert.equal((await read('VIS-legacy-partial'))!.status, 'รอตรวจสอบผู้เข้าร่วม');
+const unreviewedAgain = await create('VIS-unreviewed-again', 'AB123', 'Unreviewed|UNREVIEWED|Partner|30');
+assert.equal(unreviewedAgain.extraVisitorApproved, '', 'a corrected legacy stage cannot grant a new visitor history');
+assert.equal(unreviewedAgain.status, 'รอตรวจสอบผู้เข้าร่วม');
+
 const newMain = await create('VIS-new-main', 'NEWMAIN', 'Known extra|EX1|Partner|30');
 assert.equal(newMain.visitorApproved, '');
 assert.equal(newMain.extraVisitorApproved, 'yes');
@@ -305,6 +367,55 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
 }
+
+// Exercise the production reconciliation plan and its exact guarded UPDATE.
+sqlite
+  .prepare(
+    `INSERT INTO reservations(ref,prisonerId,visitorId,extraVisitorNames,status,participantApproved,version,total)
+ VALUES('VIS-recheck-mixed','P1','GROUPMAIN','New|NEVERREVIEW|Partner|30','รอตรวจสอบวินัย','yes',1,3000)`
+  )
+  .run();
+sqlite
+  .prepare(
+    `INSERT INTO reservations(ref,prisonerId,visitorId,extraVisitorNames,status,participantApproved,version,total)
+ VALUES('VIS-recheck-known','P1','GROUPMAIN','Known|GROUPYES|Partner|30','รอตรวจสอบผู้เข้าร่วม','',1,3000)`
+  )
+  .run();
+const recheckLive = sqlite.prepare('SELECT * FROM reservations ORDER BY ref').all();
+const recheckArchive = sqlite.prepare('SELECT * FROM reservations_archive ORDER BY ref').all();
+const recheckClearances = sqlite.prepare('SELECT * FROM visitor_clearances').all() as unknown as Array<
+  VisitorClearance & { prisonerId: string }
+>;
+const plan = approvalRecheckPlan(recheckLive, recheckArchive, recheckClearances, [], new Set());
+const mixedPlan = plan.find((p) => p.ref === 'VIS-recheck-mixed')!;
+assert.equal(mixedPlan.after.visitorApproved, 'yes');
+assert.equal(mixedPlan.after.extraVisitorApproved, '');
+assert.equal(mixedPlan.after.status, 'รอตรวจสอบผู้เข้าร่วม');
+const knownPlan = plan.find((p) => p.ref === 'VIS-recheck-known')!;
+assert.equal(knownPlan.after.extraVisitorApproved, 'yes');
+assert.equal(knownPlan.after.status, 'รอตรวจสอบวินัย');
+const protectedSnapshot = JSON.stringify(
+  recheckLive.filter((r) => !['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย', 'รอชำระเงิน'].includes(String(r.status)))
+);
+sqlite.prepare("UPDATE reservations SET version=version+1 WHERE ref='VIS-recheck-known'").run();
+const corrected = sqlite
+  .prepare(recheckUpdateSql)
+  .all(new Date().toISOString(), JSON.stringify([mixedPlan, knownPlan]));
+assert.deepEqual(
+  corrected.map((r) => r.ref),
+  ['VIS-recheck-mixed'],
+  'a concurrent edit is skipped'
+);
+assert.equal((await read('VIS-recheck-mixed'))!.total, 3000);
+assert.equal((await read('VIS-recheck-known'))!.status, 'รอตรวจสอบผู้เข้าร่วม');
+const afterRecheck = sqlite.prepare('SELECT * FROM reservations ORDER BY ref').all();
+assert.equal(
+  JSON.stringify(
+    afterRecheck.filter((r) => !['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย', 'รอชำระเงิน'].includes(String(r.status)))
+  ),
+  protectedSnapshot
+);
+assert.deepEqual(sqlite.prepare('SELECT * FROM reservations_archive ORDER BY ref').all(), recheckArchive);
 
 console.log(
   'PASS: history preservation, identity + prisoner scope, partial/new guests, reordered guests, rejection/reapproval, current pricing, atomic rollback/stale writes, roles, public forgery guards, archive, discipline/payment gates.'

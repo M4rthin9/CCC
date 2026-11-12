@@ -10,25 +10,116 @@ const decision = (value: unknown) =>
     .trim()
     .toLowerCase();
 
-/** Only creation calls this: an approval never carries discipline into a new booking. */
-export async function applyReturningVisitorApprovals(db: D1Database, data: Record<string, unknown>): Promise<number> {
+export function visitorApprovalsComplete(data: Record<string, unknown>): boolean {
+  const flags = String(data.extraVisitorApproved || '').split(';;');
+  return (
+    decision(data.visitorApproved) === 'yes' &&
+    parseExtraVisitorNames(data.extraVisitorNames).every((_, i) => ['yes', 'no'].includes(decision(flags[i])))
+  );
+}
+
+export interface VisitorClearance {
+  visitorId: string;
+  decision: string;
+  sourceRef: string;
+  decidedBy: string;
+}
+
+/** Legacy stage grants must still have supporting approval in their source booking. */
+export function reusableVisitorClearance(
+  clearance: VisitorClearance,
+  source: Record<string, unknown> | undefined,
+  ref: string
+): boolean {
+  if (decision(clearance.decision) !== 'yes') return false;
+  if (clearance.decidedBy !== 'legacy') return true;
+  if (!source || clearance.sourceRef === ref) return false;
+  if (source.participantApproved === 'yes') return true;
+  if (identity(source.visitorId) === identity(clearance.visitorId)) return decision(source.visitorApproved) === 'yes';
+  const flags = String(source.extraVisitorApproved || '').split(';;');
+  return parseExtraVisitorNames(source.extraVisitorNames).some(
+    (guest, i) => identity(guest.id) === identity(clearance.visitorId) && decision(flags[i]) === 'yes'
+  );
+}
+
+/** Preserve individual decisions; history can approve only guests still undecided. */
+export async function refreshReturningVisitorApprovals(db: D1Database, data: Record<string, unknown>): Promise<number> {
   const prisonerId = identity(data.prisonerId);
   const extras = parseExtraVisitorNames(data.extraVisitorNames);
   const known = prisonerId
     ? await db
-        .prepare("SELECT visitorId FROM visitor_clearances WHERE prisonerId = ? AND decision = 'yes'")
+        .prepare(
+          `SELECT c.visitorId, c.decision, c.sourceRef, c.decidedBy,
+          COALESCE(r.ref,a.ref) AS sourceExists,
+          COALESCE(r.visitorId,a.visitorId) AS sourceVisitorId,
+          COALESCE(r.visitorApproved,a.visitorApproved) AS sourceVisitorApproved,
+          COALESCE(r.extraVisitorNames,a.extraVisitorNames) AS sourceExtraVisitorNames,
+          COALESCE(r.extraVisitorApproved,a.extraVisitorApproved) AS sourceExtraVisitorApproved,
+          COALESCE(r.participantApproved,a.participantApproved) AS sourceParticipantApproved
+          FROM visitor_clearances c LEFT JOIN reservations r ON r.ref=c.sourceRef
+          LEFT JOIN reservations_archive a ON a.ref=c.sourceRef
+          WHERE c.prisonerId = ? AND c.decision = 'yes'`
+        )
         .bind(prisonerId)
-        .all<{ visitorId: string }>()
+        .all<
+          VisitorClearance & {
+            sourceExists: string;
+            sourceVisitorId: string;
+            sourceVisitorApproved: string;
+            sourceExtraVisitorNames: string;
+            sourceExtraVisitorApproved: string;
+            sourceParticipantApproved: string;
+          }
+        >()
     : { results: [] };
-  const approved = new Set((known.results || []).map((row) => row.visitorId));
-  const main = identity(data.visitorId) && approved.has(identity(data.visitorId)) ? 'yes' : '';
-  const extra = extras.map((guest) => (identity(guest.id) && approved.has(identity(guest.id)) ? 'yes' : ''));
+  const approved = new Set(
+    (known.results || [])
+      .filter((row) =>
+        reusableVisitorClearance(
+          row,
+          row.sourceExists
+            ? {
+                visitorId: row.sourceVisitorId,
+                visitorApproved: row.sourceVisitorApproved,
+                extraVisitorNames: row.sourceExtraVisitorNames,
+                extraVisitorApproved: row.sourceExtraVisitorApproved,
+                participantApproved: row.sourceParticipantApproved,
+              }
+            : undefined,
+          String(data.ref || '')
+        )
+      )
+      .map((row) => identity(row.visitorId))
+  );
+  const beforeMain = decision(data.visitorApproved);
+  const beforeExtra = String(data.extraVisitorApproved || '')
+    .split(';;')
+    .map(decision);
+  const resolve = (id: unknown, current: string) =>
+    ['yes', 'no'].includes(current) ? current : identity(id) && approved.has(identity(id)) ? 'yes' : '';
+  const main = resolve(data.visitorId, beforeMain);
+  const extra = extras.map((guest, i) => resolve(guest.id, beforeExtra[i] || ''));
   data.visitorApproved = main;
   data.extraVisitorApproved = extra.join(';;');
-  data.participantApproved = main === 'yes' && extra.every((flag) => flag === 'yes') ? 'yes' : '';
+  data.participantApproved = visitorApprovalsComplete(data) ? 'yes' : '';
+  data.status =
+    data.participantApproved === 'yes'
+      ? data.disciplineApproved === 'yes'
+        ? 'รอชำระเงิน'
+        : 'รอตรวจสอบวินัย'
+      : 'รอตรวจสอบผู้เข้าร่วม';
+  return (
+    (main === 'yes' && beforeMain !== 'yes' ? 1 : 0) +
+    extra.filter((flag, i) => flag === 'yes' && beforeExtra[i] !== 'yes').length
+  );
+}
+
+/** A new booking never inherits client-supplied decisions or a discipline approval. */
+export async function applyReturningVisitorApprovals(db: D1Database, data: Record<string, unknown>): Promise<number> {
+  data.visitorApproved = '';
+  data.extraVisitorApproved = '';
   data.disciplineApproved = '';
-  data.status = data.participantApproved === 'yes' ? 'รอตรวจสอบวินัย' : 'รอตรวจสอบผู้เข้าร่วม';
-  return (main === 'yes' ? 1 : 0) + extra.filter((flag) => flag === 'yes').length;
+  return refreshReturningVisitorApprovals(db, data);
 }
 
 /** A staff approval of the whole stage endorses every guest except explicit

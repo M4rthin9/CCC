@@ -26,6 +26,9 @@ export async function getAttendanceBookings(db: D1Database, date: string): Promi
     'status',
     'total',
     'prisonerName',
+    'prisonerId',
+    'wing',
+    'extraPrisoners',
   ];
   const select = columns.map((column) => `r.${column}`).join(', ');
   const refunded = `EXISTS (SELECT 1 FROM ${TABLES.eventLog} e WHERE e.targetRef = r.ref

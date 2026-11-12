@@ -103,6 +103,9 @@ export async function tableAttendance(booking: Reservation, records: AttendanceR
     visitorName: String(booking.visitorName || ''),
     visitorPhone: String(booking.visitorPhone || ''),
     prisonerName: String(booking.prisonerName || ''),
+    prisonerId: String(booking.prisonerId || ''),
+    wing: String(booking.wing || ''),
+    extraPrisoners: String(booking.extraPrisoners || ''),
     visitorCount: Number(booking.visitorCount) || 0,
     total: Number(booking.total) || 0,
     paymentStatus: String(booking.status || ''),
@@ -120,6 +123,8 @@ export async function tableAttendance(booking: Reservation, records: AttendanceR
       return {
         guestKey: guest.guestKey,
         name: guest.name,
+        id: guest.id,
+        relation: guest.relation,
         approved: guest.approved,
         checkedInAt: record?.checkedInAt || '',
         checkedInBy: record?.checkedInBy || '',

@@ -134,6 +134,12 @@ const records = await handleGetAttendance(env, { date: today }, { username: 'fin
 assert.ok('rows' in records);
 assert.equal(records.rows.length, 2);
 assert.equal(records.rows[0]!.checkedInBy, 'reception');
+const reportBooking = records.tables.find((table) => table.ref === checked.entry.ref)!;
+for (const guest of checked.entry.guests) {
+  const reportGuest = reportBooking.guests.find((candidate) => candidate.guestKey === guest.guestKey)!;
+  assert.equal(reportGuest.id, guest.id, 'guard report identifies guests by stable key');
+  assert.equal(reportGuest.relation, guest.relation);
+}
 assert.equal((await handleGetAttendance(env, { date: '2026-02-30' }, reception)).status, 'error');
 assert.equal(validAttendanceDate('invalid'), false);
 for (const guest of checked.entry.guests.slice(2))

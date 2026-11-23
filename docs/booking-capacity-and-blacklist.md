@@ -17,14 +17,14 @@ strikes or reset that streak. One reservation can contribute at most one strike
 per prisoner. Shared-table prisoners are included. The next pair of cancellations
 starts a fresh streak after a ban is triggered.
 
-Migration 0033 exempts staff cancellations that return the VIS slot: at least
-four Bangkok calendar days before the visit, matching `CANCEL_RELEASE_DAYS`.
-For a 9 November visit, cancellation on 5 November or earlier adds no strike;
-6 November or later counts. Exempt cancellations leave the existing streak
-unchanged. This applies to every staff cancellation path and shared prisoners.
-The migration also removes identifiable early-cancellation strikes from existing
-history and rebuilds only affected prisoners' streaks and bans. Outcomes for
-deleted bookings are retained because their visit dates cannot be recovered.
+VIS cancellations made before the Bangkok visit date immediately return the
+slot to the public pool, where it can be booked again while the date is open.
+For a 9 November visit, the slot is released for a cancellation through the end
+of 8 November. Cancellations on the visit date still count toward capacity.
+Migration 0035 applies the same cutoff to new staff cancellation strikes,
+including shared prisoners. A cancellation that returns the slot leaves the
+existing streak unchanged. Migration 0033 corrected historical strikes under the
+previous four-day policy. Migration 0035 preserves recorded strikes and bans.
 
 Bans expire automatically at the recorded time, with no cleanup job required.
 Calendar-month arithmetic uses Bangkok time and clamps month ends (31 August
@@ -63,7 +63,7 @@ These dashboard controls require no new migration and do not reset the database.
 Deploy the backend first (including these actions), then the Dashboard. A stale
 dashboard's old editor will be rejected safely until it is refreshed.
 
-Release: apply D1 migrations through 0033 before deploying the backend, then deploy the
+Release: apply D1 migrations through 0035 before deploying the backend, then deploy the
 adjacent Frontend repository. Dashboard only has updated text-catalog defaults.
 No production database or deployment is changed by the verification scripts.
 

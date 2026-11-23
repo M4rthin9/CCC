@@ -17,7 +17,6 @@ import { lastOpenDateISO } from '../src/services/bookingWindow';
 import type { Env } from '../src/types';
 import { countPublicPrisonerBookings, insertReservation } from '../src/db/queries/reservations';
 import { formatBangkok } from '../src/config';
-import { CANCEL_RELEASE_DAYS } from '../src/constants';
 
 const sqlite = new DatabaseSync(':memory:');
 for (const file of readdirSync('src/db/migrations')
@@ -85,7 +84,7 @@ const state = (id: string) => sqlite.prepare('SELECT * FROM prisoner_booking_bla
 
 // All staff cancellation paths exempt the exact same dates that free capacity.
 const earlyDate = new Date(`${todayBangkok}T00:00:00+07:00`);
-earlyDate.setUTCDate(earlyDate.getUTCDate() + CANCEL_RELEASE_DAYS);
+earlyDate.setUTCDate(earlyDate.getUTCDate() + 1);
 const releasedDate = formatBangkok(earlyDate).slice(0, 10);
 for (const [i, cancel] of [
   (ref: string) => handleCancelBooking(env, { ref }, admin),
@@ -103,14 +102,14 @@ for (const [i, cancel] of [
   assert.equal(state(`EXTRA-${i}`), undefined, 'shared prisoners are also exempt');
 }
 
-// Controlled timestamps prove the inclusive four-day cutoff and Bangkok midnight.
+// The slot is released up to the last millisecond before the Bangkok visit date.
 for (const [ref, cancelledAt, shouldCount] of [
   ['FIVE-DAYS', '2030-01-04T05:00:00.000Z', false],
-  ['FOUR-DAYS', '2030-01-05T05:00:00.000Z', false],
-  ['BEFORE-MIDNIGHT', '2030-01-05T16:59:59.999Z', false],
-  ['AT-MIDNIGHT', '2030-01-05T17:00:00.000Z', true],
-  ['THREE-DAYS', '2030-01-06T05:00:00.000Z', true],
+  ['THREE-DAYS', '2030-01-06T05:00:00.000Z', false],
+  ['BEFORE-MIDNIGHT', '2030-01-08T16:59:59.999Z', false],
+  ['AT-MIDNIGHT', '2030-01-08T17:00:00.000Z', true],
   ['SAME-DAY', '2030-01-09T05:00:00.000Z', true],
+  ['MISSING-TIMESTAMP', '', true],
 ] as const) {
   seed(ref, ref, 'prisoner', '', '2030-01-09');
   sqlite
@@ -369,5 +368,5 @@ assert.equal(
 );
 legacy.close();
 console.log(
-  'Dated VIS capacity, four-day release exemption, cancellation streaks, booking guards, expiry and existing-ban correction passed.'
+  'Dated VIS capacity, pre-visit release exemption, cancellation streaks, booking guards, expiry and existing-ban correction passed.'
 );

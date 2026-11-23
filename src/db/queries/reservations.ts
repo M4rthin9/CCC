@@ -1,12 +1,4 @@
-import {
-  ACTIVE_STATUSES,
-  AWAITING_PAYMENT,
-  CANCELLED,
-  CANCEL_RELEASE_DAYS,
-  COMPLETED,
-  HOLD_EXPIRED_REASON,
-  TABLES,
-} from '../../constants';
+import { ACTIVE_STATUSES, AWAITING_PAYMENT, CANCELLED, COMPLETED, HOLD_EXPIRED_REASON, TABLES } from '../../constants';
 import { Env, Reservation } from '../../types';
 
 const RESERVATION_COLUMNS = [
@@ -289,13 +281,10 @@ export function findReservationBySlipFingerprint(
 /**
  * Per-date used counts for the public prisoner-visit calendar.
  *
- * A public submission consumes its slot: every status counts, rejected
- * included, except a booking cancelled at least CANCEL_RELEASE_DAYS before its
- * visit date (Bangkok calendar), which gives the slot back. Public and
- * admin-created bookings consume the same daily pool.
+ * Public and admin-created bookings consume the same daily pool in every
+ * status, except when cancelled before the Bangkok visit date.
  */
-const NOT_RELEASED = `NOT (status = ? AND cancelAt != ''
-  AND visitDateISO >= date(cancelAt, '+7 hours', '+${CANCEL_RELEASE_DAYS} days'))`;
+const NOT_RELEASED = `NOT (status = ? AND COALESCE(visitDateISO > date(cancelAt, '+7 hours'), 0))`;
 const VISIT_OCCUPANCY_WHERE = `bookingType != 'table' AND ${NOT_RELEASED}`;
 
 export function countReservationsByDate(db: D1Database): Promise<Record<string, number>> {

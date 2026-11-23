@@ -168,7 +168,7 @@ export async function handleSaveReservation(
   }
 
   // Hard daily cap on public bookings: every submission for the date consumes a
-  // slot, rejected or cancelled included, unless cancelled CANCEL_RELEASE_DAYS+ ahead.
+  // slot unless a booking was cancelled before its Bangkok visit date.
   const perDay = publicCapacityForDate(await getPublicBookingConfig(env), String(data.visitDateISO || ''));
   const used = await countPublicPrisonerBookings(env.DB, String(data.visitDateISO || ''));
   if (used >= perDay) {

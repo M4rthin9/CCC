@@ -7,11 +7,16 @@ import {
   countActiveTableBookings,
   insertReservation,
 } from '../src/db/queries/reservations';
-import { getCountsByDate, getTableCountsByDate, handleCreateBooking } from '../src/routes/reservations';
+import {
+  getCountsByDate,
+  getTableCountsByDate,
+  handleCreateBooking,
+  handlePublicCancelBooking,
+} from '../src/routes/reservations';
 import { handleSaveReservation, handleSaveTableReservation } from '../src/routes/public';
 import { lastOpenDateISO } from '../src/services/bookingWindow';
 import { TABLE_AGREEMENT_VERSION } from '../src/services/tableAgreement';
-import { CANCELLED, CANCEL_RELEASE_DAYS } from '../src/constants';
+import { CANCELLED } from '../src/constants';
 import type { Env } from '../src/types';
 
 const sqlite = new DatabaseSync(':memory:');
@@ -72,8 +77,7 @@ function seed(ref: string, status: string, source = '', bookingType = 'prisoner'
 }
 seed('VIS-admin', 'รอตรวจสอบผู้เข้าร่วม', 'admin');
 seed('VIS-public', 'ไม่อนุมัติ');
-const early = new Date(`${date}T00:00:00+07:00`);
-early.setUTCDate(early.getUTCDate() - CANCEL_RELEASE_DAYS);
+const early = new Date(Date.parse(`${date}T00:00:00+07:00`) - 1);
 seed('VIS-released', CANCELLED, 'admin', 'prisoner', early.toISOString());
 seed('VIS-late-cancel', CANCELLED, 'admin', 'prisoner', `${date}T00:00:00Z`);
 seed('TBL-admin', 'ชำระแล้ว', 'admin-table', 'table');
@@ -104,6 +108,38 @@ try {
       )
     ).status,
     'ok'
+  );
+  assert.equal(((await getCountsByDate(env)).counts as Record<string, number>)[date], 2);
+  assert.equal(
+    (await handlePublicCancelBooking(env, { ref: 'VIS-public-new', visitorId: body.visitorId })).status,
+    'ok'
+  );
+  assert.equal(((await getCountsByDate(env)).counts as Record<string, number>)[date], 1);
+  assert.equal(
+    (
+      await handleSaveReservation(
+        env,
+        { ...body, ref: 'VIS-public-rebooked', prisonerId: 'P2', turnstileToken: 'test' },
+        { ip: '', userAgent: '' }
+      )
+    ).status,
+    'ok',
+    'a public visitor can rebook the same visit using released capacity'
+  );
+  assert.equal(
+    (await handlePublicCancelBooking(env, { ref: 'VIS-public-rebooked', visitorId: body.visitorId })).status,
+    'ok'
+  );
+  assert.equal(
+    (
+      await handleSaveReservation(
+        env,
+        { ...body, ref: 'VIS-public-other', visitorId: 'OTHER', prisonerId: 'P5', turnstileToken: 'test' },
+        { ip: '', userAgent: '' }
+      )
+    ).status,
+    'ok',
+    'another public visitor can take the released slot'
   );
   const extraAdmin = await handleCreateBooking(env, { ...body, ref: 'VIS-admin-over', prisonerId: 'P3' }, admin);
   assert.equal(extraAdmin.status, 'ok', 'staff can exceed the public quota');

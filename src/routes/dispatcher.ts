@@ -4,6 +4,7 @@ import { jsonResponse } from '../middleware/http';
 import { d1CheckRateLimit } from '../cache/d1Cache';
 import { rateLimitKey } from '../cache/keys';
 import { handleVisContactQueue, handleVisManage } from './visWaitlist';
+import { handlePrisonerWorkbook } from './prisonerWorkbook';
 import { logEvent } from '../services/logger';
 import {
   handlePing,
@@ -348,6 +349,10 @@ const POST_ROUTES: Record<string, Route> = {
   getCookieConsentStats: { auth: true, handler: async (ctx) => handleGetCookieConsentStats(ctx.env, ctx.user!) },
   addNote: { auth: true, handler: async (ctx) => handleAddNote(ctx.env, ctx.body, ctx.user!) },
   importPrisoners: { auth: true, handler: async (ctx) => handleImportPrisoners(ctx.env, ctx.body, ctx.user!) },
+  processPrisonerWorkbook: {
+    auth: true,
+    handler: async (ctx) => handlePrisonerWorkbook(ctx.env, ctx.body, ctx.user!),
+  },
   getPrisonersAdmin: { auth: true, handler: async (ctx) => handleGetPrisonersAdmin(ctx.env, ctx.user!) },
   updatePrisoner: { auth: true, handler: async (ctx) => handleUpdatePrisoner(ctx.env, ctx.body, ctx.user!) },
   getBookingBlacklist: { auth: true, handler: async (ctx) => handleGetBookingBlacklist(ctx.env, ctx.user!) },

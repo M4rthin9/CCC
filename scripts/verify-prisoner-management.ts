@@ -14,6 +14,7 @@ import { prisonerBookingBanError, threeMonthBanExpiry } from '../src/services/bo
 import { handleCreateBooking } from '../src/routes/reservations';
 import { lastOpenDateISO } from '../src/services/bookingWindow';
 import { dispatchAction } from '../src/routes/dispatcher';
+import { handlePrisonerWorkbook } from '../src/routes/prisonerWorkbook';
 
 const db = new DatabaseSync(':memory:');
 for (const file of readdirSync('src/db/migrations')
@@ -88,7 +89,13 @@ const originalBans = bans();
 
 // The dashboard calls these actions through POST; none expose administrative
 // details or mutations to public callers, even with a forged role in the body.
-for (const action of ['getPrisonersAdmin', 'updatePrisoner', 'getBookingBlacklist', 'updateBookingBan']) {
+for (const action of [
+  'getPrisonersAdmin',
+  'updatePrisoner',
+  'getBookingBlacklist',
+  'updateBookingBan',
+  'processPrisonerWorkbook',
+]) {
   const result = await dispatchAction(
     {
       env,
@@ -362,6 +369,66 @@ assert.equal(
 );
 assert.equal(roster().length, 1);
 assert.deepEqual(bans(), savedBans);
+
+const asOf = new Date('2026-11-25T17:00:00.000Z');
+const restricted = 'ติดวินัย งดเยี่ยม';
+const insert = db.prepare('INSERT INTO prisoners VALUES (?, ?, ?, ?, ?, ?)');
+insert.run('W1', 'ผู้ทดสอบ หนึ่ง', '1', restricted, '', 'คงหมายเหตุเดิม');
+insert.run('W2', 'ผู้ทดสอบ สอง', '2', restricted, '', '');
+insert.run('W3', 'ผู้ทดสอบ สาม', '3', '', '', '');
+insert.run('W4', 'ผู้ทดสอบ สี่', '4', restricted, '2026-11-10', '');
+insert.run('W5', 'ผู้ทดสอบ ห้า', '5', restricted, '', '');
+db.exec("INSERT INTO reservations (ref, prisonerId, wing) VALUES ('VIS-W1', 'W1', '1')");
+const row = (n: number, prisonerId: string, prisonerName: string, value: string) => ({
+  row: n,
+  prisonerId,
+  prisonerName,
+  value,
+});
+const rosterInput = [row(1, 'W1', 'ผู้ทดสอบ หนึ่ง', 'แดน 2'), row(2, 'W6', 'ผู้ทดสอบ หก', 'แดน 6')];
+const inspect = (kind: string, rows: unknown[], username = vinai.username) =>
+  handlePrisonerWorkbook(env, { kind, operation: 'preview', rows }, { username }, asOf);
+const apply = (kind: string, rows: unknown, username = vinai.username) =>
+  handlePrisonerWorkbook(env, { kind, operation: 'apply', rows }, { username }, asOf);
+assert.equal((await inspect('roster', rosterInput, 'user')).status, 'error');
+const liveBefore = roster();
+const rosterPreview = await inspect('roster', rosterInput);
+assert.deepEqual(roster(), liveBefore, 'opening preview must not write any prisoner');
+assert.deepEqual(await apply('roster', rosterPreview.rows, 'user').then((r) => r.status), 'error');
+assert.deepEqual(await apply('roster', rosterPreview.rows), { status: 'ok', applied: 2, conflicted: 0 });
+assert.equal(prisoner('W1')?.status, restricted);
+assert.equal(prisoner('W1')?.note, 'คงหมายเหตุเดิม');
+assert.equal(prisoner('W1')?.wing, 'แดน 2');
+assert.equal(db.prepare("SELECT wing FROM reservations WHERE ref = 'VIS-W1'").get()?.wing, 'แดน 2');
+assert.ok(prisoner('W3'), 'a roster upload does not remove missing prisoners');
+assert.deepEqual(await apply('roster', rosterPreview.rows), { status: 'ok', applied: 0, conflicted: 2 });
+const disciplineInput = [
+  row(4, 'W1', 'นายผู้ทดสอบ หนึ่ง', '2026-11-20'),
+  row(5, 'W1', 'นายผู้ทดสอบ หนึ่ง', '2025-11-10'),
+  row(6, 'W2', 'ผู้ทดสอบ สอง', '2025-11-26'),
+  row(7, 'W3', 'ผู้ทดสอบ สาม', '2026-11-20'),
+  row(8, 'W4', 'ผู้ทดสอบ สี่', '2025-11-25'),
+  row(9, 'W5', 'คนอื่น', '2026-11-20'),
+  row(10, 'W5', 'ผู้ทดสอบ ห้า', '2026-11-19'),
+  row(11, 'MISSING', 'ผู้ทดสอบ เจ็ด', '2026-11-20'),
+];
+const beforeDiscipline = roster();
+const planned = await inspect('discipline', disciplineInput);
+assert.deepEqual(roster(), beforeDiscipline);
+assert.equal((planned.rows as unknown[]).length, 3);
+assert.equal((planned.issues as unknown[]).length, 5);
+db.exec("UPDATE prisoners SET vinaiDate = '2026-11-25' WHERE prisonerId = 'W5'");
+assert.deepEqual(await apply('discipline', planned.rows), { status: 'ok', applied: 2, conflicted: 1 });
+assert.equal(prisoner('W1')?.vinaiDate, '2026-11-20');
+assert.equal(prisoner('W2')?.status, '');
+assert.equal(prisoner('W2')?.vinaiDate, '');
+assert.equal(prisoner('W3')?.status, '');
+assert.equal(prisoner('W4')?.vinaiDate, '2026-11-10');
+assert.equal(prisoner('W5')?.vinaiDate, '2026-11-25');
+assert.ok(
+  JSON.stringify(await handleGetPrisoners(env)).includes('2026-11-20'),
+  'imports invalidate the public roster cache'
+);
 db.close();
 console.log(
   'PASS: individual prisoner edits preserve the roster, notes, bookings and bans; safe imports; permissions; manual bans, expiry, warnings and audit logs.'

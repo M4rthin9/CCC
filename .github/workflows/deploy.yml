@@ -65,6 +65,9 @@ jobs:
       - name: Verify Bangkok VIS waitlist cutover and payments
         run: npx tsx scripts/verify-vis-waitlist.ts
 
+      - name: Verify prisoner management and workbook imports
+        run: npm run smoke:prisoners
+
       - name: Select target environment
         id: target
         run: |

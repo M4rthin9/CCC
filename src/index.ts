@@ -7,6 +7,7 @@ import { resolveAuthUser } from './auth/middleware';
 import { dispatchAction, RouteCtx } from './routes/dispatcher';
 import { sanitizeStr } from './config';
 import { cleanupExpiredDiscipline } from './services/disciplineService';
+import { processVisWaitlist, sendPendingVisNotices } from './services/visWaitlist';
 import { archiveOldReservations } from './services/archiveService';
 import { deleteExpiredRefreshTokens } from './db/queries/refreshTokens';
 import { releaseExpiredTableHolds } from './db/queries/reservations';
@@ -299,7 +300,11 @@ export default {
   // Push delivery runs: each message sends one batch and queues the next.
   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
-      console.log('[Queue] push drain:', JSON.stringify(await drainPushes(env)));
+      if (typeof msg.body === 'object' && msg.body !== null && 'visNotices' in msg.body) {
+        await sendPendingVisNotices(env);
+      } else {
+        console.log('[Queue] push drain:', JSON.stringify(await drainPushes(env)));
+      }
       msg.ack();
     }
   },
@@ -313,6 +318,11 @@ export default {
 // An hour with nothing opening reads one settings row and stops.
 async function runCron(cron: string, scheduledTime: number, env: Env): Promise<void> {
   if (cron === '*/5 * * * *') {
+    try {
+      await processVisWaitlist(env);
+    } catch (error) {
+      console.error('[Cron] VIS waiting list:', String(error));
+    }
     try {
       await recordSystemStatus(env, scheduledTime);
     } catch (error) {

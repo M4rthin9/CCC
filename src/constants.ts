@@ -367,6 +367,8 @@ export const NOTIFICATION_EVENTS = [
   'booking_cancelled',
   'status_changed',
   'payment_due',
+  'vis_payment_reminder',
+  'vis_payment_expired',
   'payment_confirmed',
   'visitor_approved',
   'visitor_rejected',
@@ -392,6 +394,8 @@ export const NOTIFY_TEMPLATES: Record<NotificationEvent, { subject: string; body
     subject: 'แจ้งเตือน: ถึงคิวชำระเงิน',
     body: 'การจองเลขที่ {ref} ได้รับการอนุมัติแล้ว กรุณาชำระเงิน\nผู้ต้องขัง: {prisonerName}\nวันที่เข้าเยี่ยม: {visitDate}\nยอดที่ต้องชำระ: {total} บาท',
   },
+  vis_payment_reminder: { subject: 'เตือนก่อนหมดเวลาชำระเงิน VIS', body: 'กรุณาตรวจสอบกำหนดชำระรายการ {ref}' },
+  vis_payment_expired: { subject: 'หมดเวลาชำระเงิน VIS', body: 'กรุณาใช้เลข {ref} เลือกวันใหม่' },
   payment_confirmed: {
     subject: 'แจ้งเตือน: ยืนยันการชำระเงิน',
     body: 'การจองเลขที่ {ref} ชำระเงินแล้วเรียบร้อย\nยอดรวม: {total} บาท\nวันที่เข้าเยี่ยม: {visitDate}',

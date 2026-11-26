@@ -11,6 +11,7 @@ import {
   updateReservationColumns,
 } from '../db/queries/reservations';
 import { invalidateLookupCache } from '../cache/invalidation';
+import { hasPermission } from '../db/queries/roles';
 import { logEvent } from '../services/logger';
 import { notify } from '../services/notifications';
 import { persistVerify, verifyAndDecideSlip } from '../services/slipverify';
@@ -29,6 +30,9 @@ import {
   type DecodedSlip,
 } from '../services/slipStorage';
 import { Env, Reservation } from '../types';
+import { claimVisSlip, clearVisSlipClaim, getManagedVisPayment, visPaymentOpen } from '../services/visWaitlist';
+import { visVisitorId } from '../services/visWaitlistPolicy';
+import { documentMatches } from './visWaitlist';
 
 export { handleVerifySlip } from '../services/slipverify';
 
@@ -172,23 +176,46 @@ export async function handleUploadSlip(
   if (rows.some((row) => ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย'].includes(String(row.status))))
     return { status: 'error', message: 'ต้องอนุมัติผู้เข้าร่วมและวินัยครบทั้งสองขั้นตอนก่อนชำระเงิน' };
 
-  const actor = String(body.username || 'public');
+  const booking = rows[0]!;
+  const visPayment = await getManagedVisPayment(env, booking);
+  const submittedAt = new Date();
+  if (visPayment) {
+    const document = visVisitorId(body.visitorId);
+    if (
+      !document ||
+      document.length > 64 ||
+      !(await documentMatches(document, visVisitorId(booking.visitorId))) ||
+      !/^data:image\/(?:png|jpe?g|webp);base64,/i.test(dataUri)
+    ) {
+      return { status: 'error', message: 'กรุณายืนยันข้อมูลผู้จองหลักและแนบสลิปที่ถูกต้อง' };
+    }
+    const payment = await readPaymentSwitch(env);
+    if (!payment.enabled) return { status: 'error', message: payment.closedMessage || 'ขณะนี้ปิดรับชำระเงินชั่วคราว' };
+    if (!visPaymentOpen(booking, visPayment, submittedAt) || !(await claimVisSlip(env.DB, booking, submittedAt))) {
+      return { status: 'error', message: 'รอบชำระเงินไม่เปิด หรือมีสลิปอยู่ระหว่างตรวจสอบ' };
+    }
+  }
+  const actor = visPayment ? 'public' : String(body.username || 'public');
+  let evidenceStored = false;
   try {
     await updateReservationColumns(env.DB, ref, await slipColumns(env, ref, dataUri));
+    evidenceStored = true;
     await logEvent(env, actor, 'slip_uploaded', ref, {}, 'success');
     await reservationChanged(env);
     await invalidateLookupCache(env, ref);
     // Verification used to wait for a separate verifySlip call, which meant a
     // slip sat unchecked until someone asked. Run it here instead.
-    const verified = await runVerify(env, rows[0] as Reservation, dataUri, actor, waitUntil);
+    const verified = await runVerify(env, booking, dataUri, actor, waitUntil);
     return {
       status: 'ok',
+      ...(visPayment ? { pendingVerification: true } : {}),
       // The visitor's page shows the slip it just uploaded; hand back a signed
       // URL instead of echoing megabytes of base64 back through the response.
       url: slipsBucket(env) ? slipImageUrl(origin, ref, await signSlipToken(env, ref)) : dataUri,
       ...(verified ? { verify: verified.result, autoApproved: verified.autoApproved } : {}),
     };
   } catch (e) {
+    if (visPayment && !evidenceStored) await clearVisSlipClaim(env.DB, ref, submittedAt.toISOString());
     await logEvent(env, actor, 'slip_upload_failed', ref, { error: String(e) }, 'error');
     return { status: 'error', message: String(e) };
   }
@@ -220,9 +247,15 @@ export async function handleUpdateSlipAndStatus(
     return { status: 'error', message: 'รายการนี้คืนเงินแล้ว ไม่สามารถเปลี่ยนสลิปหรือสถานะได้' };
 
   const currentStatus = String(rows[0]?.status || '').trim();
+  const visPayment = await getManagedVisPayment(env, rows[0]!);
+  if (visPayment && isPublic) return { status: 'error', message: 'กรุณาส่งสลิปให้ระบบตรวจสอบก่อนยืนยันการชำระเงิน' };
+  if (visPayment && !(await hasPermission(env.DB, user.username, 'confirm_payment')))
+    return { status: 'error', message: 'ไม่มีสิทธิ์ยืนยันการชำระเงินของ VIS' };
   if (['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย'].includes(currentStatus))
     return { status: 'error', message: 'ต้องอนุมัติผู้เข้าร่วมและวินัยครบทั้งสองขั้นตอนก่อนชำระเงิน' };
   let status = sanitizeStr(body.status, 50) || PAID;
+  if (visPayment && status === PAID && (currentStatus !== AWAITING_PAYMENT || !visPayment.visSlipSubmittedAt))
+    return { status: 'error', message: 'รายการ VIS ต้องมีการส่งสลิปในรอบชำระเงินที่เปิดอยู่ก่อนยืนยัน' };
   if (status === 'คืนเงินแล้ว') return { status: 'error', message: 'กรุณาบันทึกการคืนเงินผ่านแบบฟอร์มคืนเงิน' };
 
   if (isPublic) {

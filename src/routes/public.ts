@@ -11,6 +11,9 @@ import {
   insertReservation,
   countPublicPrisonerBookings,
   getAllRefs,
+  hasUnpaidVisOnOtherDate,
+  hasUnpaidVisForPrisoners,
+  hasReusableVis,
 } from '../db/queries/reservations';
 import { verifyTurnstileToken } from '../middleware/turnstile';
 import { invalidatePrisonerLookupCache } from '../cache/invalidation';
@@ -32,7 +35,7 @@ import {
 } from '../services/tableCapacity';
 import { getPublicBookingConfig, publicCapacityForDate, visitsFullMessage } from '../services/publicCapacity';
 import { TABLE_AGREEMENT_TEXT, TABLE_AGREEMENT_VERSION, tableAgreementError } from '../services/tableAgreement';
-import { bookingWindowError, getBookingWindow } from '../services/bookingWindow';
+import { bookingWindowError, getBookingWindow, isBookableDate } from '../services/bookingWindow';
 import { BOOKING_TYPE_PRISONER, BOOKING_TYPE_TABLE, TABLE_REF_PREFIX } from '../constants';
 import { normalizeVisitDateISO } from '../config';
 import { applyServerPricing, parseExtraPrisoners } from '../services/pricing';
@@ -41,6 +44,13 @@ import { prisonerBookingBanError } from '../services/bookingBlacklist';
 import { applyReturningVisitorApprovals } from '../services/visitorClearance';
 import { notify } from '../services/notifications';
 import { Env, Reservation } from '../types';
+import {
+  usesVisWaitlist,
+  VIS_WAITING,
+  visQueueApplies,
+  visVisitorId,
+  visWaitlistEnabled,
+} from '../services/visWaitlistPolicy';
 
 export async function handlePing(): Promise<Record<string, unknown>> {
   return { status: 'ok', pong: true, timestamp: new Date().toISOString() };
@@ -118,10 +128,8 @@ export async function handleSaveReservation(
 
   // Admin open/close switch and closed dates — checked before Turnstile so a
   // refused booking does not burn the visitor's token.
-  const windowError = bookingWindowError(
-    await getBookingWindow(env),
-    normalizeVisitDateISO(validation.data.visitDateISO)
-  );
+  const bookingWindow = await getBookingWindow(env);
+  const windowError = bookingWindowError(bookingWindow, normalizeVisitDateISO(validation.data.visitDateISO));
   if (windowError) return { status: 'error', message: windowError, closed: true };
 
   // Turnstile gate (public booking path only). Fail closed on bad/missing token.
@@ -131,6 +139,33 @@ export async function handleSaveReservation(
   }
 
   const data = validation.data;
+  const submittedAt = new Date();
+  const visWaitlist = usesVisWaitlist(env, data.visitDateISO, submittedAt);
+  if (
+    visWaitlist &&
+    (!visVisitorId(data.visitorId) || !isBookableDate(String(data.visitDateISO), bookingWindow, submittedAt))
+  ) {
+    return { status: 'error', message: '⚠️ กรุณาตรวจสอบข้อมูลผู้จองหลักและเลือกวันที่เปิดรับจอง' };
+  }
+  const otherDateResult = {
+    status: 'error',
+    existingUnpaidVis: true,
+    message: 'มีรายการ VIS ที่ยังไม่ชำระเงิน กรุณาดำเนินการต่อกับรายการเดิมในหน้าตรวจสอบสถานะ',
+  };
+  if (visWaitlist && (await hasUnpaidVisOnOtherDate(env.DB, data.visitorId, data.visitDateISO, submittedAt))) {
+    return otherDateResult;
+  }
+  const prisonerUnpaidResult = {
+    status: 'error',
+    message: 'มีรายการเยี่ยมก่อนหน้าที่ยังไม่ชำระเงิน กรุณารอให้รายการเดิมเสร็จสิ้นก่อนจองวันอื่น',
+  };
+  if (visWaitlist && (await hasUnpaidVisForPrisoners(env.DB, data, submittedAt))) return prisonerUnpaidResult;
+  const reusableResult = {
+    status: 'error',
+    existingUnpaidVis: true,
+    message: 'มีรายการ VIS เดิมที่เลือกวันใหม่ได้ กรุณาดำเนินการต่อในหน้าตรวจสอบสถานะ',
+  };
+  if (visWaitlist && (await hasReusableVis(env.DB, data))) return reusableResult;
 
   // Server-authoritative pricing: never trust client-submitted totals/counts.
   const { clientTotal, serverTotal } = applyServerPricing(data);
@@ -170,8 +205,8 @@ export async function handleSaveReservation(
   // Hard daily cap on public bookings: every submission for the date consumes a
   // slot unless a booking was cancelled before its Bangkok visit date.
   const perDay = publicCapacityForDate(await getPublicBookingConfig(env), String(data.visitDateISO || ''));
-  const used = await countPublicPrisonerBookings(env.DB, String(data.visitDateISO || ''));
-  if (used >= perDay) {
+  const used = visWaitlist ? 0 : await countPublicPrisonerBookings(env.DB, String(data.visitDateISO || ''));
+  if (!visWaitlist && used >= perDay) {
     return { status: 'error', message: visitsFullMessage(perDay), full: true, used };
   }
 
@@ -183,7 +218,7 @@ export async function handleSaveReservation(
   data.ref = ref;
 
   const reusedParticipants = await applyReturningVisitorApprovals(env.DB, data);
-  const now = new Date().toISOString();
+  const now = submittedAt.toISOString();
   const row: Record<string, unknown> = {
     ...data,
     // insertReservation writes '' for any column it is not given, so the D1
@@ -193,9 +228,15 @@ export async function handleSaveReservation(
     updatedAt: now,
     version: 1,
     createdBy: 'public',
+    ...(visWaitlist ? { visQueuedAt: now } : {}),
   };
 
-  if (!(await insertReservation(env.DB, row, { perDay, nowIso: now }))) {
+  if (!(await insertReservation(env.DB, row, { perDay, nowIso: now, visWaitlist }))) {
+    if (visWaitlist && (await hasUnpaidVisOnOtherDate(env.DB, data.visitorId, data.visitDateISO, submittedAt))) {
+      return otherDateResult;
+    }
+    if (visWaitlist && (await hasUnpaidVisForPrisoners(env.DB, data, submittedAt))) return prisonerUnpaidResult;
+    if (visWaitlist && (await hasReusableVis(env.DB, data))) return reusableResult;
     await logEvent(
       env,
       'public',
@@ -205,7 +246,12 @@ export async function handleSaveReservation(
       'denied',
       meta
     );
-    return { status: 'error', message: visitsFullMessage(perDay), full: true, used: perDay };
+    return {
+      status: 'error',
+      message: visWaitlist ? 'คิวสำหรับวันนี้เต็มแล้ว กรุณาเลือกวันอื่น' : visitsFullMessage(perDay),
+      full: true,
+      used: perDay,
+    };
   }
 
   await reservationChanged(env);
@@ -399,7 +445,8 @@ export async function handleLookupByRef(env: Env, params: Record<string, unknown
   const prisonerId = sanitizeStr(params.prisonerId, 64);
   if (!ref && !prisonerId) return { status: 'error', message: 'Missing ref or prisonerId' };
 
-  const cacheKey = lookupCacheKey(env, ref, prisonerId);
+  const waitlist = visWaitlistEnabled(env);
+  const cacheKey = lookupCacheKey(env, ref, prisonerId) + (waitlist ? ':vis-waitlist' : '');
   // Staff writes advance this version even when only the reference lookup is
   // explicitly invalidated. Prisoner and co-prisoner searches must refresh too.
   let version: number;
@@ -431,6 +478,24 @@ export async function handleLookupByRef(env: Env, params: Record<string, unknown
   }
 
   const masked = matches.map(maskRowForPublic);
+  if (waitlist && matches.some((row) => row.bookingType !== BOOKING_TYPE_TABLE)) {
+    const queue = await env.DB.prepare(
+      `SELECT ref, visQueuedAt, holdExpiresAt, visSlipSubmittedAt
+      FROM reservations WHERE ref IN (SELECT value FROM json_each(?))`
+    )
+      .bind(JSON.stringify(matches.map((r) => r.ref)))
+      .all<{ ref: string; visQueuedAt: string; holdExpiresAt: string; visSlipSubmittedAt: string }>();
+    const states = new Map((queue.results || []).map((row) => [row.ref, row]));
+    matches.forEach((row, i) => {
+      const state = states.get(row.ref);
+      const out = masked[i];
+      if (!state || !out || !visQueueApplies(env, row, state.visQueuedAt)) return;
+      out.visManaged = true;
+      out.visDeadline = state.holdExpiresAt;
+      out.visPendingVerification = Boolean(state.visSlipSubmittedAt) && row.status === 'รอชำระเงิน';
+      if (row.status === 'รอชำระเงิน' && !state.holdExpiresAt) out.status = VIS_WAITING;
+    });
+  }
   await d1CachePutVersioned(env.DB, cacheKey, version, masked, LOOKUP_CACHE_TTL);
   return { status: 'ok', rows: masked };
 }

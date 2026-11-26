@@ -1,4 +1,7 @@
 import { reservationChanged } from '../services/reservationChanges';
+import { getManagedVisPayment, getVisCalendar, type VisCalendar } from '../services/visWaitlist';
+import { VIS_WAITING, usesVisWaitlist, visWaitlistEnabled } from '../services/visWaitlistPolicy';
+import { lastOpenDateISO } from '../services/bookingWindow';
 import { REFUNDED_STATUS } from '../services/refundEvidence';
 import {
   PUBLIC_CACHE_TTL,
@@ -71,7 +74,7 @@ import {
 import { getPrisonerById } from '../db/queries/prisoners';
 import { getUserByUsername } from '../db/queries/users';
 import { checkTableSeats, getTableBookingConfig, holdExpiryFrom } from '../services/tableCapacity';
-import { getPublicBookingConfig } from '../services/publicCapacity';
+import { getPublicBookingConfig, publicCapacityForDate } from '../services/publicCapacity';
 import {
   generateUniqueRefServer,
   parseUpdateBookingFields,
@@ -167,7 +170,11 @@ export async function getArchivedReservationsHandler(
 
 export async function getCountsByDate(env: Env): Promise<Record<string, unknown>> {
   const config = await getPublicBookingConfig(env);
-  const countsKey = cacheKeyCounts(env);
+  const now = new Date();
+  const paidOnly = visWaitlistEnabled(env, now);
+  const countsKey = paidOnly
+    ? `${cacheKeyCounts(env)}:vis-paid:${formatDateISO(now)}:${config.perDay}`
+    : cacheKeyCounts(env);
   let version: number;
   try {
     version = await getScopeVersion(env.DB, 'reservations');
@@ -175,15 +182,22 @@ export async function getCountsByDate(env: Env): Promise<Record<string, unknown>
     version = -1;
   }
   if (version !== -1) {
-    const { hit } = await d1CacheGetVersioned<Record<string, number>>(env.DB, countsKey, version);
-    if (hit) return { status: 'ok', counts: hit, ...config };
+    const { hit } = await d1CacheGetVersioned<Record<string, number> | VisCalendar>(env.DB, countsKey, version);
+    if (hit)
+      return paidOnly
+        ? { status: 'ok', ...(hit as VisCalendar), visWaitlist: true, ...config }
+        : { status: 'ok', counts: hit, ...config };
   }
 
-  const counts = await countReservationsByDate(env.DB);
+  const counts = paidOnly
+    ? await getVisCalendar(env.DB, formatDateISO(now), lastOpenDateISO(now), config.perDay)
+    : await countReservationsByDate(env.DB);
   if (version !== -1) {
     await d1CachePutVersioned(env.DB, countsKey, version, counts, PUBLIC_CACHE_TTL);
   }
-  return { status: 'ok', counts, ...config };
+  return paidOnly
+    ? { status: 'ok', ...(counts as VisCalendar), visWaitlist: true, ...config }
+    : { status: 'ok', counts, ...config };
 }
 
 /**
@@ -594,11 +608,23 @@ export async function handlePublicCancelBooking(
   if (prevStatus === 'ยกเลิก') return { status: 'ok', noop: true };
 
   const nowIso = new Date().toISOString();
-  await updateReservationColumns(env.DB, ref, [
-    ['status', 'ยกเลิก'],
-    ['cancelAt', nowIso],
-    ['updatedAt', nowIso],
-  ]);
+  if (await getManagedVisPayment(env, rows[0]!)) {
+    const result = await env.DB.prepare(
+      `UPDATE reservations SET status = 'ยกเลิก', cancelAt = ?, updatedAt = ?,
+      cancellationRole = '', version = version + 1
+      WHERE ref = ? AND status = ? AND (status != 'รอชำระเงิน' OR visSlipSubmittedAt = '')`
+    )
+      .bind(nowIso, nowIso, ref, prevStatus)
+      .run();
+    if (Number(result.meta.changes) !== 1)
+      return { status: 'error', message: 'กรุณาติดต่อเจ้าหน้าที่หากอยู่ระหว่างตรวจสอบการชำระเงิน' };
+  } else {
+    await updateReservationColumns(env.DB, ref, [
+      ['status', 'ยกเลิก'],
+      ['cancelAt', nowIso],
+      ['updatedAt', nowIso],
+    ]);
+  }
 
   await logEvent(
     env,
@@ -671,7 +697,7 @@ async function handleApproveStage(
   )
     return { status: 'error', message: 'ไม่มีสิทธิ์อนุมัติขั้นตอนนี้' };
 
-  const row = await approveReservationStage(env.DB, ref, stage);
+  const row = await approveReservationStage(env.DB, ref, stage, visWaitlistEnabled(env));
   if (!row) {
     const [current] = await getReservationsByRefs(env.DB, ref);
     if (!current) return { status: 'error', message: 'Ref not found' };
@@ -803,6 +829,20 @@ export async function handleUpdateStatus(
   }
 
   if (rows.some((row) => row.status === REFUNDED_STATUS)) return { status: 'error', message: 'รายการนี้คืนเงินแล้ว' };
+  if (!fromArchive) {
+    for (const current of rows) {
+      const payment = await getManagedVisPayment(env, current);
+      if (!payment || current.status === status) continue;
+      if (
+        status === 'รอชำระเงิน' ||
+        (status === 'ชำระแล้ว' &&
+          (current.status !== 'รอชำระเงิน' || !payment.visSlipSubmittedAt || !payment.visOfferedAt)) ||
+        (status === 'เสร็จสิ้น' && current.status !== 'ชำระแล้ว')
+      ) {
+        return { status: 'error', message: 'กรุณาจัดการการชำระเงินตามคิวและตรวจสอบสลิปก่อนเปลี่ยนสถานะ VIS' };
+      }
+    }
+  }
   if (!fromArchive && !['ยกเลิก', 'ไม่อนุมัติ'].includes(status)) {
     for (const row of rows.filter((r) => ['ยกเลิก', 'ไม่อนุมัติ'].includes(String(r.status)))) {
       const ids = [String(row.prisonerId || ''), ...parseExtraPrisoners(row.extraPrisoners).map((p) => p.id)];
@@ -1043,7 +1083,9 @@ export async function handleUpdateVisitorApproval(
     participantApproved = resolved ? 'yes' : '';
     newStatus = resolved
       ? rows[0]!.disciplineApproved === 'yes'
-        ? 'รอชำระเงิน'
+        ? usesVisWaitlist(env, rows[0]!.visitDateISO)
+          ? VIS_WAITING
+          : 'รอชำระเงิน'
         : 'รอตรวจสอบวินัย'
       : 'รอตรวจสอบผู้เข้าร่วม';
     cols.push(['participantApproved', participantApproved], ['status', newStatus]);
@@ -1173,6 +1215,23 @@ export async function handleUpdateBooking(
 
   const { cols, changes, errors } = parseUpdateBookingFields(body);
   if (errors.length > 0) return { status: 'error', message: errors.join('; ') };
+  if (!fromArchive && (await getManagedVisPayment(env, current))) {
+    const changedKeys = ['visitDate', 'visitDateISO', 'visitorId', 'prisonerId', 'extraPrisoners', 'extraVisitorNames'];
+    if (
+      changedKeys.some(
+        (field) => changes[field] !== undefined && String(changes[field] || '') !== String(current[field] || '')
+      )
+    ) {
+      return { status: 'error', message: 'กรุณาจัดการวันเยี่ยมหรือผู้เข้าเยี่ยมผ่านขั้นตอนของรายการ VIS' };
+    }
+    if (
+      changes.status !== undefined &&
+      changes.status !== current.status &&
+      ['รอชำระเงิน', 'ชำระแล้ว', 'เสร็จสิ้น'].includes(String(changes.status))
+    ) {
+      return { status: 'error', message: 'กรุณาเปลี่ยนสถานะผ่านขั้นตอนการตรวจชำระเงินของ VIS' };
+    }
+  }
   if (changes.status === 'ยกเลิก' && current.status !== 'ยกเลิก') {
     cols.push(['cancelAt', new Date().toISOString()], ['cancellationRole', user.role]);
   }
@@ -1258,7 +1317,7 @@ export async function handleUpdateBooking(
     (f) => changes[f] !== undefined && Number(changes[f]) !== Number(current[f] || 0)
   );
   const paymentLock = await getPaymentLock(env.DB, ref);
-  const rosterChanged = ['visitorId', 'prisonerId', 'extraVisitorNames', 'extraVisitorApproved'].some(
+  const rosterChanged = ['visitorId', 'prisonerId', 'extraPrisoners', 'extraVisitorNames', 'extraVisitorApproved'].some(
     (field) => changes[field] !== undefined && String(changes[field] || '') !== String(current[field] || '')
   );
   const refreshParticipants =
@@ -1279,7 +1338,6 @@ export async function handleUpdateBooking(
     if (!samePrisoner) {
       merged.visitorApproved = '';
       merged.extraVisitorApproved = '';
-      merged.disciplineApproved = '';
     } else {
       if (
         String(merged.visitorId || '')
@@ -1297,6 +1355,8 @@ export async function handleUpdateBooking(
           changes.extraVisitorNames
         );
     }
+    if (!samePrisoner || String(merged.extraPrisoners || '') !== String(current.extraPrisoners || ''))
+      merged.disciplineApproved = '';
     await refreshReturningVisitorApprovals(env.DB, merged);
     for (const field of [
       'visitorApproved',
@@ -1521,6 +1581,7 @@ export async function handleCreateBooking(
   data.ref = ref;
 
   const reusedParticipants = isTable ? 0 : await applyReturningVisitorApprovals(env.DB, data);
+  const visWaitlist = !isTable && usesVisWaitlist(env, data.visitDateISO);
   const row: Record<string, unknown> = {
     ...data,
     ...(isTable
@@ -1537,11 +1598,19 @@ export async function handleCreateBooking(
     version: 1,
     createdBy: user.username,
     source: isTable ? 'admin-table' : 'admin',
+    ...(visWaitlist ? { visQueuedAt: now } : {}),
   };
 
   // Only this permission-checked staff route bypasses the daily public quota.
   // Its booking still consumes capacity in the public calendar and insert guard.
-  await insertReservation(env.DB, row);
+  const capacity = visWaitlist
+    ? publicCapacityForDate(await getPublicBookingConfig(env), String(data.visitDateISO || ''))
+    : 0;
+  if (
+    !(await insertReservation(env.DB, row, visWaitlist ? { perDay: capacity, nowIso: now, visWaitlist } : undefined))
+  ) {
+    return { status: 'error', message: 'คิวเต็มหรือมีรายการ VIS เดิมที่ต้องดำเนินการก่อน' };
+  }
 
   await reservationChanged(env);
   if (newPrisonerId) await invalidatePrisonerLookupCache(env, newPrisonerId);

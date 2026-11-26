@@ -45,7 +45,11 @@ export function reusableVisitorClearance(
 }
 
 /** Preserve individual decisions; history can approve only guests still undecided. */
-export async function refreshReturningVisitorApprovals(db: D1Database, data: Record<string, unknown>): Promise<number> {
+export async function refreshReturningVisitorApprovals(
+  db: D1Database,
+  data: Record<string, unknown>,
+  requireNameMatch = false
+): Promise<number> {
   const prisonerId = identity(data.prisonerId);
   const extras = parseExtraVisitorNames(data.extraVisitorNames);
   const known = prisonerId
@@ -53,6 +57,7 @@ export async function refreshReturningVisitorApprovals(db: D1Database, data: Rec
         .prepare(
           `SELECT c.visitorId, c.decision, c.sourceRef, c.decidedBy,
           COALESCE(r.ref,a.ref) AS sourceExists,
+          COALESCE(r.visitorName,a.visitorName) AS sourceVisitorName,
           COALESCE(r.visitorId,a.visitorId) AS sourceVisitorId,
           COALESCE(r.visitorApproved,a.visitorApproved) AS sourceVisitorApproved,
           COALESCE(r.extraVisitorNames,a.extraVisitorNames) AS sourceExtraVisitorNames,
@@ -66,6 +71,7 @@ export async function refreshReturningVisitorApprovals(db: D1Database, data: Rec
         .all<
           VisitorClearance & {
             sourceExists: string;
+            sourceVisitorName: string;
             sourceVisitorId: string;
             sourceVisitorApproved: string;
             sourceExtraVisitorNames: string;
@@ -74,7 +80,12 @@ export async function refreshReturningVisitorApprovals(db: D1Database, data: Rec
           }
         >()
     : { results: [] };
-  const approved = new Set(
+  const normalizeName = (value: unknown) =>
+    String(value || '')
+      .normalize('NFC')
+      .replace(/\s+/g, '')
+      .toLowerCase();
+  const approved = new Map(
     (known.results || [])
       .filter((row) =>
         reusableVisitorClearance(
@@ -91,16 +102,27 @@ export async function refreshReturningVisitorApprovals(db: D1Database, data: Rec
           String(data.ref || '')
         )
       )
-      .map((row) => identity(row.visitorId))
+      .map((row) => [
+        identity(row.visitorId),
+        new Set([
+          ...(identity(row.sourceVisitorId) === identity(row.visitorId) ? [normalizeName(row.sourceVisitorName)] : []),
+          ...parseExtraVisitorNames(row.sourceExtraVisitorNames)
+            .filter((guest) => identity(guest.id) === identity(row.visitorId))
+            .map((guest) => normalizeName(guest.name)),
+        ]),
+      ])
   );
   const beforeMain = decision(data.visitorApproved);
   const beforeExtra = String(data.extraVisitorApproved || '')
     .split(';;')
     .map(decision);
-  const resolve = (id: unknown, current: string) =>
-    ['yes', 'no'].includes(current) ? current : identity(id) && approved.has(identity(id)) ? 'yes' : '';
-  const main = resolve(data.visitorId, beforeMain);
-  const extra = extras.map((guest, i) => resolve(guest.id, beforeExtra[i] || ''));
+  const resolve = (id: unknown, name: unknown, current: string) => {
+    if (['yes', 'no'].includes(current)) return current;
+    const names = approved.get(identity(id));
+    return names && (!requireNameMatch || (normalizeName(name) && names.has(normalizeName(name)))) ? 'yes' : '';
+  };
+  const main = resolve(data.visitorId, data.visitorName, beforeMain);
+  const extra = extras.map((guest, i) => resolve(guest.id, guest.name, beforeExtra[i] || ''));
   data.visitorApproved = main;
   data.extraVisitorApproved = extra.join(';;');
   data.participantApproved = visitorApprovalsComplete(data) ? 'yes' : '';

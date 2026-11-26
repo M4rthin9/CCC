@@ -62,6 +62,9 @@ jobs:
       - name: Verify public system status
         run: npm run smoke:status
 
+      - name: Verify Bangkok VIS waitlist cutover and payments
+        run: npx tsx scripts/verify-vis-waitlist.ts
+
       - name: Select target environment
         id: target
         run: |

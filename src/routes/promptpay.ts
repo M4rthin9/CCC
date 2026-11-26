@@ -8,6 +8,7 @@ import { sanitizeStr } from '../config';
 import { Env } from '../types';
 import { AuthenticatedUser } from '../auth/middleware';
 import type { AdditionalDataFields } from '@thai-qr-payment/payload';
+import { getManagedVisPayment, visPaymentOpen } from '../services/visWaitlist';
 
 const QR_RATE_LIMIT_MAX = 30;
 const QR_RATE_LIMIT_TTL_SECONDS = 60;
@@ -68,6 +69,9 @@ export async function handleGeneratePromptPayQr(
 
   const booking = await getReservationByRef(env.DB, ref);
   if (!booking) return { status: 'error', message: 'Ref not found' };
+  const visPayment = await getManagedVisPayment(env, booking);
+  if (visPayment && (!visPaymentOpen(booking, visPayment) || visPayment.visSlipSubmittedAt))
+    return { status: 'error', message: 'ยังไม่สามารถชำระเงินได้ กรุณาตรวจสอบคิวและเวลาชำระในหน้าสถานะ' };
   if (['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย'].includes(String(booking.status)))
     return { status: 'error', message: 'ต้องอนุมัติผู้เข้าร่วมและวินัยครบทั้งสองขั้นตอนก่อนชำระเงิน' };
 

@@ -20,13 +20,14 @@ TURNSTILE_ALLOWED_HOSTNAMES = "cida.dpdns.org,dashboard.cida.dpdns.org,cafe.dpdn
 # ── Notifications (Web Push + LINE) ────────────────────────────────
 # Feature switches (set to "true" to enable).
 NOTIFY_PUSH_ENABLED = "true"
+VIS_WAITLIST_ENABLED = "true"
 NOTIFY_LINE_ENABLED = "false"
 # Fallback LINE monthly push-message cap (an admin-overridable setting wins).
 LINE_MONTHLY_CAP = "200"
 # Only these events may spend quota. notify() drops everything else before a
 # row is queued — widen the list to send more. Visitors hear when to pay and that
 # the payment went through. (The "booking opens" alerts are a separate cron.)
-NOTIFY_EVENT_ALLOWLIST = "payment_due,payment_confirmed"
+NOTIFY_EVENT_ALLOWLIST = "payment_due,payment_confirmed,vis_payment_reminder,vis_payment_expired"
 # Web Push VAPID identity. The public key is public by design (the browser
 # needs it to subscribe); VAPID_PRIVATE_KEY is a secret (wrangler secret put).
 VAPID_PUBLIC_KEY = "BLK0t-ZAXELgpSi-ZweeWuKJAifs4fG78ejIHF5sequXIXPHEl6kr7c06PdmXYITbrzc-6TcnvfS9ww0skXjwm0"

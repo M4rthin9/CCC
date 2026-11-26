@@ -146,7 +146,7 @@ export interface NotifyResult extends Record<string, unknown> {
 
 // Core entry point. Fires status-change notifications to everyone linked to a
 // booking (browser push subscriptions + LINE OA friends). Never throws.
-export async function notify(env: Env, input: Record<string, unknown>): Promise<NotifyResult> {
+export async function notify(env: Env, input: Record<string, unknown>, deliveryKey = ''): Promise<NotifyResult> {
   const base: NotifyResult = {
     status: 'ok',
     ref: '',
@@ -189,7 +189,7 @@ export async function notify(env: Env, input: Record<string, unknown>): Promise<
           createdAt: now,
           sentAt: '',
         };
-        const id = await insertNotificationGetId(env.DB, row);
+        const id = await insertNotificationGetId(env.DB, row, deliveryKey);
         if (id === null) continue;
         base.queued.push++;
         const outcome = await deliverPushRow(env, { ...row, id });
@@ -223,7 +223,7 @@ export async function notify(env: Env, input: Record<string, unknown>): Promise<
           createdAt: now,
           sentAt: '',
         };
-        const id = await insertNotificationGetId(env.DB, row);
+        const id = await insertNotificationGetId(env.DB, row, deliveryKey);
         if (id === null) continue;
         base.queued.line++;
         const outcome = await deliverLineRow(env, { ...row, id });

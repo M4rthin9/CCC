@@ -3,6 +3,7 @@ import { AuthenticatedUser } from '../auth/middleware';
 import { jsonResponse } from '../middleware/http';
 import { d1CheckRateLimit } from '../cache/d1Cache';
 import { rateLimitKey } from '../cache/keys';
+import { handleVisContactQueue, handleVisManage } from './visWaitlist';
 import { logEvent } from '../services/logger';
 import {
   handlePing,
@@ -273,6 +274,15 @@ const POST_ROUTES: Record<string, Route> = {
     auth: false,
     handler: async (ctx) => handlePublicCancelBooking(ctx.env, ctx.body),
     rateLimit: { ns: 'cancel', ...PUBLIC_REF_LIMIT },
+  },
+  manageVis: {
+    auth: false,
+    handler: async (ctx) => handleVisManage(ctx.env, ctx.body),
+    rateLimit: { ns: 'manage-vis', max: 8, ttl: 60 },
+  },
+  getVisContactQueue: {
+    auth: true,
+    handler: async (ctx) => handleVisContactQueue(ctx.env, ctx.body, ctx.user!),
   },
   uploadSlip: {
     auth: false,

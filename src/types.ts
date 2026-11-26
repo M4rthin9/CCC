@@ -21,7 +21,7 @@ export interface Env {
   VAPID_SUBJECT?: string;
   NOTIFY_PUSH_ENABLED?: string;
   /** Push delivery queue: each message sends a batch within D1 Free query limits. */
-  PUSH_QUEUE?: Queue<{ drain: true }>;
+  PUSH_QUEUE?: Queue<{ drain: true } | { visNotices: true }>;
   NOTIFY_LINE_ENABLED?: string;
   /** Comma-separated notification events allowed to spend quota. */
   NOTIFY_EVENT_ALLOWLIST?: string;
@@ -34,6 +34,7 @@ export interface Env {
   SLIP_OCR_DAILY_MAX?: string;
   SLIP_AUTO_APPROVE_ENABLED?: string;
   SLIP_MAX_AGE_HOURS?: string;
+  VIS_WAITLIST_ENABLED?: string;
 }
 
 export interface User {

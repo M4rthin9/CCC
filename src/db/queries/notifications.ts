@@ -186,11 +186,11 @@ export function lineFriendsByRef(db: D1Database, ref: string): Promise<LineFrien
 }
 
 // Returns the row id when the notification was newly inserted (dedupe hit → null).
-export function insertNotificationGetId(db: D1Database, n: NotificationRow): Promise<number | null> {
+export function insertNotificationGetId(db: D1Database, n: NotificationRow, deliveryKey = ''): Promise<number | null> {
   return db
     .prepare(
-      `INSERT OR IGNORE INTO notifications (ref, type, channel, recipient, subject, body, status, attempts, error, createdAt, sentAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT OR IGNORE INTO notifications (ref, type, channel, recipient, subject, body, status, attempts, error, createdAt, sentAt${deliveryKey ? ', deliveryKey' : ''})
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${deliveryKey ? ', ?' : ''})`
     )
     .bind(
       n.ref,
@@ -203,7 +203,8 @@ export function insertNotificationGetId(db: D1Database, n: NotificationRow): Pro
       n.attempts,
       n.error,
       n.createdAt,
-      n.sentAt
+      n.sentAt,
+      ...(deliveryKey ? [deliveryKey] : [])
     )
     .run()
     .then(async (res) => {

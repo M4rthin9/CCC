@@ -1,5 +1,17 @@
 import { ACTIVE_STATUSES, AWAITING_PAYMENT, CANCELLED, COMPLETED, HOLD_EXPIRED_REASON, TABLES } from '../../constants';
 import { Env, Reservation } from '../../types';
+import {
+  VIS_BOOKING,
+  VIS_OPEN,
+  VIS_OTHER_DATE_CONDITION,
+  VIS_OTHER_DATE_PRISONER,
+  VIS_REUSABLE_CONDITION,
+  VIS_STANDBY_LIMIT,
+  VIS_WAITING,
+  visOtherDateBinds,
+  visVisitorId,
+} from '../../services/visWaitlistPolicy';
+import { parseExtraPrisoners } from '../../services/pricing';
 
 const RESERVATION_COLUMNS = [
   'ref',
@@ -220,7 +232,7 @@ export function findDuplicateActiveBooking(
   visitDateISO: string,
   excludeRef: string | null
 ): Promise<string | null> {
-  const active = ['รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย', 'รอชำระเงิน', 'ชำระแล้ว', 'เสร็จสิ้น'];
+  const active = [...ACTIVE_STATUSES, VIS_WAITING];
   const placeholders = active.map(() => '?').join(', ');
   // A prisoner seated at someone else's table (extraPrisoners `name|id|wing`) is booked too.
   let sql = `SELECT ref FROM ${TABLES.reservations}
@@ -316,6 +328,49 @@ export function countPublicPrisonerBookings(db: D1Database, visitDateISO: string
     .then((r) => Number(r?.n ?? 0));
 }
 
+export async function hasUnpaidVisOnOtherDate(
+  db: D1Database,
+  visitorId: unknown,
+  visitDate: unknown,
+  now: Date
+): Promise<boolean> {
+  return Boolean(
+    await db
+      .prepare(`SELECT 1 AS found FROM reservations WHERE ${VIS_OTHER_DATE_CONDITION} LIMIT 1`)
+      .bind(...visOtherDateBinds(visitorId, visitDate, now))
+      .first()
+  );
+}
+
+function visBookedPrisoners(data: Record<string, unknown>): string {
+  return JSON.stringify(
+    [String(data.prisonerId || '').trim(), ...parseExtraPrisoners(data.extraPrisoners).map((p) => p.id)].filter(Boolean)
+  );
+}
+
+export async function hasUnpaidVisForPrisoners(
+  db: D1Database,
+  data: Record<string, unknown>,
+  now: Date
+): Promise<boolean> {
+  const [, today, date] = visOtherDateBinds(data.visitorId, data.visitDateISO, now);
+  return Boolean(
+    await db
+      .prepare(`SELECT 1 AS found FROM reservations WHERE ${VIS_OTHER_DATE_PRISONER} LIMIT 1`)
+      .bind(today, date, visBookedPrisoners(data))
+      .first()
+  );
+}
+
+export async function hasReusableVis(db: D1Database, data: Record<string, unknown>): Promise<boolean> {
+  return Boolean(
+    await db
+      .prepare(`SELECT 1 AS found FROM reservations WHERE ${VIS_REUSABLE_CONDITION} LIMIT 1`)
+      .bind(visVisitorId(data.visitorId), String(data.prisonerId || ''))
+      .first()
+  );
+}
+
 // ── Table bookings (bookingType = 'table') ─────────────────────────
 // A day's capacity is consumed by every active table booking EXCEPT one that is
 // still awaiting payment past its hold. Excluding expired holds inside the count
@@ -400,12 +455,34 @@ export function getAllRefs(db: D1Database): Promise<string[]> {
 export function insertReservation(
   db: D1Database,
   data: Record<string, unknown>,
-  capacity?: { perDay: number; nowIso: string }
+  capacity?: { perDay: number; nowIso: string; visWaitlist?: boolean }
 ): Promise<boolean> {
-  const cols = RESERVATION_COLUMNS;
+  const cols = capacity?.visWaitlist ? [...RESERVATION_COLUMNS, 'visQueuedAt'] : RESERVATION_COLUMNS;
   const values: unknown[] = cols.map((c) => (data[c] !== undefined ? data[c] : ''));
   let guard = '';
-  if (capacity) {
+  if (capacity?.visWaitlist) {
+    const otherDateBinds = visOtherDateBinds(data.visitorId, data.visitDateISO, new Date(capacity.nowIso));
+    guard = `WHERE (SELECT COUNT(*) FROM reservations WHERE visitDateISO = ? AND ${VIS_BOOKING}
+        AND status IN ${VIS_OPEN}) < ?
+      AND NOT EXISTS (SELECT 1 FROM reservations WHERE ${VIS_OTHER_DATE_CONDITION})
+      AND NOT EXISTS (SELECT 1 FROM reservations WHERE ${VIS_OTHER_DATE_PRISONER})
+      AND NOT EXISTS (SELECT 1 FROM reservations WHERE ${VIS_REUSABLE_CONDITION})
+      AND NOT EXISTS (SELECT 1 FROM reservations WHERE visitDateISO = ? AND ${VIS_BOOKING}
+        AND status IN ${VIS_OPEN} AND (prisonerId = ? OR ${IN_EXTRA_PRISONERS}))`;
+    values.push(
+      data.visitDateISO,
+      capacity.perDay + VIS_STANDBY_LIMIT,
+      ...otherDateBinds,
+      otherDateBinds[1],
+      otherDateBinds[2],
+      visBookedPrisoners(data),
+      visVisitorId(data.visitorId),
+      data.prisonerId,
+      data.visitDateISO,
+      data.prisonerId,
+      data.prisonerId
+    );
+  } else if (capacity) {
     const isTable = data.bookingType === 'table';
     const occupancy = isTable ? TABLE_OCCUPANCY_WHERE : VISIT_OCCUPANCY_WHERE;
     const occupancyBinds = isTable ? tableOccupancyBinds(capacity.nowIso) : [CANCELLED];
@@ -477,7 +554,8 @@ export async function updateVisitorApprovalColumns(
 export async function approveReservationStage(
   db: D1Database,
   ref: string,
-  stage: 'participant' | 'discipline'
+  stage: 'participant' | 'discipline',
+  waitlist = false
 ): Promise<Reservation | null> {
   const own = stage === 'participant' ? 'participantApproved' : 'disciplineApproved';
   const other = stage === 'participant' ? 'disciplineApproved' : 'participantApproved';
@@ -486,7 +564,11 @@ export async function approveReservationStage(
     .prepare(
       `UPDATE ${TABLES.reservations}
        SET ${own} = 'yes',
-           status = CASE WHEN ${other} = 'yes' THEN ? ELSE ? END,
+           status = CASE WHEN ${other} = 'yes' THEN ${
+             waitlist
+               ? `CASE WHEN visitDateISO >= '2026-12-01' OR visQueuedAt != '' THEN '${VIS_WAITING}' ELSE ? END`
+               : '?'
+           } ELSE ? END,
            updatedAt = ?, version = COALESCE(NULLIF(version, ''), 1) + 1
        WHERE ref = ? AND bookingType != 'table' AND ${own} != 'yes'
          AND status IN ('รอตรวจสอบผู้เข้าร่วม', 'รอตรวจสอบวินัย')
